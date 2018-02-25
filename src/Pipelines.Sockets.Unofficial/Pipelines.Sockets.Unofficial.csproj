@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <VersionPrefix>0.1</VersionPrefix>
+    <VersionSuffix>preview2-26225-02</VersionSuffix>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <SignAssembly>true</SignAssembly>
+    <DelaySign>false</DelaySign>
+    <IncludeSymbols>true</IncludeSymbols>
+    <AssemblyOriginatorKeyFile>Pipelines.Sockets.Unofficial.snk</AssemblyOriginatorKeyFile>
+    <PackageProjectUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</RepositoryUrl>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.IO.Pipelines" Version="4.5.0-$(VersionSuffix)" />
+  </ItemGroup>
+
+</Project>
