@@ -1,9 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <LibVer>preview2-26225-02</LibVer>
     <VersionPrefix>0.1</VersionPrefix>
-    <VersionSuffix>preview2-26225-02</VersionSuffix>
-    <TargetFramework>netstandard2.0</TargetFramework>
+    <VersionSuffix>$(LibVer)</VersionSuffix>
+    <TargetFrameworks>netstandard2.0</TargetFrameworks><!--;netcoreapp2.1-->
     <SignAssembly>true</SignAssembly>
     <DelaySign>false</DelaySign>
     <IncludeSymbols>true</IncludeSymbols>
@@ -17,7 +18,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.IO.Pipelines" Version="4.5.0-$(VersionSuffix)" />
+    <PackageReference Include="System.Memory" Version="4.5.0-$(LibVer)" />
+    <PackageReference Include="System.Buffers" Version="4.5.0-$(LibVer)" />
+    <PackageReference Include="System.IO.Pipelines" Version="4.5.0-$(LibVer)" />
   </ItemGroup>
 
 </Project>
