@@ -37,9 +37,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
             string actual;
             Log?.DebugLog("connecting...");
-            using (var conn = await SocketConnection.ConnectAsync(endpoint, DefaultOptions
+            using (var conn = await SocketConnection.ConnectAsync(endpoint
 #if DEBUG
-                , Log
+                , log: Log
 #endif
                 ))
             {
@@ -80,8 +80,6 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
             
         }
-
-        static PipeOptions DefaultOptions { get; } = new PipeOptions(MemoryPool<byte>.Shared);
 
         Task<string> SyncEchoServer(object ready, IPEndPoint endpoint)
         {

@@ -1,4 +1,6 @@
-﻿using System.IO;
+﻿using System;
+using System.Buffers;
+using System.IO;
 using System.IO.Pipelines;
 using System.Net;
 using System.Net.Sockets;
@@ -8,7 +10,13 @@ namespace Pipelines.Sockets.Unofficial
 {
     partial class SocketConnection
     {
-        public static async Task<SocketConnection> ConnectAsync(EndPoint endpoint, PipeOptions options
+        private static PipeOptions _defaultOptions;
+        private static PipeOptions GetDefaultOptions()
+            => _defaultOptions ?? (_defaultOptions = new PipeOptions(MemoryPool<byte>.Shared));
+        public static async Task<SocketConnection> ConnectAsync(
+            EndPoint endpoint,
+            PipeOptions options = null,
+            Action<Socket> onConnected = null
 #if DEBUG
             , TextWriter log = null
 #endif
@@ -24,13 +32,15 @@ namespace Pipelines.Sockets.Unofficial
 #if DEBUG
             DebugLog(log, "connected");
 #endif
+            socket.NoDelay = true;
+            onConnected?.Invoke(socket);
 
-            var conn = new SocketConnection(socket, options);
+
+            return Create(socket, options
 #if DEBUG
-            conn._log = log;
+            , log: log
 #endif
-            conn.Start();            
-            return conn;
+            );
         }
 
         private static SocketAwaitable ConnectAsync(Socket socket, SocketAsyncEventArgs args, EndPoint endpoint)

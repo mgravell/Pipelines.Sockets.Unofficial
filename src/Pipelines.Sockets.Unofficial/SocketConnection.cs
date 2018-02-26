@@ -1,6 +1,7 @@
 ﻿// Licensed under the Apache License, Version 2.0.
 
 using System;
+using System.IO;
 using System.IO.Pipelines;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
@@ -39,7 +40,20 @@ namespace Pipelines.Sockets.Unofficial
         static void OnCompleted(SocketAsyncEventArgs args)
             => ((SocketAwaitable)args.UserToken).Complete(args.BytesTransferred, args.SocketError);
 
-        
+        public static SocketConnection Create(Socket socket, PipeOptions options = null
+#if DEBUG
+            , TextWriter log = null
+#endif
+            )
+        {
+            var conn = new SocketConnection(socket, options);
+#if DEBUG
+            conn._log = log;
+#endif
+            conn.Start();
+            return conn;
+        }
+
         void Start()
         {
             _receiveTask = DoReceive();
@@ -50,6 +64,7 @@ namespace Pipelines.Sockets.Unofficial
         
         private SocketConnection(Socket socket, PipeOptions options)
         {
+            if (options == null) options = GetDefaultOptions();
             Socket = socket;
             _send = new Pipe(options);
             _receive = new Pipe(options);
