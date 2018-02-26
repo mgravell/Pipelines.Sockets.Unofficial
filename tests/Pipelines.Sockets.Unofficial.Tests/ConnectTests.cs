@@ -40,8 +40,26 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 conn.Output.Complete();
 
                 actual = await server;
+
+                Assert.Equal("Hello, world!", actual);
+
+                string returned;
+                //while (true)
+                //{
+                //    var result = await conn.Input.ReadAsync();
+                //    if (result.IsCompleted)
+                //    {
+                //        returned = Encoding.ASCII.GetString(result.Buffer.ToArray());
+                //        break;
+                //    }
+
+                //    var buffer = result.Buffer;
+                //    conn.Input.AdvanceTo(buffer.Start, buffer.End);
+                //}
+
+                //Assert.Equal("Hello, world!", returned);
             }
-            Assert.Equal("Hello, world!", actual);
+            
         }
 
         static PipeOptions DefaultOptions { get; } = new PipeOptions(MemoryPool<byte>.Shared);
@@ -66,8 +84,11 @@ namespace Pipelines.Sockets.Unofficial.Tests
                     using (var writer = new StreamWriter(ns, Encoding.ASCII, 1024, true))
                     {
                         s = reader.ReadToEnd();
-                        Output.WriteLine($"Server received '{s}'; replying in kind...");
-                        writer.Write(s);
+                        Output.WriteLine($"Server received '{s}'; replying in reverse...");
+                        char[] chars = s.ToCharArray();
+                        Array.Reverse(chars);
+                        var t = new string(chars);
+                        writer.Write(t);
                     }
                     socket.Shutdown(SocketShutdown.Both);
                     socket.Close();
