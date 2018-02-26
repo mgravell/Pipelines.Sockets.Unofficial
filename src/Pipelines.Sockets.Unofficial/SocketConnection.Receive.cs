@@ -16,7 +16,13 @@ namespace Pipelines.Sockets.Unofficial
                 var args = CreateArgs();
                 while (true)
                 {
-                    
+                    if (ZeroLengthReads && Socket.Available == 0)
+                    {
+                        DebugLog($"awaiting zero-length receive...");
+                        await ReceiveAsync(Socket, args, default);
+                        DebugLog($"zero-length receive complete; now {Socket.Available} bytes available");
+                    }
+
                     var buffer = _receive.Writer.GetMemory();
                     DebugLog($"leased {buffer.Length} bytes from pool");
                     try
@@ -49,7 +55,7 @@ namespace Pipelines.Sockets.Unofficial
                     {
                         DebugLog("pipe flushed (sync)");
                     }
-                    
+
 
                     var result = flushTask.GetAwaiter().GetResult();
                     if (result.IsCompleted)
@@ -124,8 +130,24 @@ namespace Pipelines.Sockets.Unofficial
             _eventArgs.SetBuffer(buffer);
 #else
 
-            var segment = buffer.GetArray();
-            args.SetBuffer(segment.Array, segment.Offset, segment.Count);
+            if (buffer.IsEmpty)
+            {
+                // zero-length; retain existing buffer if possible
+                if (args.Buffer == null)
+                {
+                    args.SetBuffer(Array.Empty<byte>(), 0, 0);
+                }
+                else
+                {   // it doesn't matter that the old buffer may still be in
+                    // use somewhere; we're reading zero bytes!
+                    args.SetBuffer(args.Offset, 0);
+                }
+            }
+            else
+            {
+                var segment = buffer.GetArray();
+                args.SetBuffer(segment.Array, segment.Offset, segment.Count);
+            }
 #endif
             if (!socket.ReceiveAsync(args)) OnCompleted(args);
 

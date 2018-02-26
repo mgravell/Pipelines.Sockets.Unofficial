@@ -43,6 +43,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
 #endif
                 ))
             {
+                // conn.ZeroLengthReads = true;
                 var data = Encoding.ASCII.GetBytes("Hello, world!");
                 Log?.DebugLog("sending message...");
                 await conn.Output.WriteAsync(data);
