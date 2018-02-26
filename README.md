@@ -5,7 +5,7 @@ no official such connector. It draws from:
 
 - [`Channels.Networking.Sockets`](https://github.com/davidfowl/Channels/tree/master/src/Channels.Networking.Sockets) - the original "managed sockets" provider I wrote back when Pipelines were Channels
 - [`System.IO.Pipelines.Networking.Sockets`](https://github.com/dotnet/corefxlab/tree/master/src/System.IO.Pipelines.Networking.Sockets) - the "corefxlab" version of the above
-- [`Kestrel.Transport.Sockets`](https://github.com/aspnet/KestrelHttpServer/tree/dev/src/Kestrel.Transport.Sockets) - purely server-side connector used for ASP.NET Core
+- [`Kestrel.Transport.Sockets`](https://github.com/aspnet/KestrelHttpServer/tree/dev/src/Kestrel.Transport.Sockets) - purely server-side connector used for ASP.NET Core, using pieces of the above
 
 and aims to provide a high-performance implementation of the `IDuplexPipe` interface, providing both client and server APIs. At the moment the API is *very* preliminary.
 
