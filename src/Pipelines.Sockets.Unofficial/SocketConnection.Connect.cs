@@ -17,12 +17,18 @@ namespace Pipelines.Sockets.Unofficial
             var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
             var args = CreateArgs();
 
+#if DEBUG
             DebugLog(log, $"connecting to {endpoint}...");
+#endif
             await ConnectAsync(socket, args, endpoint);
+#if DEBUG
             DebugLog(log, "connected");
+#endif
 
             var conn = new SocketConnection(socket, options);
+#if DEBUG
             conn._log = log;
+#endif
             conn.Start();            
             return conn;
         }

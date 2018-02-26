@@ -37,7 +37,11 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
             string actual;
             Log?.DebugLog("connecting...");
-            using (var conn = await SocketConnection.ConnectAsync(endpoint, DefaultOptions, Log))
+            using (var conn = await SocketConnection.ConnectAsync(endpoint, DefaultOptions
+#if DEBUG
+                , Log
+#endif
+                ))
             {
                 var data = Encoding.ASCII.GetBytes("Hello, world!");
                 Log?.DebugLog("sending message...");

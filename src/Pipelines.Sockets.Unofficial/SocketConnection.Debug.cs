@@ -11,11 +11,19 @@ namespace Pipelines.Sockets.Unofficial
 #endif
         [Conditional("DEBUG")]
         private void DebugLog(string message, [CallerMemberName] string caller = null)
-            => _log?.DebugLog(message, caller);
+        {
+#if DEBUG
+            _log?.DebugLog(message, caller);
+#endif
+        }
 
         [Conditional("DEBUG")]
         private static void DebugLog(TextWriter log, string message, [CallerMemberName] string caller = null)
-            => log?.DebugLog(message, caller);
+        {
+#if DEBUG
+            log?.DebugLog(message, caller);
+#endif
+        }
     }
 
 }

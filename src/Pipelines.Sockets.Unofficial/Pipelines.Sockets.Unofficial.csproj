@@ -3,7 +3,7 @@
   <PropertyGroup>
     <LibVer>preview2-26225-02</LibVer>
     <VersionPrefix>0.1</VersionPrefix>
-    <VersionSuffix>$(LibVer)</VersionSuffix>
+    <VersionSuffix>alpha-001</VersionSuffix>
     <TargetFrameworks>netstandard2.0</TargetFrameworks><!--;netcoreapp2.1-->
     <SignAssembly>true</SignAssembly>
     <DelaySign>false</DelaySign>
