@@ -16,9 +16,23 @@ namespace Pipelines.Sockets.Unofficial
             Socket?.Dispose();
             Socket = null;
         }
-        public PipeReader Input => _receive.Reader;
+        public PipeReader Input
+        {
+            get
+            {
+                if (_receiveTask == null) _receiveTask = DoReceive();
+                return _receive.Reader;
+            }
+        }
 
-        public PipeWriter Output => _send.Writer;
+        public PipeWriter Output
+        {
+            get
+            {
+                if (_sendTask == null) _sendTask = DoSend();
+                return _send.Writer;
+            }
+        }
 
         internal Socket Socket { get; private set; }
 
@@ -50,15 +64,9 @@ namespace Pipelines.Sockets.Unofficial
 #if DEBUG
             conn._log = log;
 #endif
-            conn.Start();
             return conn;
         }
 
-        void Start()
-        {
-            _receiveTask = DoReceive();
-            _sendTask = DoSend();
-        }
         Task _receiveTask, _sendTask;
 
         
