@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Pipelines;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,9 +16,11 @@ namespace Pipelines.Sockets.Unofficial.Tests
     public class ConnectTests
     {
         ITestOutputHelper Output { get; }
+        TestTextWriter Log { get; }
         public ConnectTests(ITestOutputHelper output)
         {
             Output = output;
+            Log = TestTextWriter.Create(output);
         }
         [Fact]
         public async Task Connect()
@@ -33,31 +36,43 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
 
             string actual;
-            using (var conn = await SocketConnection.ConnectAsync(endpoint, DefaultOptions))
+            Log?.DebugLog("connecting...");
+            using (var conn = await SocketConnection.ConnectAsync(endpoint, DefaultOptions, Log))
             {
                 var data = Encoding.ASCII.GetBytes("Hello, world!");
+                Log?.DebugLog("sending message...");
                 await conn.Output.WriteAsync(data);
+                Log?.DebugLog("completing output");
                 conn.Output.Complete();
 
+                Log?.DebugLog("awaiting server...");
                 actual = await server;
 
                 Assert.Equal("Hello, world!", actual);
 
                 string returned;
-                //while (true)
-                //{
-                //    var result = await conn.Input.ReadAsync();
-                //    if (result.IsCompleted)
-                //    {
-                //        returned = Encoding.ASCII.GetString(result.Buffer.ToArray());
-                //        break;
-                //    }
+                Log?.DebugLog("buffering response...");
+                while (true)
+                {
+                    var result = await conn.Input.ReadAsync();
 
-                //    var buffer = result.Buffer;
-                //    conn.Input.AdvanceTo(buffer.Start, buffer.End);
-                //}
+                    var buffer = result.Buffer;
+                    Log?.DebugLog($"received {buffer.Length} bytes");
+                    if (result.IsCompleted)
+                    {
+                        
+                        returned = Encoding.ASCII.GetString(result.Buffer.ToArray());
+                        Log?.DebugLog($"received: '{returned}'");
+                        break;
+                    }
 
-                //Assert.Equal("Hello, world!", returned);
+                    Log?.DebugLog("advancing");                    
+                    conn.Input.AdvanceTo(buffer.Start, buffer.End);
+                }
+
+                Assert.Equal("!dlrow ,olleH", returned);
+
+                Log?.DebugLog("disposing");
             }
             
         }
@@ -67,9 +82,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
         Task<string> SyncEchoServer(object ready, IPEndPoint endpoint)
         {
             var listener = new TcpListener(endpoint);
-            Output.WriteLine($"Server starting on {endpoint}...");
+            Log?.DebugLog($"[Server] starting on {endpoint}...");
             listener.Start();
-            Output.WriteLine("Server running; waiting for connection...");
+            Output.WriteLine("[Server] running; waiting for connection...");
             lock (ready)
             {
                 Monitor.Pulse(ready);
@@ -77,14 +92,14 @@ namespace Pipelines.Sockets.Unofficial.Tests
             string s;
             using (var socket = listener.AcceptSocket())
             {
-                Output.WriteLine($"Server accepted connection");
+                Output.WriteLine($"[Server] accepted connection");
                 using (var ns = new NetworkStream(socket))
                 {
                     using (var reader = new StreamReader(ns, Encoding.ASCII, false, 1024, true))
                     using (var writer = new StreamWriter(ns, Encoding.ASCII, 1024, true))
                     {
                         s = reader.ReadToEnd();
-                        Output.WriteLine($"Server received '{s}'; replying in reverse...");
+                        Output.WriteLine($"[Server] received '{s}'; replying in reverse...");
                         char[] chars = s.ToCharArray();
                         Array.Reverse(chars);
                         var t = new string(chars);
@@ -95,7 +110,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 }
                 
             }
-            Output.WriteLine($"Server shutting down");
+            Output.WriteLine($"[Server] shutting down");
             listener.Stop();
             return Task.FromResult(s);
         }

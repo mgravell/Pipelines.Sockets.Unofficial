@@ -10,17 +10,20 @@ namespace Pipelines.Sockets.Unofficial
         private async Task DoReceive()
         {
             Exception error = null;
-
+            DebugLog("starting receive loop");
             try
             {
                 var args = CreateArgs();
                 while (true)
                 {
+                    
                     var buffer = _receive.Writer.GetMemory();
-
+                    DebugLog($"leased {buffer.Length} bytes from pool");
                     try
                     {
+                        DebugLog($"awaiting socket receive...");
                         var bytesReceived = await ReceiveAsync(Socket, args, buffer);
+                        DebugLog($"received {bytesReceived} bytes");
 
                         if (bytesReceived == 0)
                         {
@@ -34,23 +37,32 @@ namespace Pipelines.Sockets.Unofficial
                         // commit?
                     }
 
+                    DebugLog("flushing pipe");
                     var flushTask = _receive.Writer.FlushAsync();
 
                     if (!flushTask.IsCompleted)
                     {
                         await flushTask;
+                        DebugLog("pipe flushed (async)");
                     }
+                    else
+                    {
+                        DebugLog("pipe flushed (sync)");
+                    }
+                    
 
                     var result = flushTask.GetAwaiter().GetResult();
                     if (result.IsCompleted)
                     {
                         // Pipe consumer is shut down, do we stop writing
+                        DebugLog("complete");
                         break;
                     }
                 }
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset)
             {
+                DebugLog($"fail: {ex.SocketErrorCode}");
                 error = new ConnectionResetException(ex.Message, ex);
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.OperationAborted ||
@@ -58,6 +70,7 @@ namespace Pipelines.Sockets.Unofficial
                                              ex.SocketErrorCode == SocketError.Interrupted ||
                                              ex.SocketErrorCode == SocketError.InvalidArgument)
             {
+                DebugLog($"fail: {ex.SocketErrorCode}");
                 if (!_receiveAborted)
                 {
                     // Calling Dispose after ReceiveAsync can cause an "InvalidArgument" error on *nix.
@@ -66,6 +79,7 @@ namespace Pipelines.Sockets.Unofficial
             }
             catch (ObjectDisposedException)
             {
+                DebugLog($"fail: disposed");
                 if (!_receiveAborted)
                 {
                     error = new ConnectionAbortedException();
@@ -73,10 +87,12 @@ namespace Pipelines.Sockets.Unofficial
             }
             catch (IOException ex)
             {
+                DebugLog($"fail - io: {ex.Message}");
                 error = ex;
             }
             catch (Exception ex)
             {
+                DebugLog($"fail: {ex.Message}");
                 error = new IOException(ex.Message, ex);
             }
             finally
@@ -87,11 +103,19 @@ namespace Pipelines.Sockets.Unofficial
                 }
                 try
                 {
+                    DebugLog($"shutting down socket-receive");
                     Socket.Shutdown(SocketShutdown.Receive);
                 }
                 catch { }
-                Input.Complete(error);
+
+                // close the *writer* half of the receive pipe; we won't
+                // be writing any more, but callers can still drain the
+                // pipe if they choose
+                DebugLog($"marking {nameof(Input)} as complete");
+                try { _receive.Writer.Complete(error); } catch { }
             }
+
+            DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
         }
 
         private static SocketAwaitable ReceiveAsync(Socket socket, SocketAsyncEventArgs args, Memory<byte> buffer)

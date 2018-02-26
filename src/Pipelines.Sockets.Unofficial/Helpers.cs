@@ -1,4 +1,7 @@
 ﻿using System;
+using System.Diagnostics;
+using System.IO;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Pipelines.Sockets.Unofficial
@@ -12,5 +15,13 @@ namespace Pipelines.Sockets.Unofficial
         }
         internal static ArraySegment<byte> GetArray(this ReadOnlyMemory<byte> buffer)
             => GetArray(MemoryMarshal.AsMemory(buffer));
+
+        [Conditional("DEBUG")]
+        internal static void DebugLog(this TextWriter log, string message, [CallerMemberName] string caller = null)
+        {
+#if DEBUG
+            log?.WriteLine("[" + caller + "] " + message);
+#endif
+        }
     }
 }

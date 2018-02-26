@@ -39,9 +39,7 @@ namespace Pipelines.Sockets.Unofficial
         static void OnCompleted(SocketAsyncEventArgs args)
             => ((SocketAwaitable)args.UserToken).Complete(args.BytesTransferred, args.SocketError);
 
-
-
-
+        
         void Start()
         {
             _receiveTask = DoReceive();
