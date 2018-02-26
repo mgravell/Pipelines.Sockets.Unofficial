@@ -14,6 +14,7 @@ It is completely unofficial and should not be interpreted as anything other than
 
 Complete:
 
+- TCP support
 - basic client connect
 
 Planned:
@@ -22,4 +23,5 @@ Planned:
 - socket option configuration
 - deferred read/write loop spawn
 - optional "optimize for large volumes of idle connections" (aka "zero-length reads")
+- UDP support
 - your suggestions here...
