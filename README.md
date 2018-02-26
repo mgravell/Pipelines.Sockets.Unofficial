@@ -1,7 +1,9 @@
 # Pipelines.Sockets.Unofficial
 
 This is a managed sockets connector for the `System.IO.Pipelines` API, intended to act as a stop-gap while there is
-no official such connector. It draws from:
+no official such connector. Pipelines are pretty useless if you can't actually *connect* them to anything...
+
+It draws inspiration from:
 
 - [`Channels.Networking.Sockets`](https://github.com/davidfowl/Channels/tree/master/src/Channels.Networking.Sockets) - the original "managed sockets" provider I wrote back when Pipelines were Channels
 - [`System.IO.Pipelines.Networking.Sockets`](https://github.com/dotnet/corefxlab/tree/master/src/System.IO.Pipelines.Networking.Sockets) - the "corefxlab" version of the above
