@@ -25,6 +25,13 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public async Task Connect()
         {
+            var timeout = Task.Delay(5000);
+            var code = ConnectImpl();
+            var first = await Task.WhenAny(timeout, code);
+            if (first == timeout) throw new TimeoutException();
+        }
+        private async Task ConnectImpl()
+        {
             var endpoint = new IPEndPoint(IPAddress.Loopback, 9080);
             object waitForRunning = new object();
             Task<string> server;
@@ -43,7 +50,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
 #endif
                 ))
             {
-                // conn.ZeroLengthReads = true;
+                conn.ZeroLengthReads = true;
                 var data = Encoding.ASCII.GetBytes("Hello, world!");
                 Log?.DebugLog("sending message...");
                 await conn.Output.WriteAsync(data);

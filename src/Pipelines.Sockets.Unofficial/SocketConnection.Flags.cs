@@ -25,9 +25,9 @@ namespace Pipelines.Sockets.Unofficial
             {
                 oldValue = Thread.VolatileRead(ref _flags);
                 newValue = set ? (oldValue | (int)flag) : (oldValue & ~(int)flag);
-            }
-            while (oldValue == newValue ||
-                Interlocked.CompareExchange(ref _flags, newValue, oldValue) == oldValue);
+            } // loop until it either isn't needed or we succeed in the swap
+            while (oldValue != newValue &&
+                Interlocked.CompareExchange(ref _flags, newValue, oldValue) != oldValue);
         }
         [Flags]
         private enum ConnectionFlags

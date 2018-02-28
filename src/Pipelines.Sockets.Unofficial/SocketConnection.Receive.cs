@@ -21,9 +21,13 @@ namespace Pipelines.Sockets.Unofficial
                         DebugLog($"awaiting zero-length receive...");
                         await ReceiveAsync(Socket, args, default);
                         DebugLog($"zero-length receive complete; now {Socket.Available} bytes available");
+
+                        // this *could* be because data is now available, or it *could* be because of
+                        // the EOF; we can't really trust Available, so now we need to do a non-empty
+                        // read to find out which
                     }
 
-                    var buffer = _receive.Writer.GetMemory();
+                    var buffer = _receive.Writer.GetMemory(1);
                     DebugLog($"leased {buffer.Length} bytes from pool");
                     try
                     {
