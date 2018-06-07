@@ -1,29 +1,25 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <LibVer>preview2-26225-02</LibVer>
+    <LibVer>4.5.0</LibVer>
     <VersionPrefix>0.1</VersionPrefix>
-    <VersionSuffix>alpha-001</VersionSuffix>
-    <TargetFrameworks>netstandard2.0</TargetFrameworks><!--;netcoreapp2.1-->
+    <VersionSuffix>alpha-002</VersionSuffix>
+    <TargetFrameworks>netstandard2.0;netcoreapp2.0</TargetFrameworks><!--;netcoreapp2.1-->
     <SignAssembly>true</SignAssembly>
     <DelaySign>false</DelaySign>
     <IncludeSymbols>true</IncludeSymbols>
     <AssemblyOriginatorKeyFile>Pipelines.Sockets.Unofficial.snk</AssemblyOriginatorKeyFile>
     <PackageProjectUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</RepositoryUrl>
+    <LangVersion>7.2</LangVersion>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Optimize>true</Optimize>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|netstandard2.0|AnyCPU'">
-    <LangVersion>7.2</LangVersion>
-  </PropertyGroup>
-
   <ItemGroup>
-    <PackageReference Include="System.Memory" Version="4.5.0-$(LibVer)" />
-    <PackageReference Include="System.Buffers" Version="4.5.0-$(LibVer)" />
-    <PackageReference Include="System.IO.Pipelines" Version="4.5.0-$(LibVer)" />
+    <PackageReference Include="System.Memory" Version="$(LibVer)" />
+    <PackageReference Include="System.Buffers" Version="$(LibVer)" />
+    <PackageReference Include="System.IO.Pipelines" Version="$(LibVer)" />
   </ItemGroup>
-
 </Project>

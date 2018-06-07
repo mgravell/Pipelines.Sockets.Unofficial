@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
@@ -101,7 +102,7 @@ namespace Pipelines.Sockets.Unofficial
             }
 
 #if NETCOREAPP2_1
-            if (!_eventArgs.MemoryBuffer.Equals(Memory<byte>.Empty))
+            if (!args.MemoryBuffer.Equals(Memory<byte>.Empty))
 #else
             if (args.Buffer != null)
 #endif
@@ -125,7 +126,7 @@ namespace Pipelines.Sockets.Unofficial
             }
 
 #if NETCOREAPP2_1
-            _eventArgs.SetBuffer(MemoryMarshal.AsMemory(memory));
+            args.SetBuffer(MemoryMarshal.AsMemory(memory));
 #else
             var segment = memory.GetArray();
 
@@ -135,7 +136,7 @@ namespace Pipelines.Sockets.Unofficial
 
             return GetAwaitable(args);
         }
-
+        
         private static List<ArraySegment<byte>> GetBufferList(SocketAsyncEventArgs args, ReadOnlySequence<byte> buffer)
         {
             Debug.Assert(!buffer.IsEmpty);

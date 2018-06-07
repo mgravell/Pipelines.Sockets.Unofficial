@@ -131,7 +131,7 @@ namespace Pipelines.Sockets.Unofficial
         private static SocketAwaitable ReceiveAsync(Socket socket, SocketAsyncEventArgs args, Memory<byte> buffer)
         {
 #if NETCOREAPP2_1
-            _eventArgs.SetBuffer(buffer);
+            args.SetBuffer(buffer);
 #else
 
             if (buffer.IsEmpty)
