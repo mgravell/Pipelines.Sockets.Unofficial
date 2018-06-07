@@ -2,9 +2,9 @@
 
   <PropertyGroup>
     <LibVer>4.5.0</LibVer>
-    <VersionPrefix>0.1</VersionPrefix>
-    <VersionSuffix>alpha-002</VersionSuffix>
-    <TargetFrameworks>netstandard2.0;netcoreapp2.0</TargetFrameworks><!--;netcoreapp2.1-->
+    <VersionPrefix>0.2</VersionPrefix>
+    <VersionSuffix>alpha-001</VersionSuffix>
+    <TargetFrameworks>netstandard2.0;netcoreapp2.1</TargetFrameworks>
     <SignAssembly>true</SignAssembly>
     <DelaySign>false</DelaySign>
     <IncludeSymbols>true</IncludeSymbols>
@@ -15,6 +15,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <Optimize>true</Optimize>
   </PropertyGroup>
   <ItemGroup>
