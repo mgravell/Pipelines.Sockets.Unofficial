@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Buffers;
-using System.IO;
 using System.IO.Pipelines;
 using System.Net;
 using System.Net.Sockets;
@@ -16,13 +15,19 @@ namespace Pipelines.Sockets.Unofficial
         public static async Task<SocketConnection> ConnectAsync(
             EndPoint endpoint,
             PipeOptions options = null,
-            Action<Socket> onConnected = null
+            Func<Socket, Task> onConnected = null,
+            Socket socket = null
 #if DEBUG
             , TextWriter log = null
 #endif
             )
         {
-            var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
+            if (socket == null)
+            {
+                socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
+            }
+            try { socket.NoDelay = true; } catch { }
+            try { SetFastLoopbackOption(socket); } catch { }
             var args = CreateArgs();
 
 #if DEBUG
@@ -32,15 +37,34 @@ namespace Pipelines.Sockets.Unofficial
 #if DEBUG
             DebugLog(log, "connected");
 #endif
-            socket.NoDelay = true;
-            onConnected?.Invoke(socket);
 
+            if(onConnected != null) await onConnected(socket);
 
             return Create(socket, options
 #if DEBUG
             , log: log
 #endif
             );
+        }
+
+        internal static void SetFastLoopbackOption(Socket socket)
+        {
+            // SIO_LOOPBACK_FAST_PATH (https://msdn.microsoft.com/en-us/library/windows/desktop/jj841212%28v=vs.85%29.aspx)
+            // Speeds up localhost operations significantly. OK to apply to a socket that will not be hooked up to localhost,
+            // or will be subject to WFP filtering.
+            const int SIO_LOOPBACK_FAST_PATH = -1744830448;
+
+            // windows only
+            if (Environment.OSVersion.Platform == PlatformID.Win32NT)
+            {
+                // Win8/Server2012+ only
+                var osVersion = Environment.OSVersion.Version;
+                if (osVersion.Major > 6 || (osVersion.Major == 6 && osVersion.Minor >= 2))
+                {
+                    byte[] optionInValue = BitConverter.GetBytes(1);
+                    socket.IOControl(SIO_LOOPBACK_FAST_PATH, optionInValue, null);
+                }
+            }
         }
 
         private static SocketAwaitable ConnectAsync(Socket socket, SocketAsyncEventArgs args, EndPoint endpoint)
