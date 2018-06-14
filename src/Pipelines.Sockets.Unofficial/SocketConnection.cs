@@ -34,7 +34,7 @@ namespace Pipelines.Sockets.Unofficial
             }
         }
 
-        internal Socket Socket { get; private set; }
+        public Socket Socket { get; private set; }
 
         private Pipe _send, _receive;
         // TODO: flagify

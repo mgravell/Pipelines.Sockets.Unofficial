@@ -15,7 +15,7 @@ namespace Pipelines.Sockets.Unofficial
         public static async Task<SocketConnection> ConnectAsync(
             EndPoint endpoint,
             PipeOptions options = null,
-            Func<Socket, Task> onConnected = null,
+            Func<SocketConnection, Task> onConnected = null,
             Socket socket = null
 #if DEBUG
             , TextWriter log = null
@@ -38,13 +38,15 @@ namespace Pipelines.Sockets.Unofficial
             DebugLog(log, "connected");
 #endif
 
-            if(onConnected != null) await onConnected(socket);
-
-            return Create(socket, options
+            var connection = Create(socket, options
 #if DEBUG
             , log: log
 #endif
             );
+
+            if (onConnected != null) await onConnected(connection);
+
+            return connection;
         }
 
         internal static void SetFastLoopbackOption(Socket socket)
