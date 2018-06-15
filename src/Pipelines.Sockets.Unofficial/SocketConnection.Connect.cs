@@ -18,7 +18,7 @@ namespace Pipelines.Sockets.Unofficial
             Func<SocketConnection, Task> onConnected = null,
             Socket socket = null
 #if DEBUG
-            , TextWriter log = null
+            , System.IO.TextWriter log = null
 #endif
             )
         {
