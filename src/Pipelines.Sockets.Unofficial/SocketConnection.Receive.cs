@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.IO.Pipelines;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 
@@ -7,7 +8,7 @@ namespace Pipelines.Sockets.Unofficial
 {
     partial class SocketConnection
     {
-        private async Task DoReceive()
+        private async Task<Exception> DoReceiveAsync()
         {
             Exception error = null;
             DebugLog("starting receive loop");
@@ -50,18 +51,18 @@ namespace Pipelines.Sockets.Unofficial
                     DebugLog("flushing pipe");
                     var flushTask = _receive.Writer.FlushAsync();
 
-                    if (!flushTask.IsCompleted)
+                    FlushResult result;
+                    if (flushTask.IsCompletedSuccessfully)
                     {
-                        await flushTask;
-                        DebugLog("pipe flushed (async)");
+                        result = flushTask.Result;
+                        DebugLog("pipe flushed (sync)");
                     }
                     else
                     {
-                        DebugLog("pipe flushed (sync)");
+                        result = await flushTask;
+                        DebugLog("pipe flushed (async)");
                     }
 
-
-                    var result = flushTask.GetAwaiter().GetResult();
                     if (result.IsCompleted)
                     {
                         // Pipe consumer is shut down, do we stop writing
@@ -126,6 +127,7 @@ namespace Pipelines.Sockets.Unofficial
             }
 
             DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
+            return error;
         }
 
         private static SocketAwaitable ReceiveAsync(Socket socket, SocketAsyncEventArgs args, Memory<byte> buffer)

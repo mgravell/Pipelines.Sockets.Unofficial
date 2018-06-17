@@ -12,9 +12,13 @@ namespace Pipelines.Sockets.Unofficial
         private static PipeOptions _defaultOptions;
         private static PipeOptions GetDefaultOptions()
             => _defaultOptions ?? (_defaultOptions = new PipeOptions(MemoryPool<byte>.Shared));
+        /// <summary>
+        /// Open a new or existing socket as a client
+        /// </summary>
         public static async Task<SocketConnection> ConnectAsync(
             EndPoint endpoint,
-            PipeOptions options = null,
+            PipeOptions pipeOptions = null,
+            SocketConnectionOptions connectionOptions = SocketConnectionOptions.None,
             Func<SocketConnection, Task> onConnected = null,
             Socket socket = null
 #if DEBUG
@@ -38,7 +42,7 @@ namespace Pipelines.Sockets.Unofficial
             DebugLog(log, "connected");
 #endif
 
-            var connection = Create(socket, options
+            var connection = Create(socket, pipeOptions, connectionOptions
 #if DEBUG
             , log: log
 #endif

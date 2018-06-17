@@ -44,13 +44,13 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
             string actual;
             Log?.DebugLog("connecting...");
-            using (var conn = await SocketConnection.ConnectAsync(endpoint
+            using (var conn = await SocketConnection.ConnectAsync(endpoint,
+                connectionOptions: SocketConnectionOptions.ZeroLengthReads
 #if DEBUG
                 , log: Log
 #endif
                 ))
             {
-                conn.ZeroLengthReads = true;
                 var data = Encoding.ASCII.GetBytes("Hello, world!");
                 Log?.DebugLog("sending message...");
                 await conn.Output.WriteAsync(data);

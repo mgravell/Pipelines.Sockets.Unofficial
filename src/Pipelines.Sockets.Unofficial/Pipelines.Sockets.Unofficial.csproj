@@ -3,7 +3,7 @@
   <PropertyGroup>
     <LibVer>4.5.0</LibVer>
     <VersionPrefix>0.2</VersionPrefix>
-    <VersionSuffix>alpha-006</VersionSuffix>
+    <VersionSuffix>alpha-007</VersionSuffix>
     <TargetFrameworks>netstandard2.0;netcoreapp2.1;net46</TargetFrameworks> <!-- pipelines is the limiting factor for >= net46-->
     <SignAssembly>true</SignAssembly>
     <DelaySign>false</DelaySign>

@@ -11,7 +11,7 @@ namespace Pipelines.Sockets.Unofficial
 {
     partial class SocketConnection
     {
-        private async Task<Exception> DoSend()
+        private async Task<Exception> DoSendAsync()
         {
             Exception error = null;
             DebugLog("starting send loop");
@@ -21,7 +21,10 @@ namespace Pipelines.Sockets.Unofficial
                 while (true)
                 {
                     DebugLog("awaiting data from pipe...");
-                    var result = await _send.Reader.ReadAsync();
+                    if(!_send.Reader.TryRead(out var result))
+                    {
+                        result = await _send.Reader.ReadAsync();
+                    }
                     var buffer = result.Buffer;
 
                     if (result.IsCanceled)
