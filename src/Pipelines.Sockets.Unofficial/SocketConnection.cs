@@ -100,7 +100,7 @@ namespace Pipelines.Sockets.Unofficial
         public static SocketConnection Create(Socket socket, PipeOptions pipeOptions = null,
             SocketConnectionOptions socketConnectionOptions = SocketConnectionOptions.None
 #if DEBUG
-            , TextWriter log = null
+            , System.IO.TextWriter log = null
 #endif
             )
         {
