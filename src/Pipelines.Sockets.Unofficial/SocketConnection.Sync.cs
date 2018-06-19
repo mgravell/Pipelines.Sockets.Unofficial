@@ -84,6 +84,7 @@ namespace Pipelines.Sockets.Unofficial
                 DebugLog($"fail: {ex.Message}");
                 error = new IOException(ex.Message, ex);
             }
+
             finally
             {
                 // Make sure to close the connection only after the _aborted flag is set.
