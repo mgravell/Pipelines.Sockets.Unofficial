@@ -2,20 +2,16 @@
 
   <PropertyGroup>
     <LibVer>4.5.0</LibVer>
-    <VersionPrefix>0.2</VersionPrefix>
-    <VersionSuffix>alpha-007</VersionSuffix>
-    <TargetFrameworks>netstandard2.0;netcoreapp2.1;net46</TargetFrameworks> <!-- pipelines is the limiting factor for >= net46-->
+    <TargetFrameworks>netstandard2.0;netcoreapp2.1;net46</TargetFrameworks>
+    <!-- pipelines is the limiting factor for >= net46-->
     <SignAssembly>true</SignAssembly>
     <DelaySign>false</DelaySign>
-    <IncludeSymbols>true</IncludeSymbols>
     <AssemblyOriginatorKeyFile>Pipelines.Sockets.Unofficial.snk</AssemblyOriginatorKeyFile>
     <PackageProjectUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</RepositoryUrl>
     <LangVersion>7.3</LangVersion>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <Optimize>true</Optimize>
   </PropertyGroup>
   <ItemGroup>
