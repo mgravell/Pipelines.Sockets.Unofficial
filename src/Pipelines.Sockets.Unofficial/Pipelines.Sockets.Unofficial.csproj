@@ -18,5 +18,6 @@
     <PackageReference Include="System.Memory" Version="$(LibVer)" />
     <PackageReference Include="System.Buffers" Version="$(LibVer)" />
     <PackageReference Include="System.IO.Pipelines" Version="$(LibVer)" />
+    <PackageReference Include="System.ValueTuple" Version="4.5.0" />
   </ItemGroup>
 </Project>
