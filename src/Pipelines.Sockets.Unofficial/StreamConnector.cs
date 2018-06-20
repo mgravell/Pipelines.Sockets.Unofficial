@@ -14,16 +14,16 @@ namespace Pipelines.Sockets.Unofficial
         public static PipeWriter GetWriter(Stream stream, PipeOptions pipeOptions = null)
             => new AsyncStreamPipe(stream, pipeOptions, false, true).Output;
         
-        public static AsyncPipeStream GetDuplex(PipeReader reader, PipeWriter writer)
-            => new AsyncPipeStream(reader, writer);
+        public static AsyncPipeStream GetDuplex(PipeReader reader, PipeWriter writer, string name = null)
+            => new AsyncPipeStream(reader, writer, name);
 
-        public static AsyncPipeStream GetDuplex(IDuplexPipe pipe)
-            => new AsyncPipeStream(pipe.Input, pipe.Output);
+        public static AsyncPipeStream GetDuplex(IDuplexPipe pipe, string name = null)
+            => new AsyncPipeStream(pipe.Input, pipe.Output, name);
 
-        public static Stream GetReader(PipeWriter writer)
-            => new AsyncPipeStream(null, writer);
+        public static Stream GetReader(PipeWriter writer, string name = null)
+            => new AsyncPipeStream(null, writer, name);
 
-        public static Stream GetWriter(PipeReader reader)
-            => new AsyncPipeStream(reader, null);
+        public static Stream GetWriter(PipeReader reader, string name = null)
+            => new AsyncPipeStream(reader, null, name);
     }
 }

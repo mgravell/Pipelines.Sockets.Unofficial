@@ -19,14 +19,14 @@ namespace Pipelines.Sockets.Unofficial
 #endif
 
         [Conditional("VERBOSE")]
-        internal static void DebugLog(string message = "", [CallerMemberName] string caller = null)
+        internal static void DebugLog(string name, string message, [CallerMemberName] string caller = null)
         {
 #if VERBOSE
                 var thread = System.Threading.Thread.CurrentThread;
-                var name = thread.Name;
-                if (string.IsNullOrWhiteSpace(name)) name = thread.ManagedThreadId.ToString();
+                var threadName = thread.Name;
+                if (string.IsNullOrWhiteSpace(name)) threadName = thread.ManagedThreadId.ToString();
 
-                Log?.WriteLine($"[{name}, {caller}]: {message}");
+                Log?.WriteLine($"[{name}, {threadName}, {caller}]: {message}");
 #endif
         }
 

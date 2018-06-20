@@ -11,7 +11,7 @@ namespace Pipelines.Sockets.Unofficial
         private async Task<Exception> DoReceiveAsync()
         {
             Exception error = null;
-            Helpers.DebugLog("starting receive loop");
+            DebugLog("starting receive loop");
             try
             {
                 var args = CreateArgs(_pipeOptions.ReaderScheduler);
@@ -19,9 +19,9 @@ namespace Pipelines.Sockets.Unofficial
                 {
                     if (ZeroLengthReads && Socket.Available == 0)
                     {
-                        Helpers.DebugLog($"awaiting zero-length receive...");
+                        DebugLog($"awaiting zero-length receive...");
                         await ReceiveAsync(Socket, args, default);
-                        Helpers.DebugLog($"zero-length receive complete; now {Socket.Available} bytes available");
+                        DebugLog($"zero-length receive complete; now {Socket.Available} bytes available");
 
                         // this *could* be because data is now available, or it *could* be because of
                         // the EOF; we can't really trust Available, so now we need to do a non-empty
@@ -29,12 +29,12 @@ namespace Pipelines.Sockets.Unofficial
                     }
 
                     var buffer = _receive.Writer.GetMemory(1);
-                    Helpers.DebugLog($"leased {buffer.Length} bytes from pool");
+                    DebugLog($"leased {buffer.Length} bytes from pool");
                     try
                     {
-                        Helpers.DebugLog($"awaiting socket receive...");
+                        DebugLog($"awaiting socket receive...");
                         var bytesReceived = await ReceiveAsync(Socket, args, buffer);
-                        Helpers.DebugLog($"received {bytesReceived} bytes");
+                        DebugLog($"received {bytesReceived} bytes");
 
                         if (bytesReceived == 0)
                         {
@@ -48,32 +48,32 @@ namespace Pipelines.Sockets.Unofficial
                         // commit?
                     }
 
-                    Helpers.DebugLog("flushing pipe");
+                    DebugLog("flushing pipe");
                     var flushTask = _receive.Writer.FlushAsync();
 
                     FlushResult result;
                     if (flushTask.IsCompletedSuccessfully)
                     {
                         result = flushTask.Result;
-                        Helpers.DebugLog("pipe flushed (sync)");
+                        DebugLog("pipe flushed (sync)");
                     }
                     else
                     {
                         result = await flushTask;
-                        Helpers.DebugLog("pipe flushed (async)");
+                        DebugLog("pipe flushed (async)");
                     }
 
                     if (result.IsCompleted)
                     {
                         // Pipe consumer is shut down, do we stop writing
-                        Helpers.DebugLog("complete");
+                        DebugLog("complete");
                         break;
                     }
                 }
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset)
             {
-                Helpers.DebugLog($"fail: {ex.SocketErrorCode}");
+                DebugLog($"fail: {ex.SocketErrorCode}");
                 error = new ConnectionResetException(ex.Message, ex);
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.OperationAborted ||
@@ -81,7 +81,7 @@ namespace Pipelines.Sockets.Unofficial
                                              ex.SocketErrorCode == SocketError.Interrupted ||
                                              ex.SocketErrorCode == SocketError.InvalidArgument)
             {
-                Helpers.DebugLog($"fail: {ex.SocketErrorCode}");
+                DebugLog($"fail: {ex.SocketErrorCode}");
                 if (!_receiveAborted)
                 {
                     // Calling Dispose after ReceiveAsync can cause an "InvalidArgument" error on *nix.
@@ -90,7 +90,7 @@ namespace Pipelines.Sockets.Unofficial
             }
             catch (ObjectDisposedException)
             {
-                Helpers.DebugLog($"fail: disposed");
+                DebugLog($"fail: disposed");
                 if (!_receiveAborted)
                 {
                     error = new ConnectionAbortedException();
@@ -98,12 +98,12 @@ namespace Pipelines.Sockets.Unofficial
             }
             catch (IOException ex)
             {
-                Helpers.DebugLog($"fail - io: {ex.Message}");
+                DebugLog($"fail - io: {ex.Message}");
                 error = ex;
             }
             catch (Exception ex)
             {
-                Helpers.DebugLog($"fail: {ex.Message}");
+                DebugLog($"fail: {ex.Message}");
                 error = new IOException(ex.Message, ex);
             }
             finally
@@ -114,7 +114,7 @@ namespace Pipelines.Sockets.Unofficial
                 }
                 try
                 {
-                    Helpers.DebugLog($"shutting down socket-receive");
+                    DebugLog($"shutting down socket-receive");
                     Socket.Shutdown(SocketShutdown.Receive);
                 }
                 catch { }
@@ -122,11 +122,11 @@ namespace Pipelines.Sockets.Unofficial
                 // close the *writer* half of the receive pipe; we won't
                 // be writing any more, but callers can still drain the
                 // pipe if they choose
-                Helpers.DebugLog($"marking {nameof(Input)} as complete");
+                DebugLog($"marking {nameof(Input)} as complete");
                 try { _receive.Writer.Complete(error); } catch { }
             }
 
-            Helpers.DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
+            DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
             return error;
         }
 

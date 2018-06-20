@@ -14,13 +14,13 @@ namespace Pipelines.Sockets.Unofficial
         private async Task<Exception> DoSendAsync()
         {
             Exception error = null;
-            Helpers.DebugLog("starting send loop");
+            DebugLog("starting send loop");
             try
             {
                 SocketAsyncEventArgs args = null;
                 while (true)
                 {
-                    Helpers.DebugLog("awaiting data from pipe...");
+                    DebugLog("awaiting data from pipe...");
                     if(!_send.Reader.TryRead(out var result))
                     {
                         result = await _send.Reader.ReadAsync();
@@ -29,7 +29,7 @@ namespace Pipelines.Sockets.Unofficial
 
                     if (result.IsCanceled)
                     {
-                        Helpers.DebugLog("cancelled");
+                        DebugLog("cancelled");
                         break;
                     }
 
@@ -38,40 +38,40 @@ namespace Pipelines.Sockets.Unofficial
                         if (!buffer.IsEmpty)
                         {
                             if (args == null) args = CreateArgs(_pipeOptions.WriterScheduler);
-                            Helpers.DebugLog($"sending {buffer.Length} bytes over socket...");
+                            DebugLog($"sending {buffer.Length} bytes over socket...");
                             await SendAsync(Socket, args, buffer);
                         }
                         else if (result.IsCompleted)
                         {
-                            Helpers.DebugLog("completed");
+                            DebugLog("completed");
                             break;
                         }
                     }
                     finally
                     {
-                        Helpers.DebugLog("advancing");
+                        DebugLog("advancing");
                         _send.Reader.AdvanceTo(buffer.End);
                     }
                 }
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.OperationAborted)
             {
-                Helpers.DebugLog($"fail: {ex.SocketErrorCode}");
+                DebugLog($"fail: {ex.SocketErrorCode}");
                 error = null;
             }
             catch (ObjectDisposedException)
             {
-                Helpers.DebugLog("fail: disposed");
+                DebugLog("fail: disposed");
                 error = null;
             }
             catch (IOException ex)
             {
-                Helpers.DebugLog($"fail - io: {ex.Message}");
+                DebugLog($"fail - io: {ex.Message}");
                 error = ex;
             }
             catch (Exception ex)
             {
-                Helpers.DebugLog($"fail: {ex.Message}");
+                DebugLog($"fail: {ex.Message}");
                 error = new IOException(ex.Message, ex);
             }
             finally
@@ -82,18 +82,18 @@ namespace Pipelines.Sockets.Unofficial
                 _sendAborted = true;
                 try
                 {
-                    Helpers.DebugLog($"shutting down socket-send");
+                    DebugLog($"shutting down socket-send");
                     Socket.Shutdown(SocketShutdown.Send);
                 }
                 catch { }
 
                 // close *both halves* of the send pipe; we're not
                 // listening *and* we don't want anyone trying to write
-                Helpers.DebugLog($"marking {nameof(Output)} as complete");
+                DebugLog($"marking {nameof(Output)} as complete");
                 try { _send.Writer.Complete(error); } catch { }
                 try { _send.Reader.Complete(error); } catch { }
             }
-            Helpers.DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
+            DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
             return error;
         }
 

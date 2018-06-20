@@ -14,8 +14,8 @@
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
     <Optimize>true</Optimize>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)'=='Debug'">   
-    <DefineConstants>$(DebugSymbols);VERBOSE</DefineConstants>
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+    <!--<DefineConstants>$(DebugSymbols);VERBOSE</DefineConstants>-->
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.Memory" Version="$(LibVer)" />

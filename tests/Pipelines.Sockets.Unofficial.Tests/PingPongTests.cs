@@ -54,8 +54,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Assert.NotNull(client);
             Assert.NotNull(server);
             
-            var clientPipe = SocketConnection.Create(client, PipeOptions);
-            var serverPipe = SocketConnection.Create(server, PipeOptions);
+            var clientPipe = SocketConnection.Create(client, PipeOptions, name: "client");
+            var serverPipe = SocketConnection.Create(server, PipeOptions, name: "server");
 
             await PingPong(clientPipe, serverPipe);
         }
@@ -67,10 +67,10 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Assert.NotNull(client);
             Assert.NotNull(server);
 
-            var clientPipe = SocketConnection.Create(client, PipeOptions);
-            var serverPipe = SocketConnection.Create(server, PipeOptions);
+            var clientPipe = SocketConnection.Create(client, PipeOptions, name: "client");
+            var serverPipe = SocketConnection.Create(server, PipeOptions, name: "server");
 
-            var clientStream = StreamConnector.GetDuplex(clientPipe);
+            var clientStream = StreamConnector.GetDuplex(clientPipe, name: "x-client");
 
             await PingPong(clientStream, serverPipe);
         }
@@ -82,10 +82,10 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Assert.NotNull(client);
             Assert.NotNull(server);
 
-            var clientPipe = SocketConnection.Create(client, PipeOptions);
-            var serverPipe = SocketConnection.Create(server, PipeOptions);
+            var clientPipe = SocketConnection.Create(client, PipeOptions, name: "client");
+            var serverPipe = SocketConnection.Create(server, PipeOptions, name: "server");
 
-            var serverStream = StreamConnector.GetDuplex(serverPipe);
+            var serverStream = StreamConnector.GetDuplex(serverPipe, name: "x-server");
 
             await PingPong(clientPipe, serverStream);
         }
@@ -177,12 +177,25 @@ namespace Pipelines.Sockets.Unofficial.Tests
             await stream.WriteAsync(bytes, 0, bytes.Length);
         }
 
-        async static Task<string> ReadToEnd(Stream stream)
+        async Task<string> ReadToEnd(Stream stream)
         {
-            using (var sr = new StreamReader(stream))
+            var ms = new MemoryStream();
+            var buffer = new byte[1024];
+
+            int bytes;
+            do
             {
-                return await sr.ReadToEndAsync();
-            }
+                Log.DebugLog($"reading from stream...");
+                bytes = await stream.ReadAsync(buffer, 0, buffer.Length);
+                if (bytes > 0)
+                {
+                    Log.DebugLog($"read {bytes} bytes from stream...");
+                    ms.Write(buffer, 0, bytes);
+                }    
+            } while (bytes > 0);
+            Log.DebugLog($"EOF from stream; total bytes: {ms.Length}");
+
+            return Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
         }
         async static Task<string> ReadToEnd(PipeReader reader)
         {

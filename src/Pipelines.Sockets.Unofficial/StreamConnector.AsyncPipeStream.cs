@@ -13,6 +13,9 @@ namespace Pipelines.Sockets.Unofficial
     {
         public sealed class AsyncPipeStream : Stream
         {
+            private readonly string _name;
+            public override string ToString() => _name;
+
             private AsyncReadResult _pendingRead;
             private AsyncWriteResult _pendingWrite;
             private FlushToken _flushInstance;
@@ -27,12 +30,13 @@ namespace Pipelines.Sockets.Unofficial
             private readonly PipeReader _reader;
             private readonly PipeWriter _writer;
 
-            public AsyncPipeStream(PipeReader reader, PipeWriter writer)
+            public AsyncPipeStream(PipeReader reader, PipeWriter writer, string name)
             {
                 if (reader == null && writer == null)
                     throw new ArgumentNullException("At least one of reader/writer must be provided");
                 _reader = reader;
                 _writer = writer;
+                _name = name;
             }
             public override bool CanRead => _reader != null;
             public override bool CanWrite => _writer != null;
@@ -49,9 +53,13 @@ namespace Pipelines.Sockets.Unofficial
 
             private void AssertCanRead() { if (_reader == null) throw new InvalidOperationException("Cannot read"); }
             private void AssertCanWrite() { if (_writer == null) throw new InvalidOperationException("Cannot write"); }
+
+            [Conditional("VERBOSE")]
+            private void DebugLog(string message = null, [CallerMemberName] string caller = null) => Helpers.DebugLog(_name, message, caller);
+
             public override int Read(byte[] buffer, int offset, int count)
             {
-                Helpers.DebugLog();
+                DebugLog();
                 AssertCanRead();
                 var memory = new Memory<byte>(buffer, offset, count);
                 var pendingRead = PendingRead;
@@ -79,7 +87,7 @@ namespace Pipelines.Sockets.Unofficial
             }
             public override int ReadByte()
             {
-                Helpers.DebugLog();
+                DebugLog();
                 AssertCanRead();
                 var arr = ArrayPool<byte>.Shared.Rent(1);
                 int bytes = Read(arr, 0, 1);
@@ -203,7 +211,7 @@ namespace Pipelines.Sockets.Unofficial
 
             public override IAsyncResult BeginRead(byte[] buffer, int offset, int count, AsyncCallback callback, object state)
             {
-                Helpers.DebugLog();
+                DebugLog("init");
                 AssertCanRead();
                 var memory = new Memory<byte>(buffer, offset, count);
                 var pendingRead = PendingRead;
@@ -243,7 +251,7 @@ namespace Pipelines.Sockets.Unofficial
 
             public override int EndRead(IAsyncResult asyncResult)
             {
-                Helpers.DebugLog();
+                DebugLog();
                 var pendingRead = PendingRead;
                 lock (pendingRead.SyncLock)
                 {
@@ -281,7 +289,8 @@ namespace Pipelines.Sockets.Unofficial
 
             public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
             {
-                Helpers.DebugLog();
+                cancellationToken.ThrowIfCancellationRequested();
+                DebugLog("init");
                 AssertCanRead();
                 var memory = new Memory<byte>(buffer, offset, count);
                 var pendingRead = PendingRead;
@@ -292,20 +301,25 @@ namespace Pipelines.Sockets.Unofficial
                     if (count == 0) return Task.FromResult(0);
 
 
+                    DebugLog(nameof(_reader.TryRead));
                     if (_reader.TryRead(out ReadResult result))
                     {
+                        DebugLog("sync consume");
                         return Task.FromResult(ConsumeBytes(result, memory.Span));
                     }
                     else
                     {
-                        var pending = _reader.ReadAsync();
+                        DebugLog(nameof(_reader.ReadAsync));
+                        var pending = _reader.ReadAsync(cancellationToken);
                         if (pending.IsCompleted)
                         {
+                            DebugLog("sync consume");
                             return Task.FromResult(ConsumeBytes(pending.Result, memory.Span));
                         }
+
+                        DebugLog("setting completion");
                         var tcs = new TaskCompletionSource<int>();
                         pendingRead.Init(null, null, memory, tcs, PendingAsyncMode.Task);
-
                         pendingRead.ReadAwaiter = pending.GetAwaiter();
                         pendingRead.ReadAwaiter.UnsafeOnCompleted(ProcessDataFromAwaiter);
                         return tcs.Task;
@@ -322,6 +336,7 @@ namespace Pipelines.Sockets.Unofficial
 
             internal void ProcessDataFromAwaiterImpl()
             {
+                DebugLog();
                 var pendingRead = PendingRead;
                 lock (pendingRead.SyncLock)
                 {
@@ -329,12 +344,15 @@ namespace Pipelines.Sockets.Unofficial
                     pendingRead.ReadAwaiter = default;
                     ConsumeBytesAndExecuteContiuations(result);
                 }
+                
             }
             private void ConsumeBytesAndExecuteContiuations(ReadResult result)
             {
+                
                 var pendingRead = PendingRead;
+                DebugLog($"complete: {result.IsCompleted}; canceled: {result.IsCanceled}; bytes: {result.Buffer.Length}");
                 int bytes = ConsumeBytes(result, pendingRead.Memory.Span);
-
+                DebugLog($"consumed: {bytes} (max: {pendingRead.Memory.Length}); mode: {pendingRead.AsyncMode}");
                 switch (pendingRead.AsyncMode)
                 {
                     case PendingAsyncMode.AsyncCallback:
@@ -343,8 +361,28 @@ namespace Pipelines.Sockets.Unofficial
                     case PendingAsyncMode.Task:
                         var task = pendingRead.TaskSource;
                         pendingRead.TaskSource = null;
-                        if (result.IsCanceled) task.TrySetCanceled();
-                        else task.TrySetResult(bytes);
+
+                        // need to reset state *before* setting result, because: direct continuations
+                        bytes = pendingRead.ConsumeBytesReadAndReset();
+                        if (task == null)
+                        {
+                            DebugLog("no task!");
+                        }
+                        else
+                        {
+                            bool wasSet;
+                            if (result.IsCanceled)
+                            {
+                                DebugLog("setting task cancelation...");
+                                wasSet = task.TrySetCanceled();
+                            }
+                            else
+                            {
+                                DebugLog($"setting task result ({bytes})...");
+                                wasSet = task.TrySetResult(bytes);
+                            }
+                            DebugLog(wasSet ? "task outcome set" : "unable to set task outcome");
+                        }                        
                         break;
                     case PendingAsyncMode.Synchronous:
                         Monitor.PulseAll(pendingRead.SyncLock);
@@ -366,7 +404,7 @@ namespace Pipelines.Sockets.Unofficial
                     Memory = memory;
                     Callback = callback;
                     AsyncState = asyncState;
-                    TaskSource = null;
+                    TaskSource = tcs;
                     IsCompleted = CompletedSynchronously = false;
                     BytesRead = -1;
                 }
@@ -400,7 +438,6 @@ namespace Pipelines.Sockets.Unofficial
                     _waitHandle?.Reset();
                     return BytesRead;
                 }
-
                 internal Memory<byte> Memory { get; private set; }
                 private AsyncCallback Callback { get; set; }
                 internal TaskCompletionSource<int> TaskSource { get; set; }

@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
@@ -18,6 +19,9 @@ namespace Pipelines.Sockets.Unofficial
 #if DEBUG
         public static void SetLog(System.IO.TextWriter writer) => Helpers.Log = writer;
 #endif
+
+        [Conditional("VERBOSE")]
+        private void DebugLog(string message, [CallerMemberName] string caller = null) => Helpers.DebugLog(_name, message, caller);
 
         /// <summary>
         /// Release any resources held by this instance
@@ -55,9 +59,11 @@ namespace Pipelines.Sockets.Unofficial
                 return _send.Writer;
             }
         }
-
-        static Task<Exception> RunThreadAsTask(SocketConnection connection, Func<SocketConnection, Exception> callback, string name)
+        private readonly string _name;
+        public override string ToString() => _name;
+        Task<Exception> RunThreadAsTask(SocketConnection connection, Func<SocketConnection, Exception> callback, string name)
         {
+            if (!string.IsNullOrWhiteSpace(_name)) name = _name + ":" + name;
             var thread = new Thread(tuple =>
             {
                 var t = (Tuple<SocketConnection, Func<SocketConnection, Exception>, TaskCompletionSource<Exception>>)tuple;
@@ -104,17 +110,18 @@ namespace Pipelines.Sockets.Unofficial
         /// Create a SocketConnection instance over an existing socket
         /// </summary>
         public static SocketConnection Create(Socket socket, PipeOptions pipeOptions = null,
-            SocketConnectionOptions socketConnectionOptions = SocketConnectionOptions.None)
+            SocketConnectionOptions socketConnectionOptions = SocketConnectionOptions.None, string name = null)
         {
-            var conn = new SocketConnection(socket, pipeOptions, socketConnectionOptions);
+            var conn = new SocketConnection(socket, pipeOptions, socketConnectionOptions, name);
             return conn;
         }
 
         Task _receiveTask, _sendTask;
 
 
-        private SocketConnection(Socket socket, PipeOptions pipeOptions, SocketConnectionOptions socketConnectionOptions)
+        private SocketConnection(Socket socket, PipeOptions pipeOptions, SocketConnectionOptions socketConnectionOptions, string name = null)
         {
+            _name = name;
             if (pipeOptions == null) pipeOptions = GetDefaultOptions();
             _pipeOptions = pipeOptions;
             Socket = socket;

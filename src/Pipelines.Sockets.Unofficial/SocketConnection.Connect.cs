@@ -10,6 +10,7 @@ namespace Pipelines.Sockets.Unofficial
     partial class SocketConnection
     {
         private static PipeOptions _defaultOptions;
+
         private static PipeOptions GetDefaultOptions()
             => _defaultOptions ?? (_defaultOptions = new PipeOptions(MemoryPool<byte>.Shared));
         /// <summary>
@@ -20,8 +21,7 @@ namespace Pipelines.Sockets.Unofficial
             PipeOptions pipeOptions = null,
             SocketConnectionOptions connectionOptions = SocketConnectionOptions.None,
             Func<SocketConnection, Task> onConnected = null,
-            Socket socket = null
-            )
+            Socket socket = null, string name = null)
         {
             if (socket == null)
             {
@@ -32,13 +32,13 @@ namespace Pipelines.Sockets.Unofficial
             var args = CreateArgs(pipeOptions?.ReaderScheduler);
 
 
-            Helpers.DebugLog($"connecting to {endpoint}...");
+            Helpers.DebugLog(name, $"connecting to {endpoint}...");
 
             await ConnectAsync(socket, args, endpoint);
 
-            Helpers.DebugLog("connected");
+            Helpers.DebugLog(name, "connected");
 
-            var connection = Create(socket, pipeOptions, connectionOptions);
+            var connection = Create(socket, pipeOptions, connectionOptions, name);
 
             if (onConnected != null) await onConnected(connection);
 

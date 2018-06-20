@@ -9,6 +9,7 @@ namespace Pipelines.Sockets.Unofficial
 {
     public sealed class DedicatedThreadPoolPipeScheduler : PipeScheduler, IDisposable
     {
+        public override string ToString() => Name;
         public int MaxThreads { get; }
         public int MinThreads { get; }
 
