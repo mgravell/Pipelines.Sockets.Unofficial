@@ -16,18 +16,25 @@ namespace Pipelines.Sockets.Unofficial.Tests
     public class PingPongTests
     {
         static readonly PipeOptions PipeOptions;
+        
         static PingPongTests()
         {
             // PipeOptions = PipeOptions.Default;
 
-            var pool = new DedicatedThreadPoolPipeScheduler("MyPool");
+            var pool = new DedicatedThreadPoolPipeScheduler("Custom thread pool");
             //var pool = PipeScheduler.Inline;
+            //var pool = PipeScheduler.ThreadPool;
             PipeOptions = new PipeOptions(readerScheduler: pool, writerScheduler: pool, useSynchronizationContext: false);
             
         }
 
         public const int LoopCount = 5000;
+        public static string Scheduler =>
+            ReferenceEquals(PipeOptions.ReaderScheduler, PipeOptions.WriterScheduler)
+            ? PipeOptions.ReaderScheduler.ToString()
+            : $"{PipeOptions.ReaderScheduler} / {PipeOptions.WriterScheduler}";
         private TestTextWriter Log { get; }
+        public static bool RunTLS => PipeOptions.ReaderScheduler != PipeScheduler.ThreadPool;
 
         public PingPongTests(TextWriter output)
         {
@@ -269,22 +276,22 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 Log.DebugLog($"Test {i}...");
 
                 Log.DebugLog("Client sending...");
-                await WriteLine(client.Output, $"PING:{i}");
+                var expected = await WritePing(client.Output, i);
 
                 Log.DebugLog("Server reading...");
                 string s = await ReadLine(server.Input);
                 Log.DebugLogVerbose($"Server received: '{s}'");
-                Assert.Equal($"PING:{i}", s);
+                Assert.Equal(expected, s);
 
 
                 GC.KeepAlive(server.Output);
                 Log.DebugLog("Server sending...");
-                await WriteLine(server.Output, $"PONG:{i}");
+                expected = await WritePong(server.Output, i);
 
                 Log.DebugLog("Client reading...");
                 s = await ReadLine(client.Input);
                 Log.DebugLogVerbose($"Client received: '{s}'");
-                Assert.Equal($"PONG:{i}", s);
+                Assert.Equal(expected, s);
             }
         }
 
@@ -296,20 +303,20 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 Log.DebugLog($"Test {i}...");
 
                 Log.DebugLogVerbose("Client sending...");
-                await WriteLine(client.Output, $"PING:{i}");
+                var expected = await WritePing(client.Output, i);
 
                 Log.DebugLogVerbose("Server reading...");
                 string s = await ReadLine(server);
                 Log.DebugLogVerbose($"Server received: '{s}'");
-                Assert.Equal($"PING:{i}", s);
+                Assert.Equal(expected, s);
 
                 Log.DebugLogVerbose("Server sending...");
-                await WriteLine(server, $"PONG:{i}");
+                expected = await WritePong(server, i);
 
                 Log.DebugLogVerbose("Client reading...");
                 s = await ReadLine(client.Input);
                 Log.DebugLogVerbose($"Client received: '{s}'");
-                Assert.Equal($"PONG:{i}", s);
+                Assert.Equal(expected, s);
             }
         }
 
@@ -321,20 +328,20 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 Log.DebugLog($"Test {i}...");
 
                 Log.DebugLogVerbose("Client sending...");
-                await WriteLine(client, $"PING:{i}");
+                var expected = await WritePing(client, i);
 
                 Log.DebugLogVerbose("Server reading...");
                 string s = await ReadLine(server.Input);
                 Log.DebugLogVerbose($"Server received: '{s}'");
-                Assert.Equal($"PING:{i}", s);
+                Assert.Equal(expected, s);
 
                 Log.DebugLogVerbose("Server sending...");
-                await WriteLine(server.Output, $"PONG:{i}");
+                expected = await WritePong(server.Output, i);
 
                 Log.DebugLogVerbose("Client reading...");
                 s = await ReadLine(client);
                 Log.DebugLogVerbose($"Client received: '{s}'");
-                Assert.Equal($"PONG:{i}", s);
+                Assert.Equal(expected, s);
             }
         }
 
@@ -346,33 +353,75 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 Log.DebugLog($"Test {i}...");
 
                 Log.DebugLogVerbose("Client sending...");
-                await WriteLine(client, $"PING:{i}");
+                var expected = await WritePing(client, i);
 
                 Log.DebugLogVerbose("Server reading...");
                 string s = await ReadLine(server);
                 Log.DebugLogVerbose($"Server received: '{s}'");
-                Assert.Equal($"PING:{i}", s);
+                Assert.Equal(expected, s);
 
                 Log.DebugLogVerbose("Server sending...");
-                await WriteLine(server, $"PONG:{i}");
+                expected = await WritePong(server, i);
 
                 Log.DebugLogVerbose("Client reading...");
                 s = await ReadLine(client);
                 Log.DebugLogVerbose($"Client received: '{s}'");
-                Assert.Equal($"PONG:{i}", s);
+                Assert.Equal(expected, s);
             }
         }
-
-        async Task WriteLine(PipeWriter writer, string message)
+        static byte[] GetPayload(string message)
         {
-            var bytes = Encoding.UTF8.GetBytes(message + "\n");
+            var utf8 = Encoding.UTF8;
+            var bytes = utf8.GetBytes(message);
+            var len = utf8.GetByteCount(message);
+            var arr = new byte[len + 1];
+            utf8.GetBytes(message, 0, message.Length, arr, 0);
+            arr[arr.Length - 1] = (byte)'\n';
+            return arr;
+        }
+        async ValueTask<string> WritePing(PipeWriter writer, int i)
+        {
+            var s = PINGPONGPREFIX + "PING:" + i;
+            var bytes = GetPayload(s);
             await writer.WriteAsync(bytes);
             await writer.FlushAsync();
+            return s;
+        }
+        const string PINGPONGPREFIX = "afkjakjasdaskhdkjhdakjhdaksdhaksjdhaksdhkaj hdkjahd akjdh akshf sjgf sjfgsjdhfg sjhgfs jfgsdfjhdsf gjsdfgjs dgfjh sdfgsjhfgsdjfgsjdfgsj hfgdsjfgsdj hfgdsdjfg sdjfg sd";
+        async ValueTask<string> WritePong(PipeWriter writer, int i)
+        {
+            var s = PINGPONGPREFIX + "PONG:" + i;
+            var bytes = GetPayload(s);
+            await writer.WriteAsync(bytes);
+            await writer.FlushAsync();
+            return s;
+        }
+        async Task WriteLine(PipeWriter writer, string message)
+        {
+            var bytes = GetPayload(message);
+            await writer.WriteAsync(bytes);
+            await writer.FlushAsync();
+        }
+        async ValueTask<string> WritePing(Stream stream, int i)
+        {
+            var s = "PING:" + i;
+            var bytes = GetPayload(s);
+            await stream.WriteAsync(bytes, 0, bytes.Length);
+            await stream.FlushAsync();
+            return s;
+        }
+        async ValueTask<string> WritePong(Stream stream, int i)
+        {
+            var s = "PONG:" + i;
+            var bytes = GetPayload(s);
+            await stream.WriteAsync(bytes, 0, bytes.Length);
+            await stream.FlushAsync();
+            return s;
         }
 
         static async Task WriteLine(Stream stream, string message)
         {
-            var bytes = Encoding.UTF8.GetBytes(message + "\n");
+            var bytes = GetPayload(message);
             await stream.WriteAsync(bytes, 0, bytes.Length);
             await stream.FlushAsync();
         }
