@@ -84,7 +84,7 @@ namespace Pipelines.Sockets.Unofficial
                         if (read <= 0) break;
 
                         writer.Advance(read);
-                        DebugLog($"");
+                        // need to flush regularly, a: to respect backoffs, and b: to awaken the reader
                         await writer.FlushAsync();
                     }
                 }
@@ -99,24 +99,34 @@ namespace Pipelines.Sockets.Unofficial
                 var reader = _writePipe.Reader;
                 while (true)
                 {
-                    DebugLog(nameof(reader.TryRead));
-                    if (!reader.TryRead(out var result))
+                    DebugLog(nameof(reader.ReadAsync));
+                    // ask to be awakened by work
+                    var pending = reader.ReadAsync();
+                    if (!pending.IsCompleted)
                     {
-                        DebugLog(nameof(reader.ReadAsync));
-                        result = await reader.ReadAsync();
+                        // then: not currently anything to do; this
+                        // would be a great time to flush! this *could*
+                        // result in over-flushing if reader and writer
+                        // are *just about* in sync, but... it'll do
+                        DebugLog($"flushing stream...");
+                        await _inner.FlushAsync();
+                        DebugLog($"flushed");
                     }
-                    DebugLog($"complete: {result.IsCompleted}; canceled: {result.IsCanceled}; bytes: {result.Buffer.Length}");
-
-                    if (result.Buffer.IsEmpty && result.IsCompleted)
-                        break;
-
-                    await WriteBuffer(_inner, result.Buffer, Name);
-                    DebugLog($"bytes written; marking consumed");
-                    reader.AdvanceTo(result.Buffer.End);
-
-                    DebugLog($"flushing stream...");
-                    await _inner.FlushAsync();
-                    DebugLog($"flushed");
+                    var result = await pending;
+                    ReadOnlySequence<byte> buffer;
+                    do
+                    {
+                        buffer = result.Buffer;
+                        DebugLog($"complete: {result.IsCompleted}; canceled: {result.IsCanceled}; bytes: {buffer.Length}");
+                        if (!buffer.IsEmpty)
+                        {
+                            await WriteBuffer(_inner, buffer, Name);
+                            DebugLog($"bytes written; marking consumed");
+                            reader.AdvanceTo(buffer.End);
+                        }
+                    } while (!(buffer.IsEmpty && result.IsCompleted)
+                        && reader.TryRead(out result));
+                    if (buffer.IsEmpty && result.IsCompleted) break; // that's all, folks
                 }
             }
             static ArraySegment<byte> GetArray(ReadOnlyMemory<byte> memory)

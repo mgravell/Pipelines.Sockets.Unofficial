@@ -10,7 +10,7 @@ namespace BasicRunner
         static async Task Main()
         {
             Thread.CurrentThread.Name = nameof(Main);
-            await new PingPongTests(Console.Out).ServerClientDoubleInverted_PingPong();
+            await new PingPongTests(Console.Out).ServerClientDoubleInverted_SslStream_PingPong();
         }
     }
 }

@@ -3,7 +3,9 @@ using System.Buffers;
 using System.IO;
 using System.IO.Pipelines;
 using System.Net;
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading.Tasks;
 using Xunit;
@@ -161,7 +163,41 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
                 await PingPong(clientRevert, serverRevert, LOOP);
             }
-            Log.DebugLog("All good!");
+            Log.WriteLine("All good!");
+        }
+
+        [Fact]
+        public async Task ServerClientDoubleInverted_SslStream_PingPong()
+        {
+            Log.DebugLog();
+            var (client, server) = CreateConnectedSocketPair();
+            using (client)
+            using (server)
+            {
+                var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
+                var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
+
+                var serverStream = StreamConnector.GetDuplex(serverPipe, name: "stream server");
+                var serverSsl = new SslStream(serverStream);
+                
+                var clientStream = StreamConnector.GetDuplex(clientPipe, name: "stream client");
+                var clientSsl = new SslStream(clientStream);
+
+                X509Certificate cert = null;
+                var serverAuth = serverSsl.AuthenticateAsServerAsync(cert);
+                var clientAuth = clientSsl.AuthenticateAsClientAsync("foo");
+
+                await serverAuth;
+                await clientAuth;
+
+                var serverRevert = StreamConnector.GetDuplex(serverSsl, PipeOptions, name: "revert server");
+                var clientRevert = StreamConnector.GetDuplex(clientSsl, PipeOptions, name: "revert client");
+
+
+
+                await PingPong(clientRevert, serverRevert, LOOP);
+            }
+            Log.WriteLine("All good!");
         }
 
         private async Task PingPong(IDuplexPipe client, IDuplexPipe server, int count)

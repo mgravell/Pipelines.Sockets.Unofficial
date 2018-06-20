@@ -11,9 +11,15 @@ namespace Pipelines.Sockets.Unofficial
 {
     partial class StreamConnector
     {
+        /// <summary>
+        /// Exposes a Stream as a duplex pipe
+        /// </summary>
         public sealed class AsyncPipeStream : Stream
         {
             private string Name { get; }
+            /// <summary>
+            /// Gets a string representation of this object
+            /// </summary>
             public override string ToString() => Name;
 
             private AsyncReadResult _pendingRead;
@@ -30,7 +36,7 @@ namespace Pipelines.Sockets.Unofficial
             private readonly PipeReader _reader;
             private readonly PipeWriter _writer;
 
-            public AsyncPipeStream(PipeReader reader, PipeWriter writer, string name)
+            internal AsyncPipeStream(PipeReader reader, PipeWriter writer, string name)
             {
                 if (reader == null && writer == null)
                     throw new ArgumentNullException("At least one of reader/writer must be provided");
@@ -40,17 +46,41 @@ namespace Pipelines.Sockets.Unofficial
                 if (string.IsNullOrWhiteSpace(name)) name = GetType().Name;
                 Name = name.Trim();
             }
+            /// <summary>
+            /// Gets whether read operations are available
+            /// </summary>
             public override bool CanRead => _reader != null;
+            /// <summary>
+            /// Gets whether write operations are available
+            /// </summary>
             public override bool CanWrite => _writer != null;
+            /// <summary>
+            /// Gets whether the stream can timeout
+            /// </summary>
             public override bool CanTimeout => false;
+            /// <summary>
+            /// Gets whether the seek operations are supported on this stream
+            /// </summary>
             public override bool CanSeek => false;
+            /// <summary>
+            /// Change the position of the stream
+            /// </summary>
             public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+            /// <summary>
+            /// Query the length of the stream
+            /// </summary>
             public override long Length => throw new NotSupportedException();
+            /// <summary>
+            /// Get or set the position of the stream
+            /// </summary>
             public override long Position
             {
                 get => throw new NotSupportedException();
                 set => throw new NotSupportedException();
             }
+            /// <summary>
+            /// Specify the length of the stream
+            /// </summary>
             public override void SetLength(long value) => throw new NotSupportedException();
 
             private void AssertCanRead() { if (_reader == null) throw new InvalidOperationException("Cannot read"); }
@@ -59,6 +89,9 @@ namespace Pipelines.Sockets.Unofficial
             [Conditional("VERBOSE")]
             private void DebugLog(string message = null, [CallerMemberName] string caller = null) => Helpers.DebugLog(Name, message, caller);
 
+            /// <summary>
+            /// Read a buffer from the stream
+            /// </summary>
             public override int Read(byte[] buffer, int offset, int count)
             {
                 DebugLog();
@@ -69,9 +102,8 @@ namespace Pipelines.Sockets.Unofficial
                 {
                     pendingRead.AssertAvailable();
                     if (count == 0) return 0;
-                    ReadResult result;
-
-                    if (_reader.TryRead(out result))
+                    
+                    if (_reader.TryRead(out var result))
                     {
                         return ConsumeBytes(result, memory.Span);
                     }
@@ -87,6 +119,9 @@ namespace Pipelines.Sockets.Unofficial
                     return pendingRead.ConsumeBytesReadAndReset();
                 }
             }
+            /// <summary>
+            /// Reads a single byte
+            /// </summary>
             public override int ReadByte()
             {
                 DebugLog();
@@ -97,6 +132,9 @@ namespace Pipelines.Sockets.Unofficial
                 ArrayPool<byte>.Shared.Return(arr);
                 return result;
             }
+            /// <summary>
+            /// Write a buffer to the stream
+            /// </summary>
             public override void Write(byte[] buffer, int offset, int count)
             {
                 var from = new Span<byte>(buffer, offset, count);
@@ -118,16 +156,25 @@ namespace Pipelines.Sockets.Unofficial
                     count -= bytes;
                 }
             }
+            /// <summary>
+            /// Perform an asynchronous write operation
+            /// </summary>
             public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
             {
                 Write(buffer, offset, count);
                 return Task.CompletedTask;
             }
+            /// <summary>
+            /// Write a single byte
+            /// </summary>
             public override void WriteByte(byte value)
             {
                 Span<byte> from = stackalloc byte[1] { value };
                 Write(from);
             }
+            /// <summary>
+            /// Begin an asynchronous write operation
+            /// </summary>
             public override IAsyncResult BeginWrite(byte[] buffer, int offset, int count, AsyncCallback callback, object state)
             {
                 Write(buffer, offset, count);
@@ -136,6 +183,9 @@ namespace Pipelines.Sockets.Unofficial
                 callback(obj);
                 return obj;
             }
+            /// <summary>
+            /// End an asynchronous write operation
+            /// </summary>
             public override void EndWrite(IAsyncResult asyncResult) { }
 
             private sealed class FlushToken
@@ -164,7 +214,10 @@ namespace Pipelines.Sockets.Unofficial
                 }
 
             }
-
+            /// <summary>
+            /// Signal that the written data should be read; this may awaken the reader if inactive,
+            /// and suspend the writer if the backlog is too large
+            /// </summary>
             public override void Flush()
             {
                 AssertCanWrite();
@@ -178,7 +231,10 @@ namespace Pipelines.Sockets.Unofficial
                 inst.Wait();
                 awaiter.GetResult();
             }
-
+            /// <summary>
+            /// Signal that the written data should be read; this may awaken the reader if inactive,
+            /// and suspend the writer if the backlog is too large
+            /// </summary>
             public override Task FlushAsync(CancellationToken cancellationToken)
             {
                 var flush = _writer.FlushAsync(cancellationToken);
@@ -194,23 +250,35 @@ namespace Pipelines.Sockets.Unofficial
                 public bool CompletedSynchronously => true;
             }
 
+            /// <summary>
+            /// Close the stream
+            /// </summary>
             public override void Close()
             {
                 CloseWrite();
                 CloseRead();
+                try { _reader?.CancelPendingRead(); } catch { }
+                try { _writer?.CancelPendingFlush(); } catch { }
             }
 
+            /// <summary>
+            /// Signals that writing is complete; no more data will be written
+            /// </summary>
             public void CloseWrite()
             {
-                try { _writer?.CancelPendingFlush(); } catch { }
                 try { _writer?.Complete(); } catch { }
             }
+            /// <summary>
+            /// Signals that reading is complete; no more data will be read
+            /// </summary>
             public void CloseRead()
             {
-                try { _reader?.CancelPendingRead(); } catch { }
                 try { _reader?.Complete(); } catch { }
             }
 
+            /// <summary>
+            /// Begin an asynchronous read operation
+            /// </summary>
             public override IAsyncResult BeginRead(byte[] buffer, int offset, int count, AsyncCallback callback, object state)
             {
                 DebugLog("init");
@@ -250,7 +318,9 @@ namespace Pipelines.Sockets.Unofficial
                     return pendingRead;
                 }
             }
-
+            /// <summary>
+            /// End an asynchronous read operation
+            /// </summary>
             public override int EndRead(IAsyncResult asyncResult)
             {
                 DebugLog();
@@ -289,6 +359,9 @@ namespace Pipelines.Sockets.Unofficial
                 return bytesRead;
             }
 
+            /// <summary>
+            /// Perform an asynchronous read operation
+            /// </summary>
             public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
             {
                 cancellationToken.ThrowIfCancellationRequested();

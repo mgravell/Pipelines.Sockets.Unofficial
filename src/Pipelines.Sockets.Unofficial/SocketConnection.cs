@@ -60,10 +60,14 @@ namespace Pipelines.Sockets.Unofficial
             }
         }
         private string Name { get; }
+        /// <summary>
+        /// Gets a string representation of this object
+        /// </summary>
         public override string ToString() => Name;
         Task<Exception> RunThreadAsTask(SocketConnection connection, Func<SocketConnection, Exception> callback, string name)
         {
             if (!string.IsNullOrWhiteSpace(Name)) name = Name + ":" + name;
+#pragma warning disable IDE0017
             var thread = new Thread(tuple =>
             {
                 var t = (Tuple<SocketConnection, Func<SocketConnection, Exception>, TaskCompletionSource<Exception>>)tuple;
@@ -72,6 +76,7 @@ namespace Pipelines.Sockets.Unofficial
                 
             });
             thread.IsBackground = true;
+#pragma warning restore IDE0017
             if (string.IsNullOrWhiteSpace(name)) name = callback.Method.Name;
             if (!string.IsNullOrWhiteSpace(name)) thread.Name = name;
             

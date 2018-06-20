@@ -7,16 +7,28 @@ using System.Threading;
 
 namespace Pipelines.Sockets.Unofficial
 {
+    /// <summary>
+    /// An implementation of a pipe-scheduler that uses a dedicated pool of threads, deferring to
+    /// the thread-pool if that becomes too backlogged
+    /// </summary>
     public sealed class DedicatedThreadPoolPipeScheduler : PipeScheduler, IDisposable
     {
+        /// <summary>
+        /// The name of the pool
+        /// </summary>
         public override string ToString() => Name;
-        public int MaxThreads { get; }
-        public int MinThreads { get; }
+        private int MaxThreads { get; }
+        
+        private int MinThreads { get; }
 
-        public int UseThreadPoolQueueLength { get; }
-        public ThreadPriority Priority { get; }
+        private int UseThreadPoolQueueLength { get; }
+       
+        private ThreadPriority Priority { get; }
 
-        public string Name { get; }
+        private string Name { get; }
+        /// <summary>
+        /// Create a new dedicated thread-pool
+        /// </summary>
         public DedicatedThreadPoolPipeScheduler(string name = null, int minThreads = 1, int maxThreads = 5, int useThreadPoolQueueLength = 10,
             ThreadPriority priority = ThreadPriority.Normal)
         {
@@ -55,14 +67,19 @@ namespace Pipelines.Sockets.Unofficial
 
             if (create)
             {
-                var thread = new Thread(ThreadRunWorkLoop);
-                thread.Name = Name;
-                thread.Priority = Priority;
-                thread.IsBackground = true;
+                var thread = new Thread(ThreadRunWorkLoop)
+                {
+                    Name = Name,
+                    Priority = Priority,
+                    IsBackground = true
+                };
                 thread.Start(this);
             }
             return create;
         }
+        /// <summary>
+        /// Requests <paramref name="action"/> to be run on scheduler with <paramref name="state"/> being passed in
+        /// </summary>
         public override void Schedule(Action<object> action, object state)
         {
             if (action == null) return; // nothing to do
@@ -95,6 +112,9 @@ namespace Pipelines.Sockets.Unofficial
         static readonly WaitCallback ThreadPoolRunSingleItem = state => ((DedicatedThreadPoolPipeScheduler)state).RunSingleItem();
 
         private int _busyCount;
+        /// <summary>
+        /// The number of workers currently actively engaged in work
+        /// </summary>
         public int BusyCount => Thread.VolatileRead(ref _busyCount);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -140,7 +160,10 @@ namespace Pipelines.Sockets.Unofficial
                 Execute(next.action, next.state);
             }
         }
-        
+        /// <summary>
+        /// Release the threads associated with this pool; if additional work is requested, it will
+        /// be sent to the main thread-pool
+        /// </summary>
         public void Dispose()
         {
             _disposed = true;
