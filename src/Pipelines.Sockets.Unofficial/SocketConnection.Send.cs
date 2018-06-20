@@ -14,13 +14,13 @@ namespace Pipelines.Sockets.Unofficial
         private async Task<Exception> DoSendAsync()
         {
             Exception error = null;
-            DebugLog("starting send loop");
+            Helpers.DebugLog("starting send loop");
             try
             {
                 SocketAsyncEventArgs args = null;
                 while (true)
                 {
-                    DebugLog("awaiting data from pipe...");
+                    Helpers.DebugLog("awaiting data from pipe...");
                     if(!_send.Reader.TryRead(out var result))
                     {
                         result = await _send.Reader.ReadAsync();
@@ -29,7 +29,7 @@ namespace Pipelines.Sockets.Unofficial
 
                     if (result.IsCanceled)
                     {
-                        DebugLog("cancelled");
+                        Helpers.DebugLog("cancelled");
                         break;
                     }
 
@@ -37,41 +37,41 @@ namespace Pipelines.Sockets.Unofficial
                     {
                         if (!buffer.IsEmpty)
                         {
-                            if (args == null) args = CreateArgs();
-                            DebugLog($"sending {buffer.Length} bytes over socket...");
+                            if (args == null) args = CreateArgs(_pipeOptions.WriterScheduler);
+                            Helpers.DebugLog($"sending {buffer.Length} bytes over socket...");
                             await SendAsync(Socket, args, buffer);
                         }
                         else if (result.IsCompleted)
                         {
-                            DebugLog("completed");
+                            Helpers.DebugLog("completed");
                             break;
                         }
                     }
                     finally
                     {
-                        DebugLog("advancing");
+                        Helpers.DebugLog("advancing");
                         _send.Reader.AdvanceTo(buffer.End);
                     }
                 }
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.OperationAborted)
             {
-                DebugLog($"fail: {ex.SocketErrorCode}");
+                Helpers.DebugLog($"fail: {ex.SocketErrorCode}");
                 error = null;
             }
             catch (ObjectDisposedException)
             {
-                DebugLog("fail: disposed");
+                Helpers.DebugLog("fail: disposed");
                 error = null;
             }
             catch (IOException ex)
             {
-                DebugLog($"fail - io: {ex.Message}");
+                Helpers.DebugLog($"fail - io: {ex.Message}");
                 error = ex;
             }
             catch (Exception ex)
             {
-                DebugLog($"fail: {ex.Message}");
+                Helpers.DebugLog($"fail: {ex.Message}");
                 error = new IOException(ex.Message, ex);
             }
             finally
@@ -82,18 +82,18 @@ namespace Pipelines.Sockets.Unofficial
                 _sendAborted = true;
                 try
                 {
-                    DebugLog($"shutting down socket-send");
+                    Helpers.DebugLog($"shutting down socket-send");
                     Socket.Shutdown(SocketShutdown.Send);
                 }
                 catch { }
 
                 // close *both halves* of the send pipe; we're not
                 // listening *and* we don't want anyone trying to write
-                DebugLog($"marking {nameof(Output)} as complete");
+                Helpers.DebugLog($"marking {nameof(Output)} as complete");
                 try { _send.Writer.Complete(error); } catch { }
                 try { _send.Reader.Complete(error); } catch { }
             }
-            DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
+            Helpers.DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
             return error;
         }
 
@@ -139,13 +139,13 @@ namespace Pipelines.Sockets.Unofficial
 
             return GetAwaitable(args);
         }
-        
+
         private static List<ArraySegment<byte>> GetBufferList(SocketAsyncEventArgs args, ReadOnlySequence<byte> buffer)
         {
             Debug.Assert(!buffer.IsEmpty);
             Debug.Assert(!buffer.IsSingleSegment);
 
-            var list = (List<ArraySegment<byte>>)args.BufferList;
+            var list = (args?.BufferList as List<ArraySegment<byte>>) ?? GetSpareBuffer();
 
             if (list == null)
             {

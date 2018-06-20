@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Buffers;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
@@ -10,7 +11,7 @@ namespace Pipelines.Sockets.Unofficial
 {
     partial class StreamConnector
     {
-        private sealed class AsyncPipeStream : Stream
+        public sealed class AsyncPipeStream : Stream
         {
             private AsyncReadResult _pendingRead;
             private AsyncWriteResult _pendingWrite;
@@ -50,6 +51,7 @@ namespace Pipelines.Sockets.Unofficial
             private void AssertCanWrite() { if (_writer == null) throw new InvalidOperationException("Cannot write"); }
             public override int Read(byte[] buffer, int offset, int count)
             {
+                Helpers.DebugLog();
                 AssertCanRead();
                 var memory = new Memory<byte>(buffer, offset, count);
                 var pendingRead = PendingRead;
@@ -77,6 +79,7 @@ namespace Pipelines.Sockets.Unofficial
             }
             public override int ReadByte()
             {
+                Helpers.DebugLog();
                 AssertCanRead();
                 var arr = ArrayPool<byte>.Shared.Rent(1);
                 int bytes = Read(arr, 0, 1);
@@ -183,15 +186,24 @@ namespace Pipelines.Sockets.Unofficial
 
             public override void Close()
             {
-                try { _reader?.CancelPendingRead(); } catch { }
-                try { _reader?.Complete(); } catch { }
+                CloseWrite();
+                CloseRead();
+            }
+
+            public void CloseWrite()
+            {
                 try { _writer?.CancelPendingFlush(); } catch { }
                 try { _writer?.Complete(); } catch { }
             }
-
+            public void CloseRead()
+            {
+                try { _reader?.CancelPendingRead(); } catch { }
+                try { _reader?.Complete(); } catch { }
+            }
 
             public override IAsyncResult BeginRead(byte[] buffer, int offset, int count, AsyncCallback callback, object state)
             {
+                Helpers.DebugLog();
                 AssertCanRead();
                 var memory = new Memory<byte>(buffer, offset, count);
                 var pendingRead = PendingRead;
@@ -231,6 +243,7 @@ namespace Pipelines.Sockets.Unofficial
 
             public override int EndRead(IAsyncResult asyncResult)
             {
+                Helpers.DebugLog();
                 var pendingRead = PendingRead;
                 lock (pendingRead.SyncLock)
                 {
@@ -268,6 +281,7 @@ namespace Pipelines.Sockets.Unofficial
 
             public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
             {
+                Helpers.DebugLog();
                 AssertCanRead();
                 var memory = new Memory<byte>(buffer, offset, count);
                 var pendingRead = PendingRead;
@@ -276,7 +290,9 @@ namespace Pipelines.Sockets.Unofficial
                     pendingRead.AssertAvailable();
 
                     if (count == 0) return Task.FromResult(0);
-                    else if (_reader.TryRead(out ReadResult result))
+
+
+                    if (_reader.TryRead(out ReadResult result))
                     {
                         return Task.FromResult(ConsumeBytes(result, memory.Span));
                     }
@@ -370,10 +386,6 @@ namespace Pipelines.Sockets.Unofficial
 
                 internal void SetBytesRead(int bytesRead, bool complete)
                 {
-                    if (AsyncMode == PendingAsyncMode.None)
-                    {
-                        throw new InvalidOperationException("No read in progress");
-                    }
                     BytesRead = bytesRead;
                     IsCompleted = complete;
                     _waitHandle?.Set();

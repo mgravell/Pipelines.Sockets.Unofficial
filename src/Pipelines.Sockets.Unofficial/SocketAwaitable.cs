@@ -2,6 +2,7 @@
 
 using System;
 using System.Diagnostics;
+using System.IO.Pipelines;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -15,6 +16,9 @@ namespace Pipelines.Sockets.Unofficial
         private Action _callback;
         private int _bytesTransfered;
         private SocketError _error;
+        private readonly PipeScheduler _scheduler;
+
+        public SocketAwaitable(PipeScheduler scheduler) => _scheduler = scheduler;
 
         public SocketAwaitable GetAwaiter() => this;
         public bool IsCompleted => ReferenceEquals(_callback, _callbackCompleted);
@@ -38,7 +42,7 @@ namespace Pipelines.Sockets.Unofficial
             if (ReferenceEquals(_callback, _callbackCompleted) ||
                 ReferenceEquals(Interlocked.CompareExchange(ref _callback, continuation, null), _callbackCompleted))
             {
-                continuation();
+                continuation(); // sync completion; don't use scheduler
             }
         }
 
@@ -55,7 +59,13 @@ namespace Pipelines.Sockets.Unofficial
         {
             _error = socketError;
             _bytesTransfered = bytesTransferred;
-            Interlocked.Exchange(ref _callback, _callbackCompleted)?.Invoke();
+            var action = Interlocked.Exchange(ref _callback, _callbackCompleted);
+            if(action != null)
+            {
+                if (_scheduler == null) action();
+                else _scheduler.Schedule(InvokeStateAsAction, action);
+            }
         }
+        static readonly Action<object> InvokeStateAsAction = state => ((Action)state).Invoke();
     }
 }

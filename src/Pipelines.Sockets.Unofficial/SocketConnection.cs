@@ -1,6 +1,7 @@
 ﻿// Licensed under the Apache License, Version 2.0.
 
 using System;
+using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
@@ -14,6 +15,10 @@ namespace Pipelines.Sockets.Unofficial
     /// </summary>
     public sealed partial class SocketConnection : IDuplexPipe, IDisposable
     {
+#if DEBUG
+        public static void SetLog(System.IO.TextWriter writer) => Helpers.Log = writer;
+#endif
+
         /// <summary>
         /// Release any resources held by this instance
         /// </summary>
@@ -80,9 +85,10 @@ namespace Pipelines.Sockets.Unofficial
         private volatile bool _sendAborted, _receiveAborted;
 #pragma warning restore CS0414, CS0649
 
-        private static SocketAsyncEventArgs CreateArgs()
+        private static SocketAsyncEventArgs CreateArgs(PipeScheduler scheduler)
         {
-            var args = new SocketAsyncEventArgs { UserToken = new SocketAwaitable() };
+            if (ReferenceEquals(scheduler, PipeScheduler.Inline)) scheduler = null;
+            var args = new SocketAsyncEventArgs { UserToken = new SocketAwaitable(scheduler) };
             args.Completed += (_, e) => OnCompleted(e);
             return args;
         }
@@ -98,16 +104,9 @@ namespace Pipelines.Sockets.Unofficial
         /// Create a SocketConnection instance over an existing socket
         /// </summary>
         public static SocketConnection Create(Socket socket, PipeOptions pipeOptions = null,
-            SocketConnectionOptions socketConnectionOptions = SocketConnectionOptions.None
-#if DEBUG
-            , System.IO.TextWriter log = null
-#endif
-            )
+            SocketConnectionOptions socketConnectionOptions = SocketConnectionOptions.None)
         {
             var conn = new SocketConnection(socket, pipeOptions, socketConnectionOptions);
-#if DEBUG
-            conn._log = log;
-#endif
             return conn;
         }
 
@@ -117,10 +116,25 @@ namespace Pipelines.Sockets.Unofficial
         private SocketConnection(Socket socket, PipeOptions pipeOptions, SocketConnectionOptions socketConnectionOptions)
         {
             if (pipeOptions == null) pipeOptions = GetDefaultOptions();
+            _pipeOptions = pipeOptions;
             Socket = socket;
             SocketConnectionOptions = socketConnectionOptions;
             _send = new Pipe(pipeOptions);
             _receive = new Pipe(pipeOptions);
+            
+        }
+        private readonly PipeOptions _pipeOptions;
+
+        static List<ArraySegment<byte>> _spareBuffer;
+        private static List<ArraySegment<byte>> GetSpareBuffer()
+        {
+            var existing = Interlocked.Exchange(ref _spareBuffer, null);
+            existing?.Clear();
+            return existing;
+        }
+        private static void RecycleSpareBuffer(List<ArraySegment<byte>> value)
+        {
+            if (value != null) Interlocked.Exchange(ref _spareBuffer, value);
         }
 
     }

@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Diagnostics;
-using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -15,13 +14,21 @@ namespace Pipelines.Sockets.Unofficial
             return segment;
         }
 
-
-        [Conditional("DEBUG")]
-        internal static void DebugLog(this TextWriter log, string message, [CallerMemberName] string caller = null)
-        {
 #if DEBUG
-            log?.WriteLine("[" + caller + "] " + message);
+        internal static System.IO.TextWriter Log = Console.Out;
+#endif
+
+        [Conditional("VERBOSE")]
+        internal static void DebugLog(string message = "", [CallerMemberName] string caller = null)
+        {
+#if VERBOSE
+                var thread = System.Threading.Thread.CurrentThread;
+                var name = thread.Name;
+                if (string.IsNullOrWhiteSpace(name)) name = thread.ManagedThreadId.ToString();
+
+                Log?.WriteLine($"[{name}, {caller}]: {message}");
 #endif
         }
+
     }
 }

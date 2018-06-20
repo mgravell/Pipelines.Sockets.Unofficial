@@ -12,14 +12,14 @@ namespace Pipelines.Sockets.Unofficial
         private Exception DoSendSync()
         {
             Exception error = null;
-            DebugLog("starting send loop");
+            Helpers.DebugLog("starting send loop");
             try
             {
                 var waitSignal = new AutoResetEvent(false);
                 Action setSignal = () => waitSignal.Set();
                 while (true)
                 {
-                    DebugLog("awaiting data from pipe...");
+                    Helpers.DebugLog("awaiting data from pipe...");
                     if (!_send.Reader.TryRead(out var result))
                     {
                         var t = _send.Reader.ReadAsync();
@@ -40,7 +40,7 @@ namespace Pipelines.Sockets.Unofficial
 
                     if (result.IsCanceled)
                     {
-                        DebugLog("cancelled");
+                        Helpers.DebugLog("cancelled");
                         break;
                     }
 
@@ -48,40 +48,40 @@ namespace Pipelines.Sockets.Unofficial
                     {
                         if (!buffer.IsEmpty)
                         {
-                            DebugLog($"sending {buffer.Length} bytes over socket...");
+                            Helpers.DebugLog($"sending {buffer.Length} bytes over socket...");
                             Send(Socket, buffer);
                         }
                         else if (result.IsCompleted)
                         {
-                            DebugLog("completed");
+                            Helpers.DebugLog("completed");
                             break;
                         }
                     }
                     finally
                     {
-                        DebugLog("advancing");
+                        Helpers.DebugLog("advancing");
                         _send.Reader.AdvanceTo(buffer.End);
                     }
                 }
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.OperationAborted)
             {
-                DebugLog($"fail: {ex.SocketErrorCode}");
+                Helpers.DebugLog($"fail: {ex.SocketErrorCode}");
                 error = null;
             }
             catch (ObjectDisposedException)
             {
-                DebugLog("fail: disposed");
+                Helpers.DebugLog("fail: disposed");
                 error = null;
             }
             catch (IOException ex)
             {
-                DebugLog($"fail - io: {ex.Message}");
+                Helpers.DebugLog($"fail - io: {ex.Message}");
                 error = ex;
             }
             catch (Exception ex)
             {
-                DebugLog($"fail: {ex.Message}");
+                Helpers.DebugLog($"fail: {ex.Message}");
                 error = new IOException(ex.Message, ex);
             }
 
@@ -93,38 +93,38 @@ namespace Pipelines.Sockets.Unofficial
                 _sendAborted = true;
                 try
                 {
-                    DebugLog($"shutting down socket-send");
+                    Helpers.DebugLog($"shutting down socket-send");
                     Socket.Shutdown(SocketShutdown.Send);
                 }
                 catch { }
 
                 // close *both halves* of the send pipe; we're not
                 // listening *and* we don't want anyone trying to write
-                DebugLog($"marking {nameof(Output)} as complete");
+                Helpers.DebugLog($"marking {nameof(Output)} as complete");
                 try { _send.Writer.Complete(error); } catch { }
                 try { _send.Reader.Complete(error); } catch { }
             }
-            DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
+            Helpers.DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
             return error;
         }
 
         private Exception DoReceiveSync()
         {
             Exception error = null;
-            DebugLog("starting receive loop");
+            Helpers.DebugLog("starting receive loop");
             try
             {
                 var waitSignal = new AutoResetEvent(false);
                 Action setSignal = () => waitSignal.Set();
 
-                var args = CreateArgs();
+                var args = CreateArgs(_pipeOptions.ReaderScheduler);
                 while (true)
                 {
                     if (ZeroLengthReads && Socket.Available == 0)
                     {
-                        DebugLog($"awaiting zero-length receive...");
+                        Helpers.DebugLog($"awaiting zero-length receive...");
                         Receive(Socket, default);
-                        DebugLog($"zero-length receive complete; now {Socket.Available} bytes available");
+                        Helpers.DebugLog($"zero-length receive complete; now {Socket.Available} bytes available");
 
                         // this *could* be because data is now available, or it *could* be because of
                         // the EOF; we can't really trust Available, so now we need to do a non-empty
@@ -132,12 +132,12 @@ namespace Pipelines.Sockets.Unofficial
                     }
 
                     var buffer = _receive.Writer.GetMemory(1);
-                    DebugLog($"leased {buffer.Length} bytes from pool");
+                    Helpers.DebugLog($"leased {buffer.Length} bytes from pool");
                     try
                     {
-                        DebugLog($"awaiting socket receive...");
+                        Helpers.DebugLog($"awaiting socket receive...");
                         var bytesReceived = Receive(Socket, buffer);
-                        DebugLog($"received {bytesReceived} bytes");
+                        Helpers.DebugLog($"received {bytesReceived} bytes");
 
                         if (bytesReceived == 0)
                         {
@@ -151,14 +151,14 @@ namespace Pipelines.Sockets.Unofficial
                         // commit?
                     }
 
-                    DebugLog("flushing pipe");
+                    Helpers.DebugLog("flushing pipe");
                     var flushTask = _receive.Writer.FlushAsync();
 
                     FlushResult result;
                     if (flushTask.IsCompletedSuccessfully)
                     {
                         result = flushTask.Result;
-                        DebugLog("pipe flushed (sync)");
+                        Helpers.DebugLog("pipe flushed (sync)");
                     }
                     else
                     {
@@ -166,20 +166,20 @@ namespace Pipelines.Sockets.Unofficial
                         awaiter.UnsafeOnCompleted(setSignal);
                         waitSignal.WaitOne();
                         result = awaiter.GetResult();
-                        DebugLog("pipe flushed (async)");
+                        Helpers.DebugLog("pipe flushed (async)");
                     }
 
                     if (result.IsCompleted)
                     {
                         // Pipe consumer is shut down, do we stop writing
-                        DebugLog("complete");
+                        Helpers.DebugLog("complete");
                         break;
                     }
                 }
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset)
             {
-                DebugLog($"fail: {ex.SocketErrorCode}");
+                Helpers.DebugLog($"fail: {ex.SocketErrorCode}");
                 error = new ConnectionResetException(ex.Message, ex);
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.OperationAborted ||
@@ -187,7 +187,7 @@ namespace Pipelines.Sockets.Unofficial
                                              ex.SocketErrorCode == SocketError.Interrupted ||
                                              ex.SocketErrorCode == SocketError.InvalidArgument)
             {
-                DebugLog($"fail: {ex.SocketErrorCode}");
+                Helpers.DebugLog($"fail: {ex.SocketErrorCode}");
                 if (!_receiveAborted)
                 {
                     // Calling Dispose after ReceiveAsync can cause an "InvalidArgument" error on *nix.
@@ -196,7 +196,7 @@ namespace Pipelines.Sockets.Unofficial
             }
             catch (ObjectDisposedException)
             {
-                DebugLog($"fail: disposed");
+                Helpers.DebugLog($"fail: disposed");
                 if (!_receiveAborted)
                 {
                     error = new ConnectionAbortedException();
@@ -204,12 +204,12 @@ namespace Pipelines.Sockets.Unofficial
             }
             catch (IOException ex)
             {
-                DebugLog($"fail - io: {ex.Message}");
+                Helpers.DebugLog($"fail - io: {ex.Message}");
                 error = ex;
             }
             catch (Exception ex)
             {
-                DebugLog($"fail: {ex.Message}");
+                Helpers.DebugLog($"fail: {ex.Message}");
                 error = new IOException(ex.Message, ex);
             }
             finally
@@ -220,7 +220,7 @@ namespace Pipelines.Sockets.Unofficial
                 }
                 try
                 {
-                    DebugLog($"shutting down socket-receive");
+                    Helpers.DebugLog($"shutting down socket-receive");
                     Socket.Shutdown(SocketShutdown.Receive);
                 }
                 catch { }
@@ -228,38 +228,32 @@ namespace Pipelines.Sockets.Unofficial
                 // close the *writer* half of the receive pipe; we won't
                 // be writing any more, but callers can still drain the
                 // pipe if they choose
-                DebugLog($"marking {nameof(Input)} as complete");
+                Helpers.DebugLog($"marking {nameof(Input)} as complete");
                 try { _receive.Writer.Complete(error); } catch { }
             }
 
-            DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
+            Helpers.DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
             return error;
         }
 
         private static int Send(Socket socket, ReadOnlySequence<byte> buffer)
-        {
-            if (buffer.IsSingleSegment)
-            {
-                return Send(socket, buffer.First);
-            }
-            else
-            {
-                int total = 0;
-                foreach (var segment in buffer)
-                {
-                    total += Send(socket, segment);
-                }
-                return total;
-            }
-        }
-        private static int Send(Socket socket, ReadOnlyMemory<byte> buffer)
+            => buffer.IsSingleSegment ? SendSingle(socket, buffer.First) : SendMulti(socket, buffer);
+           
+        private static int SendSingle(Socket socket, ReadOnlyMemory<byte> segment)
         {
 #if NETCOREAPP2_1
-            return socket.Send(buffer.Span);
+            return socket.Send(segment.Span);
 #else
-            var segment = buffer.GetArray();
-            return socket.Send(segment.Array, segment.Offset, segment.Count, SocketFlags.None);
+            var arr = segment.GetArray();
+            return socket.Send(arr.Array, arr.Offset, arr.Count, SocketFlags.None);
 #endif
+        }
+        private static int SendMulti(Socket socket, ReadOnlySequence<byte> buffer)
+        {
+            var buffers = GetBufferList(null, buffer);
+            var bytes = socket.Send(buffers);
+            RecycleSpareBuffer(buffers);
+            return bytes;
         }
         private static int Receive(Socket socket, Memory<byte> buffer)
         {

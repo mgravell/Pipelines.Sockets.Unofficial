@@ -11,17 +11,17 @@ namespace Pipelines.Sockets.Unofficial
         private async Task<Exception> DoReceiveAsync()
         {
             Exception error = null;
-            DebugLog("starting receive loop");
+            Helpers.DebugLog("starting receive loop");
             try
             {
-                var args = CreateArgs();
+                var args = CreateArgs(_pipeOptions.ReaderScheduler);
                 while (true)
                 {
                     if (ZeroLengthReads && Socket.Available == 0)
                     {
-                        DebugLog($"awaiting zero-length receive...");
+                        Helpers.DebugLog($"awaiting zero-length receive...");
                         await ReceiveAsync(Socket, args, default);
-                        DebugLog($"zero-length receive complete; now {Socket.Available} bytes available");
+                        Helpers.DebugLog($"zero-length receive complete; now {Socket.Available} bytes available");
 
                         // this *could* be because data is now available, or it *could* be because of
                         // the EOF; we can't really trust Available, so now we need to do a non-empty
@@ -29,12 +29,12 @@ namespace Pipelines.Sockets.Unofficial
                     }
 
                     var buffer = _receive.Writer.GetMemory(1);
-                    DebugLog($"leased {buffer.Length} bytes from pool");
+                    Helpers.DebugLog($"leased {buffer.Length} bytes from pool");
                     try
                     {
-                        DebugLog($"awaiting socket receive...");
+                        Helpers.DebugLog($"awaiting socket receive...");
                         var bytesReceived = await ReceiveAsync(Socket, args, buffer);
-                        DebugLog($"received {bytesReceived} bytes");
+                        Helpers.DebugLog($"received {bytesReceived} bytes");
 
                         if (bytesReceived == 0)
                         {
@@ -48,32 +48,32 @@ namespace Pipelines.Sockets.Unofficial
                         // commit?
                     }
 
-                    DebugLog("flushing pipe");
+                    Helpers.DebugLog("flushing pipe");
                     var flushTask = _receive.Writer.FlushAsync();
 
                     FlushResult result;
                     if (flushTask.IsCompletedSuccessfully)
                     {
                         result = flushTask.Result;
-                        DebugLog("pipe flushed (sync)");
+                        Helpers.DebugLog("pipe flushed (sync)");
                     }
                     else
                     {
                         result = await flushTask;
-                        DebugLog("pipe flushed (async)");
+                        Helpers.DebugLog("pipe flushed (async)");
                     }
 
                     if (result.IsCompleted)
                     {
                         // Pipe consumer is shut down, do we stop writing
-                        DebugLog("complete");
+                        Helpers.DebugLog("complete");
                         break;
                     }
                 }
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset)
             {
-                DebugLog($"fail: {ex.SocketErrorCode}");
+                Helpers.DebugLog($"fail: {ex.SocketErrorCode}");
                 error = new ConnectionResetException(ex.Message, ex);
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.OperationAborted ||
@@ -81,7 +81,7 @@ namespace Pipelines.Sockets.Unofficial
                                              ex.SocketErrorCode == SocketError.Interrupted ||
                                              ex.SocketErrorCode == SocketError.InvalidArgument)
             {
-                DebugLog($"fail: {ex.SocketErrorCode}");
+                Helpers.DebugLog($"fail: {ex.SocketErrorCode}");
                 if (!_receiveAborted)
                 {
                     // Calling Dispose after ReceiveAsync can cause an "InvalidArgument" error on *nix.
@@ -90,7 +90,7 @@ namespace Pipelines.Sockets.Unofficial
             }
             catch (ObjectDisposedException)
             {
-                DebugLog($"fail: disposed");
+                Helpers.DebugLog($"fail: disposed");
                 if (!_receiveAborted)
                 {
                     error = new ConnectionAbortedException();
@@ -98,12 +98,12 @@ namespace Pipelines.Sockets.Unofficial
             }
             catch (IOException ex)
             {
-                DebugLog($"fail - io: {ex.Message}");
+                Helpers.DebugLog($"fail - io: {ex.Message}");
                 error = ex;
             }
             catch (Exception ex)
             {
-                DebugLog($"fail: {ex.Message}");
+                Helpers.DebugLog($"fail: {ex.Message}");
                 error = new IOException(ex.Message, ex);
             }
             finally
@@ -114,7 +114,7 @@ namespace Pipelines.Sockets.Unofficial
                 }
                 try
                 {
-                    DebugLog($"shutting down socket-receive");
+                    Helpers.DebugLog($"shutting down socket-receive");
                     Socket.Shutdown(SocketShutdown.Receive);
                 }
                 catch { }
@@ -122,11 +122,11 @@ namespace Pipelines.Sockets.Unofficial
                 // close the *writer* half of the receive pipe; we won't
                 // be writing any more, but callers can still drain the
                 // pipe if they choose
-                DebugLog($"marking {nameof(Input)} as complete");
+                Helpers.DebugLog($"marking {nameof(Input)} as complete");
                 try { _receive.Writer.Complete(error); } catch { }
             }
 
-            DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
+            Helpers.DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
             return error;
         }
 

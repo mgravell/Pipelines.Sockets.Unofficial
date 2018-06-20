@@ -21,9 +21,6 @@ namespace Pipelines.Sockets.Unofficial
             SocketConnectionOptions connectionOptions = SocketConnectionOptions.None,
             Func<SocketConnection, Task> onConnected = null,
             Socket socket = null
-#if DEBUG
-            , System.IO.TextWriter log = null
-#endif
             )
         {
             if (socket == null)
@@ -32,21 +29,16 @@ namespace Pipelines.Sockets.Unofficial
             }
             try { socket.NoDelay = true; } catch { }
             try { SetFastLoopbackOption(socket); } catch { }
-            var args = CreateArgs();
+            var args = CreateArgs(pipeOptions?.ReaderScheduler);
 
-#if DEBUG
-            DebugLog(log, $"connecting to {endpoint}...");
-#endif
+
+            Helpers.DebugLog($"connecting to {endpoint}...");
+
             await ConnectAsync(socket, args, endpoint);
-#if DEBUG
-            DebugLog(log, "connected");
-#endif
 
-            var connection = Create(socket, pipeOptions, connectionOptions
-#if DEBUG
-            , log: log
-#endif
-            );
+            Helpers.DebugLog("connected");
+
+            var connection = Create(socket, pipeOptions, connectionOptions);
 
             if (onConnected != null) await onConnected(connection);
 
