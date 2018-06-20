@@ -21,13 +21,13 @@ namespace Pipelines.Sockets.Unofficial
             private readonly Pipe _readPipe, _writePipe;
             private readonly Stream _inner;
             private string Name { get; }
-            Task _writeTask, _readTask;
 
             public override string ToString() => Name;
 
 
             public AsyncStreamPipe(Stream stream, PipeOptions pipeOptions, bool read, bool write, string name)
             {
+                if (pipeOptions == null) pipeOptions = PipeOptions.Default;
                 _inner = stream ?? throw new ArgumentNullException(nameof(stream));
                 if (string.IsNullOrWhiteSpace(name)) name = GetType().Name;
                 Name = name ?? GetType().Name;
@@ -36,40 +36,21 @@ namespace Pipelines.Sockets.Unofficial
                 if (read)
                 {
                     if (!stream.CanWrite) throw new InvalidOperationException("Cannot create a read pipe over a non-writable stream");
-                    _readPipe = new Pipe(pipeOptions ?? PipeOptions.Default);
+                    _readPipe = new Pipe(pipeOptions);
+                    pipeOptions.ReaderScheduler.Schedule(obj => ((AsyncStreamPipe)obj).CopyFromStreamToReadPipe(), this);
                 }
                 if (write)
                 {
                     if (!stream.CanRead) throw new InvalidOperationException("Cannot create a write pipe over a non-readable stream");
-                    _writePipe = new Pipe(pipeOptions ?? PipeOptions.Default);
+                    _writePipe = new Pipe(pipeOptions);
+                    pipeOptions.WriterScheduler.Schedule(obj => ((AsyncStreamPipe)obj).CopyFromWritePipeToStream(), this);
+
                 }
             }
 
-            public PipeWriter Output
-            {
-                get
-                {
-                    if (_writeTask == null)
-                    {
-                        if (_writePipe == null) throw new InvalidOperationException("Cannot write to this pipe");
-                        _writeTask = CopyFromWritePipeToStream();
-                    }
-                    return _writePipe.Writer;
-                }
-            }
-            public PipeReader Input
-            {
-                get
-                {
-                    if (_readTask == null)
-                    {
-                        if (_readPipe == null) throw new InvalidOperationException("Cannot read from this pipe");
-                        _readTask = CopyFromStreamToReadPipe();
-                    }
-                    return _readPipe.Reader;
-                }
-            }
-            private async Task CopyFromStreamToReadPipe()
+            public PipeWriter Output => _writePipe?.Writer ?? throw new InvalidOperationException("Cannot write to this pipe");
+            public PipeReader Input => _readPipe?.Reader ?? throw new InvalidOperationException("Cannot read from this pipe");
+            private async void CopyFromStreamToReadPipe()
             {
                 Exception err = null;
                 var writer = _readPipe.Writer;
@@ -94,7 +75,7 @@ namespace Pipelines.Sockets.Unofficial
                 }
                 writer.Complete(err);
             }
-            private async Task CopyFromWritePipeToStream()
+            private async void CopyFromWritePipeToStream()
             {
                 var reader = _writePipe.Reader;
                 while (true)

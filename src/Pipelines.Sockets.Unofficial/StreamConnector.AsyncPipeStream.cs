@@ -137,8 +137,10 @@ namespace Pipelines.Sockets.Unofficial
             /// </summary>
             public override void Write(byte[] buffer, int offset, int count)
             {
+                DebugLog();
                 var from = new Span<byte>(buffer, offset, count);
                 Write(from);
+                Flush();
             }
             private void Write(Span<byte> from)
             {
@@ -155,29 +157,35 @@ namespace Pipelines.Sockets.Unofficial
                     offset += bytes;
                     count -= bytes;
                 }
+                DebugLog($"Total: {from.Length} bytes written to '{_writer}'");
             }
             /// <summary>
             /// Perform an asynchronous write operation
             /// </summary>
             public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
             {
-                Write(buffer, offset, count);
-                return Task.CompletedTask;
+                DebugLog();
+                Write(new Span<byte>(buffer, offset, count));
+                return FlushAsync();
             }
             /// <summary>
             /// Write a single byte
             /// </summary>
             public override void WriteByte(byte value)
             {
+                DebugLog();
                 Span<byte> from = stackalloc byte[1] { value };
                 Write(from);
+                Flush();
             }
             /// <summary>
             /// Begin an asynchronous write operation
             /// </summary>
             public override IAsyncResult BeginWrite(byte[] buffer, int offset, int count, AsyncCallback callback, object state)
             {
+                DebugLog();
                 Write(buffer, offset, count);
+                Flush();
                 var obj = PendingWrite;
                 PendingWrite.AsyncState = state;
                 callback(obj);
@@ -221,6 +229,7 @@ namespace Pipelines.Sockets.Unofficial
             public override void Flush()
             {
                 AssertCanWrite();
+                DebugLog($"Flushing {_writer}");
                 var flush = _writer.FlushAsync();
                 if (flush.IsCompleted) return;
 
@@ -237,6 +246,8 @@ namespace Pipelines.Sockets.Unofficial
             /// </summary>
             public override Task FlushAsync(CancellationToken cancellationToken)
             {
+                AssertCanWrite();
+                DebugLog($"Flushing {_writer}");
                 var flush = _writer.FlushAsync(cancellationToken);
                 return flush.IsCompletedSuccessfully ? Task.CompletedTask : flush.AsTask();
             }
@@ -418,8 +429,7 @@ namespace Pipelines.Sockets.Unofficial
                     var result = pendingRead.ReadAwaiter.GetResult();
                     pendingRead.ReadAwaiter = default;
                     ConsumeBytesAndExecuteContiuations(result);
-                }
-                
+                }                
             }
             private void ConsumeBytesAndExecuteContiuations(ReadResult result)
             {

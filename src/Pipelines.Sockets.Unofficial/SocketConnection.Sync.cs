@@ -16,7 +16,9 @@ namespace Pipelines.Sockets.Unofficial
             try
             {
                 var waitSignal = new AutoResetEvent(false);
+#pragma warning disable IDE0039
                 Action setSignal = () => waitSignal.Set();
+#pragma warning restore IDE0039
                 while (true)
                 {
                     DebugLog("awaiting data from pipe...");
@@ -115,7 +117,9 @@ namespace Pipelines.Sockets.Unofficial
             try
             {
                 var waitSignal = new AutoResetEvent(false);
+#pragma warning disable IDE0039
                 Action setSignal = () => waitSignal.Set();
+#pragma warning restore IDE0039
 
                 var args = CreateArgs(_pipeOptions.ReaderScheduler);
                 while (true)

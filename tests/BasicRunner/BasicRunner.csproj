@@ -7,8 +7,20 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Include="..\somesite.pfx" Link="somesite.pfx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Pipelines.Sockets.Unofficial\Pipelines.Sockets.Unofficial.csproj" />
     <ProjectReference Include="..\Pipelines.Sockets.Unofficial.Tests\Pipelines.Sockets.Unofficial.Tests.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="somesite.cert">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

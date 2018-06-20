@@ -15,6 +15,18 @@ namespace Pipelines.Sockets.Unofficial.Tests
 {
     public class PingPongTests
     {
+        static readonly PipeOptions PipeOptions;
+        static PingPongTests()
+        {
+            // PipeOptions = PipeOptions.Default;
+
+            var pool = new DedicatedThreadPoolPipeScheduler("MyPool");
+            //var pool = PipeScheduler.Inline;
+            PipeOptions = new PipeOptions(readerScheduler: pool, writerScheduler: pool, useSynchronizationContext: false);
+            
+        }
+
+        public const int LoopCount = 5000;
         private TestTextWriter Log { get; }
 
         public PingPongTests(TextWriter output)
@@ -42,17 +54,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
         }
 
-        static readonly PipeOptions PipeOptions, HardFlushPipeOptions;
-        static PingPongTests()
-        {
-            var pool = new DedicatedThreadPoolPipeScheduler("MyPool");
-            PipeOptions = new PipeOptions(readerScheduler: pool, writerScheduler: pool, useSynchronizationContext: false);
-            HardFlushPipeOptions = new PipeOptions(readerScheduler: pool, writerScheduler: pool, useSynchronizationContext: false, resumeWriterThreshold: 0);
-        }
-
-        const int LOOP = 20;
         [Fact]
-        public async Task Basic_PingPong()
+        public async Task Basic_Pipelines_PingPong()
         {
             Log.DebugLog();
             var (client, server) = CreateConnectedSocketPair();
@@ -63,7 +66,42 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
                 var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
 
-                await PingPong(clientPipe, serverPipe, LOOP);
+                await PingPong(clientPipe, serverPipe, LoopCount);
+            }
+            Log.DebugLog("All good!");
+        }
+
+        [Fact]
+        public async Task Basic_NetworkStream_PingPong()
+        {
+            Log.DebugLog();
+            var (client, server) = CreateConnectedSocketPair();
+
+            using (client)
+            using (server)
+            {
+                var clientStream = new NetworkStream(client);
+                var serverStream = new NetworkStream(server);
+                await PingPong(clientStream, serverStream, LoopCount);
+            }
+            Log.DebugLog("All good!");
+        }
+
+        [Fact]
+        public async Task Basic_NetworkStream_Pipelines_PingPong()
+        {
+            Log.DebugLog();
+            var (client, server) = CreateConnectedSocketPair();
+
+            using (client)
+            using (server)
+            {
+                var clientStream = new NetworkStream(client);
+                var serverStream = new NetworkStream(server);
+
+                var clientPipe = StreamConnector.GetDuplex(clientStream, name: "client");
+                var serverPipe = StreamConnector.GetDuplex(serverStream, name: "server");
+                await PingPong(clientPipe, serverPipe, LoopCount);
             }
             Log.DebugLog("All good!");
         }
@@ -81,7 +119,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
                 var clientStream = StreamConnector.GetDuplex(clientPipe, name: "stream client");
 
-                await PingPong(clientStream, serverPipe, LOOP);
+                await PingPong(clientStream, serverPipe, LoopCount);
             }
             Log.DebugLog("All good!");
         }
@@ -101,7 +139,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
                 var clientRevert = StreamConnector.GetDuplex(clientStream, name: "revert client");
 
-                await PingPong(clientRevert, serverPipe, LOOP);
+                await PingPong(clientRevert, serverPipe, LoopCount);
             }
             Log.DebugLog("All good!");
         }
@@ -119,7 +157,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
                 var serverStream = StreamConnector.GetDuplex(serverPipe, name: "stream server");
 
-                await PingPong(clientPipe, serverStream, LOOP);
+                await PingPong(clientPipe, serverStream, LoopCount);
             }
             Log.DebugLog("All good!");
         }
@@ -139,7 +177,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 var serverStream = StreamConnector.GetDuplex(serverPipe, name: "stream server");
                 var serverRevert = StreamConnector.GetDuplex(serverStream, PipeOptions, name: "revert server");
 
-                await PingPong(clientPipe, serverRevert, LOOP);
+                await PingPong(clientPipe, serverRevert, LoopCount);
             }
             Log.DebugLog("All good!");
         }
@@ -161,10 +199,11 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 var clientStream = StreamConnector.GetDuplex(clientPipe, name: "stream client");
                 var clientRevert = StreamConnector.GetDuplex(clientStream, PipeOptions, name: "revert client");
 
-                await PingPong(clientRevert, serverRevert, LOOP);
+                await PingPong(clientRevert, serverRevert, LoopCount);
             }
-            Log.WriteLine("All good!");
+            Log.DebugLog("All good!");
         }
+        static readonly RemoteCertificateValidationCallback IgnoreAllCertificateErrors = delegate { return true; };
 
         [Fact]
         public async Task ServerClientDoubleInverted_SslStream_PingPong()
@@ -178,26 +217,48 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
 
                 var serverStream = StreamConnector.GetDuplex(serverPipe, name: "stream server");
-                var serverSsl = new SslStream(serverStream);
-                
-                var clientStream = StreamConnector.GetDuplex(clientPipe, name: "stream client");
-                var clientSsl = new SslStream(clientStream);
+                var serverSsl = new SslStream(serverStream, false, IgnoreAllCertificateErrors, null, EncryptionPolicy.RequireEncryption);
 
-                X509Certificate cert = null;
-                var serverAuth = serverSsl.AuthenticateAsServerAsync(cert);
-                var clientAuth = clientSsl.AuthenticateAsClientAsync("foo");
+                var clientStream = StreamConnector.GetDuplex(clientPipe, name: "stream client");
+                var clientSsl = new SslStream(clientStream, false, IgnoreAllCertificateErrors, null, EncryptionPolicy.RequireEncryption);
+                
+                var serverAuth = serverSsl.AuthenticateAsServerAsync(SomeCertificate);
+                var clientAuth = clientSsl.AuthenticateAsClientAsync("somesite");
 
                 await serverAuth;
                 await clientAuth;
-
+                
                 var serverRevert = StreamConnector.GetDuplex(serverSsl, PipeOptions, name: "revert server");
                 var clientRevert = StreamConnector.GetDuplex(clientSsl, PipeOptions, name: "revert client");
 
 
 
-                await PingPong(clientRevert, serverRevert, LOOP);
+                await PingPong(clientRevert, serverRevert, LoopCount);
             }
-            Log.WriteLine("All good!");
+            Log.DebugLog("All good!");
+        }
+        static readonly X509Certificate SomeCertificate = X509Certificate.CreateFromCertFile("somesite.pfx");
+        [Fact]
+        public async Task ServerClient_SslStream_PingPong()
+        {
+            Log.DebugLog();
+            var (client, server) = CreateConnectedSocketPair();
+            using (client)
+            using (server)
+            {
+                var serverSsl = new SslStream(new NetworkStream(server), false, IgnoreAllCertificateErrors, null, EncryptionPolicy.RequireEncryption);
+                var clientSsl = new SslStream(new NetworkStream(client), false, IgnoreAllCertificateErrors, null, EncryptionPolicy.RequireEncryption);
+
+                
+                var serverAuth = serverSsl.AuthenticateAsServerAsync(SomeCertificate);
+                var clientAuth = clientSsl.AuthenticateAsClientAsync("somesite");
+
+                await serverAuth;
+                await clientAuth;
+
+                await PingPong(clientSsl, serverSsl, LoopCount);
+            }
+            Log.DebugLog("All good!");
         }
 
         private async Task PingPong(IDuplexPipe client, IDuplexPipe server, int count)
@@ -213,7 +274,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 Log.DebugLog("Server reading...");
                 string s = await ReadLine(server.Input);
                 Log.DebugLogVerbose($"Server received: '{s}'");
-                Assert.Equal($"PING:{i}", s);       
+                Assert.Equal($"PING:{i}", s);
 
 
                 GC.KeepAlive(server.Output);
@@ -227,7 +288,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
         }
 
-        private async Task PingPong(IDuplexPipe client, StreamConnector.AsyncPipeStream server, int count)
+        private async Task PingPong(IDuplexPipe client, Stream server, int count)
         {
             for (int i = 0; i < count; i++)
             {
@@ -252,7 +313,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
         }
 
-        private async Task PingPong(StreamConnector.AsyncPipeStream client, IDuplexPipe server, int count)
+        private async Task PingPong(Stream client, IDuplexPipe server, int count)
         {
             for (int i = 0; i < count; i++)
             {
@@ -269,6 +330,31 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
                 Log.DebugLogVerbose("Server sending...");
                 await WriteLine(server.Output, $"PONG:{i}");
+
+                Log.DebugLogVerbose("Client reading...");
+                s = await ReadLine(client);
+                Log.DebugLogVerbose($"Client received: '{s}'");
+                Assert.Equal($"PONG:{i}", s);
+            }
+        }
+
+        private async Task PingPong(Stream client, Stream server, int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                Log.DebugLogWriteLine();
+                Log.DebugLog($"Test {i}...");
+
+                Log.DebugLogVerbose("Client sending...");
+                await WriteLine(client, $"PING:{i}");
+
+                Log.DebugLogVerbose("Server reading...");
+                string s = await ReadLine(server);
+                Log.DebugLogVerbose($"Server received: '{s}'");
+                Assert.Equal($"PING:{i}", s);
+
+                Log.DebugLogVerbose("Server sending...");
+                await WriteLine(server, $"PONG:{i}");
 
                 Log.DebugLogVerbose("Client reading...");
                 s = await ReadLine(client);
@@ -301,7 +387,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             {
                 bytes = await stream.ReadAsync(buffer, 0, 1);
 
-                if (bytes <= 0 || buffer[0] ==(byte) '\n') break;
+                if (bytes <= 0 || buffer[0] == (byte)'\n') break;
                 ms.WriteByte(buffer[0]);
             }
             return Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
@@ -329,22 +415,52 @@ namespace Pipelines.Sockets.Unofficial.Tests
             return result;
         }
 
-        private static unsafe string ReadString(ReadOnlySequence<byte> buffer)
+        internal static unsafe string ReadString(ReadOnlySequence<byte> buffer)
         {
             if (buffer.IsSingleSegment)
             {
+                
                 var span = buffer.First.Span;
-                if (span.Length == 0) return "";
-
+                if (span.IsEmpty) return "";
                 fixed (byte* ptr = &span[0])
                 {
                     return Encoding.UTF8.GetString(ptr, span.Length);
                 }
             }
-            else
+            var decoder = Encoding.UTF8.GetDecoder();
+            int charCount = 0;
+            foreach (var segment in buffer)
             {
-                throw new NotImplementedException();
+                var span = segment.Span;
+                if (span.IsEmpty) continue;
+
+                fixed (byte* bPtr = &span[0])
+                {
+                    charCount += decoder.GetCharCount(bPtr, span.Length, false);
+                }
             }
+
+            decoder.Reset();
+
+            string s = new string((char)0, charCount);
+            fixed (char* sPtr = s)
+            {
+                char* cPtr = sPtr;
+                foreach (var segment in buffer)
+                {
+                    var span = segment.Span;
+                    if (span.IsEmpty) continue;
+
+                    fixed (byte* bPtr = &span[0])
+                    {
+                        var written = decoder.GetChars(bPtr, span.Length, cPtr, charCount, false);
+                        cPtr += written;
+                        charCount -= written;
+                    }
+                }
+            }
+            return s;
         }
+
     }
 }
