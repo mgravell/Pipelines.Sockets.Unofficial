@@ -21,7 +21,7 @@ namespace Pipelines.Sockets.Unofficial
 #endif
 
         [Conditional("VERBOSE")]
-        private void DebugLog(string message, [CallerMemberName] string caller = null) => Helpers.DebugLog(_name, message, caller);
+        private void DebugLog(string message, [CallerMemberName] string caller = null) => Helpers.DebugLog(Name, message, caller);
 
         /// <summary>
         /// Release any resources held by this instance
@@ -59,11 +59,11 @@ namespace Pipelines.Sockets.Unofficial
                 return _send.Writer;
             }
         }
-        private readonly string _name;
-        public override string ToString() => _name;
+        private string Name { get; }
+        public override string ToString() => Name;
         Task<Exception> RunThreadAsTask(SocketConnection connection, Func<SocketConnection, Exception> callback, string name)
         {
-            if (!string.IsNullOrWhiteSpace(_name)) name = _name + ":" + name;
+            if (!string.IsNullOrWhiteSpace(Name)) name = Name + ":" + name;
             var thread = new Thread(tuple =>
             {
                 var t = (Tuple<SocketConnection, Func<SocketConnection, Exception>, TaskCompletionSource<Exception>>)tuple;
@@ -121,7 +121,8 @@ namespace Pipelines.Sockets.Unofficial
 
         private SocketConnection(Socket socket, PipeOptions pipeOptions, SocketConnectionOptions socketConnectionOptions, string name = null)
         {
-            _name = name;
+            if (string.IsNullOrWhiteSpace(name)) name = GetType().Name;
+            Name = name.Trim();
             if (pipeOptions == null) pipeOptions = GetDefaultOptions();
             _pipeOptions = pipeOptions;
             Socket = socket;

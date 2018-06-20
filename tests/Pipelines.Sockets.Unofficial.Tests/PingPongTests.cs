@@ -40,164 +40,237 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
         }
 
-        static readonly PipeOptions PipeOptions;
+        static readonly PipeOptions PipeOptions, HardFlushPipeOptions;
         static PingPongTests()
         {
             var pool = new DedicatedThreadPoolPipeScheduler("MyPool");
-            var options = new PipeOptions(readerScheduler: pool, writerScheduler: pool, useSynchronizationContext: false);
-            PipeOptions = options;
+            PipeOptions = new PipeOptions(readerScheduler: pool, writerScheduler: pool, useSynchronizationContext: false);
+            HardFlushPipeOptions = new PipeOptions(readerScheduler: pool, writerScheduler: pool, useSynchronizationContext: false, resumeWriterThreshold: 0);
         }
+
+        const int LOOP = 20;
         [Fact]
         public async Task Basic_PingPong()
         {
+            Log.DebugLog();
             var (client, server) = CreateConnectedSocketPair();
-            Assert.NotNull(client);
-            Assert.NotNull(server);
-            
-            var clientPipe = SocketConnection.Create(client, PipeOptions, name: "client");
-            var serverPipe = SocketConnection.Create(server, PipeOptions, name: "server");
 
-            await PingPong(clientPipe, serverPipe);
+            using (client)
+            using (server)
+            {
+                var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
+                var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
+
+                await PingPong(clientPipe, serverPipe, LOOP);
+            }
+            Log.DebugLog("All good!");
         }
 
         [Fact]
         public async Task ClientInverted_PingPong()
         {
+            Log.DebugLog();
             var (client, server) = CreateConnectedSocketPair();
-            Assert.NotNull(client);
-            Assert.NotNull(server);
+            using (client)
+            using (server)
+            {
+                var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
+                var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
 
-            var clientPipe = SocketConnection.Create(client, PipeOptions, name: "client");
-            var serverPipe = SocketConnection.Create(server, PipeOptions, name: "server");
+                var clientStream = StreamConnector.GetDuplex(clientPipe, name: "stream client");
 
-            var clientStream = StreamConnector.GetDuplex(clientPipe, name: "x-client");
+                await PingPong(clientStream, serverPipe, LOOP);
+            }
+            Log.DebugLog("All good!");
+        }
 
-            await PingPong(clientStream, serverPipe);
+        [Fact]
+        public async Task ClientDoubleInverted_PingPong()
+        {
+            Log.DebugLog();
+            var (client, server) = CreateConnectedSocketPair();
+            using (client)
+            using (server)
+            {
+                var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
+                var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
+
+                var clientStream = StreamConnector.GetDuplex(clientPipe, name: "stream client");
+
+                var clientRevert = StreamConnector.GetDuplex(clientStream, name: "revert client");
+
+                await PingPong(clientRevert, serverPipe, LOOP);
+            }
+            Log.DebugLog("All good!");
         }
 
         [Fact]
         public async Task ServerInverted_PingPong()
         {
+            Log.DebugLog();
             var (client, server) = CreateConnectedSocketPair();
-            Assert.NotNull(client);
-            Assert.NotNull(server);
+            using (client)
+            using (server)
+            {
+                var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
+                var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
 
-            var clientPipe = SocketConnection.Create(client, PipeOptions, name: "client");
-            var serverPipe = SocketConnection.Create(server, PipeOptions, name: "server");
+                var serverStream = StreamConnector.GetDuplex(serverPipe, name: "stream server");
 
-            var serverStream = StreamConnector.GetDuplex(serverPipe, name: "x-server");
-
-            await PingPong(clientPipe, serverStream);
+                await PingPong(clientPipe, serverStream, LOOP);
+            }
+            Log.DebugLog("All good!");
         }
 
-        private async Task PingPong(IDuplexPipe client, IDuplexPipe server)
+
+        [Fact]
+        public async Task ServerDoubleInverted_PingPong()
         {
-            Log.DebugLog("Client sending...");
-            await Write(client.Output, "PING");
-            Log.DebugLog("Client sent; completing output...");
-            client.Output.Complete();
-            Log.DebugLog("Client completed output");
+            Log.DebugLog();
+            var (client, server) = CreateConnectedSocketPair();
+            using (client)
+            using (server)
+            {
+                var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
+                var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
 
-            Log.DebugLog("Server reading...");
-            string s = await ReadToEnd(server.Input);
-            Log.DebugLog($"Server received: '{s}'");
-            Assert.Equal("PING", s);
+                var serverStream = StreamConnector.GetDuplex(serverPipe, name: "stream server");
+                var serverRevert = StreamConnector.GetDuplex(serverStream, PipeOptions, name: "revert server");
 
-            Log.DebugLog("Server sending...");
-            await Write(server.Output, "PONG");
-            Log.DebugLog("Server sent; completing output...");
-            server.Output.Complete();
-            Log.DebugLog("Server completed output");
-
-            Log.DebugLog("Client reading...");
-            s = await ReadToEnd(client.Input);
-            Log.DebugLog($"Client received: '{s}'");
-            Assert.Equal("PONG", s);
+                await PingPong(clientPipe, serverRevert, LOOP);
+            }
+            Log.DebugLog("All good!");
         }
 
-        private async Task PingPong(IDuplexPipe client, StreamConnector.AsyncPipeStream server)
+        [Fact]
+        public async Task ServerClientDoubleInverted_PingPong()
         {
-            Log.DebugLog("Client sending...");
-            await Write(client.Output, "PING");
-            Log.DebugLog("Client sent; completing output...");
-            client.Output.Complete();
-            Log.DebugLog("Client completed output");
+            Log.DebugLog();
+            var (client, server) = CreateConnectedSocketPair();
+            using (client)
+            using (server)
+            {
+                var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
+                var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
 
-            Log.DebugLog("Server reading...");
-            string s = await ReadToEnd(server);
-            Log.DebugLog($"Server received: '{s}'");
-            Assert.Equal("PING", s);
+                var serverStream = StreamConnector.GetDuplex(serverPipe, name: "stream server");
+                var serverRevert = StreamConnector.GetDuplex(serverStream, PipeOptions, name: "revert server");
 
-            Log.DebugLog("Server sending...");
-            await Write(server, "PONG");
-            Log.DebugLog("Server sent; completing output...");
-            server.CloseWrite();
-            Log.DebugLog("Server completed output");
+                var clientStream = StreamConnector.GetDuplex(clientPipe, name: "stream client");
+                var clientRevert = StreamConnector.GetDuplex(clientStream, PipeOptions, name: "revert client");
 
-            Log.DebugLog("Client reading...");
-            s = await ReadToEnd(client.Input);
-            Log.DebugLog($"Client received: '{s}'");
-            Assert.Equal("PONG", s);
+                await PingPong(clientRevert, serverRevert, LOOP);
+            }
+            Log.DebugLog("All good!");
         }
 
-        private async Task PingPong(StreamConnector.AsyncPipeStream client, IDuplexPipe server)
+        private async Task PingPong(IDuplexPipe client, IDuplexPipe server, int count)
         {
-            Log.DebugLog("Client sending...");
-            await Write(client, "PING");
-            Log.DebugLog("Client sent; completing output...");
-            client.CloseWrite();
-            Log.DebugLog("Client completed output");
+            for (int i = 0; i < count; i++)
+            {
+                Log.DebugLogWriteLine();
+                Log.DebugLog($"Test {i}...");
 
-            Log.DebugLog("Server reading...");
-            string s = await ReadToEnd(server.Input);
-            Log.DebugLog($"Server received: '{s}'");
-            Assert.Equal("PING", s);
+                Log.DebugLog("Client sending...");
+                await WriteLine(client.Output, $"PING:{i}");
 
-            Log.DebugLog("Server sending...");
-            await Write(server.Output, "PONG");
-            Log.DebugLog("Server sent; completing output...");
-            server.Output.Complete();
-            Log.DebugLog("Server completed output");
+                Log.DebugLog("Server reading...");
+                string s = await ReadLine(server.Input);
+                Log.DebugLogVerbose($"Server received: '{s}'");
+                Assert.Equal($"PING:{i}", s);       
 
-            Log.DebugLog("Client reading...");
-            s = await ReadToEnd(client);
-            Log.DebugLog($"Client received: '{s}'");
-            Assert.Equal("PONG", s);
+
+                GC.KeepAlive(server.Output);
+                Log.DebugLog("Server sending...");
+                await WriteLine(server.Output, $"PONG:{i}");
+
+                Log.DebugLog("Client reading...");
+                s = await ReadLine(client.Input);
+                Log.DebugLogVerbose($"Client received: '{s}'");
+                Assert.Equal($"PONG:{i}", s);
+            }
         }
 
-        async static Task Write(PipeWriter writer, string message)
+        private async Task PingPong(IDuplexPipe client, StreamConnector.AsyncPipeStream server, int count)
         {
-            var bytes = Encoding.UTF8.GetBytes(message);
+            for (int i = 0; i < count; i++)
+            {
+                Log.DebugLogWriteLine();
+                Log.DebugLog($"Test {i}...");
+
+                Log.DebugLogVerbose("Client sending...");
+                await WriteLine(client.Output, $"PING:{i}");
+
+                Log.DebugLogVerbose("Server reading...");
+                string s = await ReadLine(server);
+                Log.DebugLogVerbose($"Server received: '{s}'");
+                Assert.Equal($"PING:{i}", s);
+
+                Log.DebugLogVerbose("Server sending...");
+                await WriteLine(server, $"PONG:{i}");
+
+                Log.DebugLogVerbose("Client reading...");
+                s = await ReadLine(client.Input);
+                Log.DebugLogVerbose($"Client received: '{s}'");
+                Assert.Equal($"PONG:{i}", s);
+            }
+        }
+
+        private async Task PingPong(StreamConnector.AsyncPipeStream client, IDuplexPipe server, int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                Log.DebugLogWriteLine();
+                Log.DebugLog($"Test {i}...");
+
+                Log.DebugLogVerbose("Client sending...");
+                await WriteLine(client, $"PING:{i}");
+
+                Log.DebugLogVerbose("Server reading...");
+                string s = await ReadLine(server.Input);
+                Log.DebugLogVerbose($"Server received: '{s}'");
+                Assert.Equal($"PING:{i}", s);
+
+                Log.DebugLogVerbose("Server sending...");
+                await WriteLine(server.Output, $"PONG:{i}");
+
+                Log.DebugLogVerbose("Client reading...");
+                s = await ReadLine(client);
+                Log.DebugLogVerbose($"Client received: '{s}'");
+                Assert.Equal($"PONG:{i}", s);
+            }
+        }
+
+        async Task WriteLine(PipeWriter writer, string message)
+        {
+            var bytes = Encoding.UTF8.GetBytes(message + "\n");
             await writer.WriteAsync(bytes);
+            await writer.FlushAsync();
         }
 
-        async static Task Write(Stream stream, string message)
+        static async Task WriteLine(Stream stream, string message)
         {
-            var bytes = Encoding.UTF8.GetBytes(message);
+            var bytes = Encoding.UTF8.GetBytes(message + "\n");
             await stream.WriteAsync(bytes, 0, bytes.Length);
+            await stream.FlushAsync();
         }
 
-        async Task<string> ReadToEnd(Stream stream)
+        async Task<string> ReadLine(Stream stream)
         {
             var ms = new MemoryStream();
-            var buffer = new byte[1024];
+            var buffer = new byte[1];
 
             int bytes;
-            do
+            while (true)
             {
-                Log.DebugLog($"reading from stream...");
-                bytes = await stream.ReadAsync(buffer, 0, buffer.Length);
-                if (bytes > 0)
-                {
-                    Log.DebugLog($"read {bytes} bytes from stream...");
-                    ms.Write(buffer, 0, bytes);
-                }    
-            } while (bytes > 0);
-            Log.DebugLog($"EOF from stream; total bytes: {ms.Length}");
+                bytes = await stream.ReadAsync(buffer, 0, 1);
 
+                if (bytes <= 0 || buffer[0] ==(byte) '\n') break;
+                ms.WriteByte(buffer[0]);
+            }
             return Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
         }
-        async static Task<string> ReadToEnd(PipeReader reader)
+        async static Task<string> ReadLine(PipeReader reader)
         {
             var sb = new StringBuilder();
             string result = null;
@@ -205,15 +278,17 @@ namespace Pipelines.Sockets.Unofficial.Tests
             {
                 var inp = await reader.ReadAsync();
                 var buffer = inp.Buffer;
+
+                var split = buffer.PositionOf((byte)'\n');
+
                 SequencePosition consumed = buffer.Start;
-                if (inp.IsCompleted)
+                if (split != null)
                 {
-                    result = ReadString(buffer);
-                    consumed = buffer.End;
+                    var contents = buffer.Slice(0, split.Value);
+                    result = ReadString(contents);
+                    consumed = buffer.GetPosition(1, split.Value);
                 }
-                reader.AdvanceTo(inp.Buffer.Start);
-
-
+                reader.AdvanceTo(consumed);
             }
             return result;
         }

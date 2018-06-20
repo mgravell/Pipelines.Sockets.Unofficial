@@ -1,4 +1,6 @@
-﻿using System.IO;
+﻿using System;
+using System.Diagnostics;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
@@ -34,8 +36,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
             _text?.WriteLine(value);
         }
 
-
-        public void DebugLog(string message, [CallerMemberName] string caller = null)
+        [Conditional("DEBUG")]
+        public void DebugLog(string message = "", [CallerMemberName] string caller = null)
         {
             var thread = Thread.CurrentThread;
             var name = thread.Name;
@@ -43,5 +45,17 @@ namespace Pipelines.Sockets.Unofficial.Tests
             
             WriteLine($"[{name}:{caller}] {message}");
         }
+
+        [Conditional("VERBOSE")]
+        public void DebugLogVerbose(string message = "", [CallerMemberName] string caller = null) => DebugLog(message, caller);
+        [Conditional("VERBOSE")]
+        public void DebugLogVerboseWriteLine()
+        {
+#if DEBUG
+            WriteLine("");
+#endif
+        }
+        [Conditional("DEBUG")]
+        public void DebugLogWriteLine() => WriteLine("");
     }
 }

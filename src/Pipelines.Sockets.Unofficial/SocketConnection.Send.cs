@@ -39,7 +39,7 @@ namespace Pipelines.Sockets.Unofficial
                         {
                             if (args == null) args = CreateArgs(_pipeOptions.WriterScheduler);
                             DebugLog($"sending {buffer.Length} bytes over socket...");
-                            await SendAsync(Socket, args, buffer);
+                            await SendAsync(Socket, args, buffer, Name);
                         }
                         else if (result.IsCompleted)
                         {
@@ -97,11 +97,11 @@ namespace Pipelines.Sockets.Unofficial
             return error;
         }
 
-        private static SocketAwaitable SendAsync(Socket socket, SocketAsyncEventArgs args, ReadOnlySequence<byte> buffer)
+        static SocketAwaitable SendAsync(Socket socket, SocketAsyncEventArgs args, ReadOnlySequence<byte> buffer, string name)
         {
             if (buffer.IsSingleSegment)
             {
-                return SendAsync(socket, args, buffer.First);
+                return SendAsync(socket, args, buffer.First, name);
             }
 
 #if NETCOREAPP2_1
@@ -115,12 +115,13 @@ namespace Pipelines.Sockets.Unofficial
 
             args.BufferList = GetBufferList(args, buffer);
 
+            Helpers.DebugLog(name, $"## {nameof(socket.SendAsync)} {buffer.Length}");
             if (!socket.SendAsync(args)) OnCompleted(args);
 
             return GetAwaitable(args);
         }
 
-        private static SocketAwaitable SendAsync(Socket socket, SocketAsyncEventArgs args, ReadOnlyMemory<byte> memory)
+        static SocketAwaitable SendAsync(Socket socket, SocketAsyncEventArgs args, ReadOnlyMemory<byte> memory, string name)
         {
             // The BufferList getter is much less expensive then the setter.
             if (args.BufferList != null)
@@ -135,6 +136,7 @@ namespace Pipelines.Sockets.Unofficial
 
             args.SetBuffer(segment.Array, segment.Offset, segment.Count);
 #endif
+            Helpers.DebugLog(name, $"## {nameof(socket.SendAsync)} {memory.Length}");
             if (!socket.SendAsync(args)) OnCompleted(args);
 
             return GetAwaitable(args);

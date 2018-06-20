@@ -20,7 +20,7 @@ namespace Pipelines.Sockets.Unofficial
                     if (ZeroLengthReads && Socket.Available == 0)
                     {
                         DebugLog($"awaiting zero-length receive...");
-                        await ReceiveAsync(Socket, args, default);
+                        await ReceiveAsync(Socket, args, default, Name);
                         DebugLog($"zero-length receive complete; now {Socket.Available} bytes available");
 
                         // this *could* be because data is now available, or it *could* be because of
@@ -33,7 +33,7 @@ namespace Pipelines.Sockets.Unofficial
                     try
                     {
                         DebugLog($"awaiting socket receive...");
-                        var bytesReceived = await ReceiveAsync(Socket, args, buffer);
+                        var bytesReceived = await ReceiveAsync(Socket, args, buffer, Name);
                         DebugLog($"received {bytesReceived} bytes");
 
                         if (bytesReceived == 0)
@@ -130,7 +130,7 @@ namespace Pipelines.Sockets.Unofficial
             return error;
         }
 
-        private static SocketAwaitable ReceiveAsync(Socket socket, SocketAsyncEventArgs args, Memory<byte> buffer)
+        private static SocketAwaitable ReceiveAsync(Socket socket, SocketAsyncEventArgs args, Memory<byte> buffer, string name)
         {
 #if NETCOREAPP2_1
             args.SetBuffer(buffer);
@@ -155,6 +155,7 @@ namespace Pipelines.Sockets.Unofficial
                 args.SetBuffer(segment.Array, segment.Offset, segment.Count);
             }
 #endif
+            Helpers.DebugLog(name, $"## {nameof(socket.ReceiveAsync)} <={buffer.Length}");
             if (!socket.ReceiveAsync(args)) OnCompleted(args);
 
             return GetAwaitable(args);

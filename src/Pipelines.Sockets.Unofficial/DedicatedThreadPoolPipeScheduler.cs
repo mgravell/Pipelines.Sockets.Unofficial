@@ -86,6 +86,7 @@ namespace Pipelines.Sockets.Unofficial
                 // otherwise; 
                 if (_disposed || (!StartWorker() && queueLength >= UseThreadPoolQueueLength))
                 {
+                    Helpers.DebugLog(Name, $"requesting help form thread-pool; queue length: {queueLength}");
                     System.Threading.ThreadPool.QueueUserWorkItem(ThreadPoolRunSingleItem, this);
                 }
             }

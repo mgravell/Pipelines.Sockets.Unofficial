@@ -5,12 +5,12 @@ using System.Threading.Tasks;
 
 namespace BasicRunner
 {
-    class Program
+    static class Program
     {
         static async Task Main()
         {
             Thread.CurrentThread.Name = nameof(Main);
-            await new PingPongTests(Console.Out).ServerInverted_PingPong();
+            await new PingPongTests(Console.Out).ServerClientDoubleInverted_PingPong();
         }
     }
 }

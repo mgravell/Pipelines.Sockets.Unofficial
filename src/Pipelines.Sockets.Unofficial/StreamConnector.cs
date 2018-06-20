@@ -5,14 +5,14 @@ namespace Pipelines.Sockets.Unofficial
 {
     public static partial class StreamConnector
     {
-        public static IDuplexPipe GetDuplex(Stream stream, PipeOptions pipeOptions = null)
-            => new AsyncStreamPipe(stream, pipeOptions, true, true);
+        public static IDuplexPipe GetDuplex(Stream stream, PipeOptions pipeOptions = null, string name = null)
+            => new AsyncStreamPipe(stream, pipeOptions, true, true, name);
 
-        public static PipeReader GetReader(Stream stream, PipeOptions pipeOptions = null)
-            => new AsyncStreamPipe(stream, pipeOptions, true, false).Input;
+        public static PipeReader GetReader(Stream stream, PipeOptions pipeOptions = null, string name = null)
+            => new AsyncStreamPipe(stream, pipeOptions, true, false, name).Input;
 
-        public static PipeWriter GetWriter(Stream stream, PipeOptions pipeOptions = null)
-            => new AsyncStreamPipe(stream, pipeOptions, false, true).Output;
+        public static PipeWriter GetWriter(Stream stream, PipeOptions pipeOptions = null, string name = null)
+            => new AsyncStreamPipe(stream, pipeOptions, false, true, name).Output;
         
         public static AsyncPipeStream GetDuplex(PipeReader reader, PipeWriter writer, string name = null)
             => new AsyncPipeStream(reader, writer, name);

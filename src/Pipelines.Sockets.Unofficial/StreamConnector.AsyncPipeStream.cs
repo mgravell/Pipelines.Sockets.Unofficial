@@ -13,8 +13,8 @@ namespace Pipelines.Sockets.Unofficial
     {
         public sealed class AsyncPipeStream : Stream
         {
-            private readonly string _name;
-            public override string ToString() => _name;
+            private string Name { get; }
+            public override string ToString() => Name;
 
             private AsyncReadResult _pendingRead;
             private AsyncWriteResult _pendingWrite;
@@ -36,7 +36,9 @@ namespace Pipelines.Sockets.Unofficial
                     throw new ArgumentNullException("At least one of reader/writer must be provided");
                 _reader = reader;
                 _writer = writer;
-                _name = name;
+
+                if (string.IsNullOrWhiteSpace(name)) name = GetType().Name;
+                Name = name.Trim();
             }
             public override bool CanRead => _reader != null;
             public override bool CanWrite => _writer != null;
@@ -55,7 +57,7 @@ namespace Pipelines.Sockets.Unofficial
             private void AssertCanWrite() { if (_writer == null) throw new InvalidOperationException("Cannot write"); }
 
             [Conditional("VERBOSE")]
-            private void DebugLog(string message = null, [CallerMemberName] string caller = null) => Helpers.DebugLog(_name, message, caller);
+            private void DebugLog(string message = null, [CallerMemberName] string caller = null) => Helpers.DebugLog(Name, message, caller);
 
             public override int Read(byte[] buffer, int offset, int count)
             {
@@ -109,7 +111,7 @@ namespace Pipelines.Sockets.Unofficial
                 {
                     var to = _writer.GetSpan(1);
                     int bytes = Math.Min(count, to.Length);
-
+                    DebugLog($"Writing {bytes} bytes to '{_writer}'...");
                     from.Slice(offset, bytes).CopyTo(to.Slice(0, bytes));
                     _writer.Advance(bytes);
                     offset += bytes;
@@ -273,7 +275,7 @@ namespace Pipelines.Sockets.Unofficial
                         {
                             var segSpan = segment.Span;
                             int take = Math.Min(segSpan.Length, remaining);
-                            segSpan.CopyTo(to);
+                            segSpan.Slice(0, take).CopyTo(to);
                             to = to.Slice(take);
                             bytesRead += take;
                             remaining -= take;
@@ -317,7 +319,7 @@ namespace Pipelines.Sockets.Unofficial
                             return Task.FromResult(ConsumeBytes(pending.Result, memory.Span));
                         }
 
-                        DebugLog("setting completion");
+                        DebugLog("setting completion data for a task");
                         var tcs = new TaskCompletionSource<int>();
                         pendingRead.Init(null, null, memory, tcs, PendingAsyncMode.Task);
                         pendingRead.ReadAwaiter = pending.GetAwaiter();

@@ -24,9 +24,9 @@ namespace Pipelines.Sockets.Unofficial
 #if VERBOSE
                 var thread = System.Threading.Thread.CurrentThread;
                 var threadName = thread.Name;
-                if (string.IsNullOrWhiteSpace(name)) threadName = thread.ManagedThreadId.ToString();
+                if (string.IsNullOrWhiteSpace(threadName)) threadName = thread.ManagedThreadId.ToString();
 
-                Log?.WriteLine($"[{name}, {threadName}, {caller}]: {message}");
+                Log?.WriteLine($"[{threadName}, {name}, {caller}]: {message}");
 #endif
         }
 
