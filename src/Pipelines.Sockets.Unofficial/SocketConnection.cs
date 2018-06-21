@@ -62,13 +62,13 @@ namespace Pipelines.Sockets.Unofficial
         /// Gets a string representation of this object
         /// </summary>
         public override string ToString() => Name;
-        void RunThreadAsTask(SocketConnection connection, Func<SocketConnection, Exception> callback, string name)
+        void RunThreadAsTask(object state, Action<object> callback, string name)
         {
             if (!string.IsNullOrWhiteSpace(Name)) name = Name + ":" + name;
 #pragma warning disable IDE0017
             var thread = new Thread(tuple =>
             {
-                var t = (Tuple<SocketConnection, Func<SocketConnection, Exception>, TaskCompletionSource<Exception>>)tuple;
+                var t = (Tuple<object, Action<object>, TaskCompletionSource<Exception>>)tuple;
                 //try { t.Item3?.TrySetResult(t.Item2(t.Item1)); }
                 //catch (Exception ex) { t.Item3.TrySetException(ex); }
 
@@ -80,7 +80,7 @@ namespace Pipelines.Sockets.Unofficial
             if (!string.IsNullOrWhiteSpace(name)) thread.Name = name;
 
             TaskCompletionSource<Exception> tcs = null; // new TaskCompletionSource<Exception>();
-            thread.Start(Tuple.Create(connection, callback, tcs));
+            thread.Start(Tuple.Create(state, callback, tcs));
             //return tcs.Task;
         }
 
@@ -148,15 +148,20 @@ namespace Pipelines.Sockets.Unofficial
             _sendOptions = sendPipeOptions;
 
             if (HasFlag(SocketConnectionOptions.SyncWriter))
-                RunThreadAsTask(this, c => c.DoSendSync(), nameof(DoSendSync));
+                RunThreadAsTask(this, s_DoSendAsync, nameof(DoSendSync));
             else
-                sendPipeOptions.ReaderScheduler.Schedule(s => ((SocketConnection)s).DoSendAsync(), this);
+                sendPipeOptions.ReaderScheduler.Schedule(s_DoSendAsync, this);
 
             if (HasFlag(SocketConnectionOptions.SyncReader))
-                RunThreadAsTask(this, c => c.DoReceiveSync(), nameof(DoReceiveSync));
+                RunThreadAsTask(this, s_DoReceiveAsync, nameof(DoReceiveSync));
             else
-                receivePipeOptions.ReaderScheduler.Schedule(s => ((SocketConnection)s).DoReceiveAsync(), this);
+                receivePipeOptions.ReaderScheduler.Schedule(s_DoReceiveAsync, this);
         }
+
+        private static void DoReceiveAsync(object s) => ((SocketConnection)s).DoReceiveAsync();
+        private static readonly Action<object> s_DoReceiveAsync = DoReceiveAsync;
+        private static void DoSendAsync(object s) => ((SocketConnection)s).DoSendAsync();
+        private static readonly Action<object> s_DoSendAsync = DoSendAsync;
 
         private PipeOptions _receiveOptions, _sendOptions;
 
