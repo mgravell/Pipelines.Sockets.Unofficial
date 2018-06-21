@@ -99,9 +99,12 @@ namespace Pipelines.Sockets.Unofficial
         {
             if (ReferenceEquals(scheduler, PipeScheduler.Inline)) scheduler = null;
             var args = new SocketAsyncEventArgs { UserToken = new SocketAwaitable(scheduler) };
-            args.Completed += (_, e) => OnCompleted(e);
+            args.Completed += _OnCompleted;
             return args;
         }
+        static void OnCompleted(object sender, SocketAsyncEventArgs e) => OnCompleted(e);
+        static readonly EventHandler<SocketAsyncEventArgs> _OnCompleted = OnCompleted;
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static SocketAwaitable GetAwaitable(SocketAsyncEventArgs args)
             => (SocketAwaitable)args.UserToken;

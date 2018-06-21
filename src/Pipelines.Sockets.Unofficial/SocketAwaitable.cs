@@ -11,7 +11,8 @@ namespace Pipelines.Sockets.Unofficial
 {
     internal sealed class SocketAwaitable : ICriticalNotifyCompletion
     {
-        private static readonly Action _callbackCompleted = () => { };
+        private static void NoOp() { }
+        private static readonly Action _callbackCompleted = NoOp; // get better debug info by avoiding inline delegate here
 
         private Action _callback;
         private int _bytesTransfered;
@@ -78,6 +79,7 @@ namespace Pipelines.Sockets.Unofficial
                 }
             }
         }
-        static readonly Action<object> InvokeStateAsAction = state => ((Action)state).Invoke();
+        private static void InvokeStateAsActionImpl(object state) => ((Action)state).Invoke();
+        internal static readonly Action<object> InvokeStateAsAction = InvokeStateAsActionImpl;
     }
 }
