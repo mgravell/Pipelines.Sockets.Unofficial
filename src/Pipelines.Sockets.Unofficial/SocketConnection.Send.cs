@@ -11,7 +11,7 @@ namespace Pipelines.Sockets.Unofficial
 {
     partial class SocketConnection
     {
-        private async Task<Exception> DoSendAsync()
+        private async void DoSendAsync()
         {
             Exception error = null;
             DebugLog("starting send loop");
@@ -23,12 +23,12 @@ namespace Pipelines.Sockets.Unofficial
                     DebugLog("awaiting data from pipe...");
                     if(_send.Reader.TryRead(out var result))
                     {
-                        Helpers.Incr(Counter.SocketReadReadSync);
+                        Helpers.Incr(Counter.SocketPipeReadReadSync);
                     }
                     else
                     {
                         var read = _send.Reader.ReadAsync();
-                        Helpers.Incr(read.IsCompleted ? Counter.SocketReadReadSync : Counter.SocketReadReadAsync);
+                        Helpers.Incr(read.IsCompleted ? Counter.SocketPipeReadReadSync : Counter.SocketPipeReadReadAsync);
                         result = await read;
                     }
                     var buffer = result.Buffer;
@@ -43,10 +43,10 @@ namespace Pipelines.Sockets.Unofficial
                     {
                         if (!buffer.IsEmpty)
                         {
-                            if (args == null) args = CreateArgs(_pipeOptions.WriterScheduler);
+                            if (args == null) args = CreateArgs(_sendOptions.WriterScheduler);
                             DebugLog($"sending {buffer.Length} bytes over socket...");
                             var send = SendAsync(Socket, args, buffer, Name);
-                            Helpers.Incr(send.IsCompleted ? Counter.SocketReadSendSync : Counter.SocketReadSendAsync);
+                            Helpers.Incr(send.IsCompleted ? Counter.SocketSendAsyncSync : Counter.SocketSendAsyncAsync);
                             await send;
                         }
                         else if (result.IsCompleted)
@@ -102,7 +102,7 @@ namespace Pipelines.Sockets.Unofficial
                 try { _send.Reader.Complete(error); } catch { }
             }
             DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
-            return error;
+            //return error;
         }
 
         static SocketAwaitable SendAsync(Socket socket, SocketAsyncEventArgs args, ReadOnlySequence<byte> buffer, string name)

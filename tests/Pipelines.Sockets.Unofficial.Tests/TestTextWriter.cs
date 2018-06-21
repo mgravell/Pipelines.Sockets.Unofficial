@@ -48,14 +48,11 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
         [Conditional("VERBOSE")]
         public void DebugLogVerbose(string message = "", [CallerMemberName] string caller = null) => DebugLog(message, caller);
-        [Conditional("VERBOSE")]
-        public void DebugLogVerboseWriteLine()
-        {
-#if DEBUG
-            WriteLine("");
-#endif
-        }
+
         [Conditional("DEBUG")]
         public void DebugLogWriteLine() => WriteLine("");
+
+        [Conditional("VERBOSE")]
+        public void DebugLogVerboseWriteLine() => DebugLogWriteLine();
     }
 }

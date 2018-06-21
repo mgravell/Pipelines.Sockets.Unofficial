@@ -10,7 +10,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		.gitignore = .gitignore
 		NuGet.config = NuGet.config
 		README.md = README.md
-		tests\somesite.pfx = tests\somesite.pfx
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Pipelines.Sockets.Unofficial.Tests", "tests\Pipelines.Sockets.Unofficial.Tests\Pipelines.Sockets.Unofficial.Tests.csproj", "{055E629E-5734-4572-95C9-7858D46D1C86}"

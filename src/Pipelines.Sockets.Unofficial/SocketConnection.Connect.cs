@@ -11,14 +11,22 @@ namespace Pipelines.Sockets.Unofficial
     {
         private static PipeOptions _defaultOptions;
 
-        private static PipeOptions GetDefaultOptions()
-            => _defaultOptions ?? (_defaultOptions = new PipeOptions(MemoryPool<byte>.Shared));
+        /// <summary>
+        /// Open a new or existing socket as a client
+        /// </summary>
+        public static Task<SocketConnection> ConnectAsync(
+            EndPoint endpoint,
+            PipeOptions pipeOptions = null,
+            SocketConnectionOptions connectionOptions = SocketConnectionOptions.None,
+            Func<SocketConnection, Task> onConnected = null,
+            Socket socket = null, string name = null)
+            => ConnectAsync(endpoint, pipeOptions, pipeOptions, connectionOptions, onConnected, socket, name);
         /// <summary>
         /// Open a new or existing socket as a client
         /// </summary>
         public static async Task<SocketConnection> ConnectAsync(
             EndPoint endpoint,
-            PipeOptions pipeOptions = null,
+            PipeOptions sendPipeOptions, PipeOptions receivePipeOptions,
             SocketConnectionOptions connectionOptions = SocketConnectionOptions.None,
             Func<SocketConnection, Task> onConnected = null,
             Socket socket = null, string name = null)
@@ -27,9 +35,11 @@ namespace Pipelines.Sockets.Unofficial
             {
                 socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
             }
-            try { socket.NoDelay = true; } catch { }
-            try { SetFastLoopbackOption(socket); } catch { }
-            var args = CreateArgs(pipeOptions?.ReaderScheduler);
+            if (sendPipeOptions == null) sendPipeOptions = PipeOptions.Default;
+            if (receivePipeOptions == null) receivePipeOptions = PipeOptions.Default;
+
+            SetRecommendedClientOptions(socket);
+            var args = CreateArgs(receivePipeOptions.ReaderScheduler);
 
 
             Helpers.DebugLog(name, $"connecting to {endpoint}...");
@@ -38,7 +48,7 @@ namespace Pipelines.Sockets.Unofficial
 
             Helpers.DebugLog(name, "connected");
 
-            var connection = Create(socket, pipeOptions, connectionOptions, name);
+            var connection = Create(socket, sendPipeOptions, receivePipeOptions, connectionOptions, name);
 
             if (onConnected != null) await onConnected(connection);
 

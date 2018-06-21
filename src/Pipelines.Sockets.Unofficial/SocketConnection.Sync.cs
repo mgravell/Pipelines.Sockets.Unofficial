@@ -121,7 +121,7 @@ namespace Pipelines.Sockets.Unofficial
                 Action setSignal = () => waitSignal.Set();
 #pragma warning restore IDE0039
 
-                var args = CreateArgs(_pipeOptions.ReaderScheduler);
+                var args = CreateArgs(_receiveOptions.ReaderScheduler);
                 while (true)
                 {
                     if (ZeroLengthReads && Socket.Available == 0)

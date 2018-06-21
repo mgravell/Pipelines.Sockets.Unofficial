@@ -23,17 +23,32 @@ namespace Pipelines.Sockets.Unofficial
         SocketSendAsyncMultiAsync,
 
 
+        SocketPipeReadReadSync,
+        SocketPipeReadReadAsync,
+        SocketPipeFlushSync,
+        SocketPipeFlushAsync,
 
-        SocketReadReadSync,
-        SocketReadReadAsync,
-        SocketReadSendSync,
-        SocketReadSendAsync,
+
+        SocketReceiveSync,
+        SocketReceiveAsync,
+        SocketZeroLengthReceiveSync,
+        SocketZeroLengthReceiveAsync,
+        SocketSendAsyncSync,
+        SocketSendAsyncAsync,
 
 
         SocketAwaitableCallbackNone,
         SocketAwaitableCallbackDirect,
         SocketAwaitableCallbackSchedule,
+
+
+        ThreadPoolWorkerStarted,
+        ThreadPoolPushedToMainThreadPoop,
+        ThreadPoolScheduled,
+        ThreadPoolExecuted,
+
         
+
     }
     internal static class Helpers
     {

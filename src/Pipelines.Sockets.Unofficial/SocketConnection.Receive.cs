@@ -8,19 +8,22 @@ namespace Pipelines.Sockets.Unofficial
 {
     partial class SocketConnection
     {
-        private async Task<Exception> DoReceiveAsync()
+        private async void DoReceiveAsync()
         {
             Exception error = null;
             DebugLog("starting receive loop");
             try
             {
-                var args = CreateArgs(_pipeOptions.ReaderScheduler);
+                var args = CreateArgs(_receiveOptions.ReaderScheduler);
                 while (true)
                 {
                     if (ZeroLengthReads && Socket.Available == 0)
                     {
                         DebugLog($"awaiting zero-length receive...");
-                        await ReceiveAsync(Socket, args, default, Name);
+                        
+                        var receive = ReceiveAsync(Socket, args, default, Name);
+                        Helpers.Incr(receive.IsCompleted ? Counter.SocketZeroLengthReceiveSync : Counter.SocketZeroLengthReceiveAsync);
+                        await receive;
                         DebugLog($"zero-length receive complete; now {Socket.Available} bytes available");
 
                         // this *could* be because data is now available, or it *could* be because of
@@ -33,7 +36,9 @@ namespace Pipelines.Sockets.Unofficial
                     try
                     {
                         DebugLog($"awaiting socket receive...");
-                        var bytesReceived = await ReceiveAsync(Socket, args, buffer, Name);
+                        var receive = ReceiveAsync(Socket, args, buffer, Name);
+                        Helpers.Incr(receive.IsCompleted ? Counter.SocketReceiveSync : Counter.SocketReceiveAsync);
+                        var bytesReceived = await receive;
                         DebugLog($"received {bytesReceived} bytes");
 
                         if (bytesReceived == 0)
@@ -50,6 +55,7 @@ namespace Pipelines.Sockets.Unofficial
 
                     DebugLog("flushing pipe");
                     var flushTask = _receive.Writer.FlushAsync();
+                    Helpers.Incr(flushTask.IsCompleted ? Counter.SocketPipeFlushSync : Counter.SocketPipeFlushAsync);
 
                     FlushResult result;
                     if (flushTask.IsCompletedSuccessfully)
@@ -127,7 +133,7 @@ namespace Pipelines.Sockets.Unofficial
             }
 
             DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
-            return error;
+            //return error;
         }
 
         private static SocketAwaitable ReceiveAsync(Socket socket, SocketAsyncEventArgs args, Memory<byte> buffer, string name)

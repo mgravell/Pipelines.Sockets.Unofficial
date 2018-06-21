@@ -268,8 +268,8 @@ namespace Pipelines.Sockets.Unofficial
             {
                 CloseWrite();
                 CloseRead();
-                try { _reader?.CancelPendingRead(); } catch { }
-                try { _writer?.CancelPendingFlush(); } catch { }
+                //try { _reader?.CancelPendingRead(); } catch { }
+                //try { _writer?.CancelPendingFlush(); } catch { }
             }
 
             /// <summary>

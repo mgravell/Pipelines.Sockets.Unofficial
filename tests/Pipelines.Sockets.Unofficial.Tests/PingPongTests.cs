@@ -15,8 +15,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
 {
     public class PingPongTests
     {
-        static readonly PipeOptions PipeOptions;
-        
+        static readonly PipeOptions PipeOptions, InlineSend, InlineReceive, InlineBoth;
+
+
         static PingPongTests()
         {
             // PipeOptions = PipeOptions.Default;
@@ -25,7 +26,10 @@ namespace Pipelines.Sockets.Unofficial.Tests
             //var pool = PipeScheduler.Inline;
             //var pool = PipeScheduler.ThreadPool;
             PipeOptions = new PipeOptions(readerScheduler: pool, writerScheduler: pool, useSynchronizationContext: false);
-            
+
+            InlineSend = new PipeOptions(PipeOptions.Pool, PipeOptions.ReaderScheduler, PipeScheduler.Inline, PipeOptions.PauseWriterThreshold, PipeOptions.ResumeWriterThreshold, PipeOptions.MinimumSegmentSize, PipeOptions.UseSynchronizationContext);
+            InlineReceive = new PipeOptions(PipeOptions.Pool, PipeScheduler.Inline, PipeOptions.WriterScheduler, PipeOptions.PauseWriterThreshold, PipeOptions.ResumeWriterThreshold, PipeOptions.MinimumSegmentSize, PipeOptions.UseSynchronizationContext);
+            InlineBoth = new PipeOptions(PipeOptions.Pool, PipeScheduler.Inline, PipeScheduler.Inline, PipeOptions.PauseWriterThreshold, PipeOptions.ResumeWriterThreshold, PipeOptions.MinimumSegmentSize, PipeOptions.UseSynchronizationContext);
         }
 
         public const int LoopCount = 5000;
@@ -54,12 +58,15 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
                 Log.DebugLog("Connected");
                 Socket client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                SocketConnection.SetRecommendedClientOptions(client);
                 client.Connect(listener.LocalEndPoint);
                 Socket server = listener.Accept();
-
+                SocketConnection.SetRecommendedServerOptions(server);
                 return (client, server);
             }
         }
+
+
 
         [Fact]
         public async Task Basic_Pipelines_PingPong()
@@ -70,8 +77,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
             using (client)
             using (server)
             {
-                var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
-                var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
+                var clientPipe = SocketConnection.Create(client, InlineReceive, InlineSend, name: "socket client");
+                var serverPipe = SocketConnection.Create(server, InlineReceive, InlineSend, name: "socket server");
 
                 await PingPong(clientPipe, serverPipe, LoopCount);
             }
@@ -272,35 +279,36 @@ namespace Pipelines.Sockets.Unofficial.Tests
         {
             for (int i = 0; i < count; i++)
             {
-                Log.DebugLogWriteLine();
-                Log.DebugLog($"Test {i}...");
+                Log.DebugLogVerboseWriteLine();
+                Log.DebugLogVerbose($"Test {i}...");
 
-                Log.DebugLog("Client sending...");
+                Log.DebugLogVerbose("Client sending...");
                 var expected = await WritePing(client.Output, i);
 
-                Log.DebugLog("Server reading...");
+                Log.DebugLogVerbose("Server reading...");
                 string s = await ReadLine(server.Input);
                 Log.DebugLogVerbose($"Server received: '{s}'");
                 Assert.Equal(expected, s);
 
 
                 GC.KeepAlive(server.Output);
-                Log.DebugLog("Server sending...");
+                Log.DebugLogVerbose("Server sending...");
                 expected = await WritePong(server.Output, i);
 
-                Log.DebugLog("Client reading...");
+                Log.DebugLogVerbose("Client reading...");
                 s = await ReadLine(client.Input);
                 Log.DebugLogVerbose($"Client received: '{s}'");
                 Assert.Equal(expected, s);
             }
+
         }
 
         private async Task PingPong(IDuplexPipe client, Stream server, int count)
         {
             for (int i = 0; i < count; i++)
             {
-                Log.DebugLogWriteLine();
-                Log.DebugLog($"Test {i}...");
+                Log.DebugLogVerboseWriteLine();
+                Log.DebugLogVerbose($"Test {i}...");
 
                 Log.DebugLogVerbose("Client sending...");
                 var expected = await WritePing(client.Output, i);
@@ -324,8 +332,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
         {
             for (int i = 0; i < count; i++)
             {
-                Log.DebugLogWriteLine();
-                Log.DebugLog($"Test {i}...");
+                Log.DebugLogVerboseWriteLine();
+                Log.DebugLogVerbose($"Test {i}...");
 
                 Log.DebugLogVerbose("Client sending...");
                 var expected = await WritePing(client, i);
@@ -349,8 +357,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
         {
             for (int i = 0; i < count; i++)
             {
-                Log.DebugLogWriteLine();
-                Log.DebugLog($"Test {i}...");
+                Log.DebugLogVerboseWriteLine();
+                Log.DebugLogVerbose($"Test {i}...");
 
                 Log.DebugLogVerbose("Client sending...");
                 var expected = await WritePing(client, i);

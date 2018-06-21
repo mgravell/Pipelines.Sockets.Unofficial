@@ -74,6 +74,7 @@ namespace Pipelines.Sockets.Unofficial
                     IsBackground = true
                 };
                 thread.Start(this);
+                Helpers.Incr(Counter.ThreadPoolWorkerStarted);
             }
             return create;
         }
@@ -97,12 +98,17 @@ namespace Pipelines.Sockets.Unofficial
                 }
                 queueLength = _queue.Count;
             }
-            if (queueLength != 0) // was it swallowed in the pulse?
+            if (queueLength == 0) // was it swallowed in the pulse?
+            {
+                Helpers.Incr(Counter.ThreadPoolScheduled);
+            }
+            else
             {
                 // if disposed: always ask the thread pool
                 // otherwise; 
                 if (_disposed || (!StartWorker() && queueLength >= UseThreadPoolQueueLength))
                 {
+                    Helpers.Incr(Counter.ThreadPoolPushedToMainThreadPoop);
                     Helpers.DebugLog(Name, $"requesting help form thread-pool; queue length: {queueLength}");
                     System.Threading.ThreadPool.QueueUserWorkItem(ThreadPoolRunSingleItem, this);
                 }
@@ -118,12 +124,16 @@ namespace Pipelines.Sockets.Unofficial
         public int BusyCount => Thread.VolatileRead(ref _busyCount);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void Execute(Action<object> action, object state)
+        private void Execute(Action<object> action, object state)
         {
-            try { action(state); }
+            try
+            {
+                action(state);
+                Helpers.Incr(Counter.ThreadPoolExecuted);
+            }
             catch (Exception ex)
             {
-                Debug.WriteLine(ex);
+                Helpers.DebugLog(Name, ex.Message);
             }
         }
 
