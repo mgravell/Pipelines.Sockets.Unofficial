@@ -60,10 +60,22 @@ namespace Pipelines.Sockets.Unofficial
             _error = socketError;
             _bytesTransfered = bytesTransferred;
             var action = Interlocked.Exchange(ref _callback, _callbackCompleted);
-            if(action != null)
+            if (action == null)
             {
-                if (_scheduler == null) action();
-                else _scheduler.Schedule(InvokeStateAsAction, action);
+                Helpers.Incr(Counter.SocketAwaitableCallbackNone);
+            }
+            else
+            {
+                if (_scheduler == null)
+                {
+                    Helpers.Incr(Counter.SocketAwaitableCallbackDirect);
+                    action();
+                }
+                else
+                {
+                    Helpers.Incr(Counter.SocketAwaitableCallbackSchedule);
+                    _scheduler.Schedule(InvokeStateAsAction, action);
+                }
             }
         }
         static readonly Action<object> InvokeStateAsAction = state => ((Action)state).Invoke();

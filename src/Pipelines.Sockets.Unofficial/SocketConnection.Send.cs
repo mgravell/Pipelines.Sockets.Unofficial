@@ -21,9 +21,15 @@ namespace Pipelines.Sockets.Unofficial
                 while (true)
                 {
                     DebugLog("awaiting data from pipe...");
-                    if(!_send.Reader.TryRead(out var result))
+                    if(_send.Reader.TryRead(out var result))
                     {
-                        result = await _send.Reader.ReadAsync();
+                        Helpers.Incr(Counter.SocketReadReadSync);
+                    }
+                    else
+                    {
+                        var read = _send.Reader.ReadAsync();
+                        Helpers.Incr(read.IsCompleted ? Counter.SocketReadReadSync : Counter.SocketReadReadAsync);
+                        result = await read;
                     }
                     var buffer = result.Buffer;
 
@@ -39,7 +45,9 @@ namespace Pipelines.Sockets.Unofficial
                         {
                             if (args == null) args = CreateArgs(_pipeOptions.WriterScheduler);
                             DebugLog($"sending {buffer.Length} bytes over socket...");
-                            await SendAsync(Socket, args, buffer, Name);
+                            var send = SendAsync(Socket, args, buffer, Name);
+                            Helpers.Incr(send.IsCompleted ? Counter.SocketReadSendSync : Counter.SocketReadSendAsync);
+                            await send;
                         }
                         else if (result.IsCompleted)
                         {
@@ -116,7 +124,15 @@ namespace Pipelines.Sockets.Unofficial
             args.BufferList = GetBufferList(args, buffer);
 
             Helpers.DebugLog(name, $"## {nameof(socket.SendAsync)} {buffer.Length}");
-            if (!socket.SendAsync(args)) OnCompleted(args);
+            if (socket.SendAsync(args))
+            {
+                Helpers.Incr(Counter.SocketSendAsyncMultiAsync);
+            }
+            else
+            {
+                Helpers.Incr(Counter.SocketSendAsyncMultiSync);
+                OnCompleted(args);
+            }
 
             return GetAwaitable(args);
         }
@@ -137,7 +153,15 @@ namespace Pipelines.Sockets.Unofficial
             args.SetBuffer(segment.Array, segment.Offset, segment.Count);
 #endif
             Helpers.DebugLog(name, $"## {nameof(socket.SendAsync)} {memory.Length}");
-            if (!socket.SendAsync(args)) OnCompleted(args);
+            if (socket.SendAsync(args))
+            {
+                Helpers.Incr(Counter.SocketSendAsyncSingleAsync);
+            }
+            else
+            {
+                Helpers.Incr(Counter.SocketSendAsyncSingleSync);
+                OnCompleted(args);
+            }
 
             return GetAwaitable(args);
         }
