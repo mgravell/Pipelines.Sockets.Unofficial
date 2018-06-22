@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Buffers;
 using System.IO.Pipelines;
 using System.Net;
 using System.Net.Sockets;
@@ -9,8 +8,6 @@ namespace Pipelines.Sockets.Unofficial
 {
     partial class SocketConnection
     {
-        private static PipeOptions _defaultOptions;
-
         /// <summary>
         /// Open a new or existing socket as a client
         /// </summary>
