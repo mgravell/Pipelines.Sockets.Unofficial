@@ -48,7 +48,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         {
             Log = new TestTextWriter(output);
         }
-        protected (Socket Client, Socket Server) CreateConnectedSocketPair()
+        protected Tuple<Socket, Socket> CreateConnectedSocketPair()
         {
             Log.DebugLog("Connecting...");
             using (Socket listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp))
@@ -62,7 +62,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 client.Connect(listener.LocalEndPoint);
                 Socket server = listener.Accept();
                 SocketConnection.SetRecommendedServerOptions(server);
-                return (client, server);
+                return Tuple.Create(client, server);
             }
         }
 
@@ -72,10 +72,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public async Task Basic_Pipelines_PingPong()
         {
             Log.DebugLog();
-            var (client, server) = CreateConnectedSocketPair();
-
-            using (client)
-            using (server)
+            var tuple = CreateConnectedSocketPair();
+            using (var client = tuple.Item1)
+            using (var server = tuple.Item2)
             {
                 var clientPipe = SocketConnection.Create(client, InlineReceive, InlineSend, name: "socket client");
                 var serverPipe = SocketConnection.Create(server, InlineReceive, InlineSend, name: "socket server");
@@ -89,10 +88,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public async Task Basic_NetworkStream_PingPong()
         {
             Log.DebugLog();
-            var (client, server) = CreateConnectedSocketPair();
-
-            using (client)
-            using (server)
+            var tuple = CreateConnectedSocketPair();
+            using (var client = tuple.Item1)
+            using (var server = tuple.Item2)
             {
                 var clientStream = new NetworkStream(client);
                 var serverStream = new NetworkStream(server);
@@ -105,10 +103,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public async Task Basic_NetworkStream_Pipelines_PingPong()
         {
             Log.DebugLog();
-            var (client, server) = CreateConnectedSocketPair();
-
-            using (client)
-            using (server)
+            var tuple = CreateConnectedSocketPair();
+            using (var client = tuple.Item1)
+            using (var server = tuple.Item2)
             {
                 var clientStream = new NetworkStream(client);
                 var serverStream = new NetworkStream(server);
@@ -124,9 +121,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public async Task ClientInverted_PingPong()
         {
             Log.DebugLog();
-            var (client, server) = CreateConnectedSocketPair();
-            using (client)
-            using (server)
+            var tuple = CreateConnectedSocketPair();
+            using (var client = tuple.Item1)
+            using (var server = tuple.Item2)
             {
                 var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
                 var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
@@ -142,9 +139,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public async Task ClientDoubleInverted_PingPong()
         {
             Log.DebugLog();
-            var (client, server) = CreateConnectedSocketPair();
-            using (client)
-            using (server)
+            var tuple = CreateConnectedSocketPair();
+            using (var client = tuple.Item1)
+            using (var server = tuple.Item2)
             {
                 var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
                 var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
@@ -162,9 +159,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public async Task ServerInverted_PingPong()
         {
             Log.DebugLog();
-            var (client, server) = CreateConnectedSocketPair();
-            using (client)
-            using (server)
+            var tuple = CreateConnectedSocketPair();
+            using (var client = tuple.Item1)
+            using (var server = tuple.Item2)
             {
                 var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
                 var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
@@ -181,9 +178,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public async Task ServerDoubleInverted_PingPong()
         {
             Log.DebugLog();
-            var (client, server) = CreateConnectedSocketPair();
-            using (client)
-            using (server)
+            var tuple = CreateConnectedSocketPair();
+            using (var client = tuple.Item1)
+            using (var server = tuple.Item2)
             {
                 var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
                 var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
@@ -200,9 +197,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public async Task ServerClientDoubleInverted_PingPong()
         {
             Log.DebugLog();
-            var (client, server) = CreateConnectedSocketPair();
-            using (client)
-            using (server)
+            var tuple = CreateConnectedSocketPair();
+            using (var client = tuple.Item1)
+            using (var server = tuple.Item2)
             {
                 var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
                 var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
@@ -223,9 +220,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public async Task ServerClientDoubleInverted_SslStream_PingPong()
         {
             Log.DebugLog();
-            var (client, server) = CreateConnectedSocketPair();
-            using (client)
-            using (server)
+            var tuple = CreateConnectedSocketPair();
+            using (var client = tuple.Item1)
+            using (var server = tuple.Item2)
             {
                 var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
                 var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
@@ -251,14 +248,14 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
             Log.DebugLog("All good!");
         }
-        static readonly X509Certificate SomeCertificate = X509Certificate.CreateFromCertFile("somesite.pfx");
+        static readonly X509Certificate SomeCertificate = new X509Certificate2("somesite.pfx");
         [Fact]
         public async Task ServerClient_SslStream_PingPong()
         {
             Log.DebugLog();
-            var (client, server) = CreateConnectedSocketPair();
-            using (client)
-            using (server)
+            var tuple = CreateConnectedSocketPair();
+            using (var client = tuple.Item1)
+            using (var server = tuple.Item2)
             {
                 var serverSsl = new SslStream(new NetworkStream(server), false, IgnoreAllCertificateErrors, null, EncryptionPolicy.RequireEncryption);
                 var clientSsl = new SslStream(new NetworkStream(client), false, IgnoreAllCertificateErrors, null, EncryptionPolicy.RequireEncryption);
@@ -271,6 +268,31 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 await clientAuth;
 
                 await PingPong(clientSsl, serverSsl, LoopCount);
+            }
+            Log.DebugLog("All good!");
+        }
+        [Fact]
+        public async Task ServerClient_SslStream_Inverter_PingPong()
+        {
+            Log.DebugLog();
+            var tuple = CreateConnectedSocketPair();
+            using (var client = tuple.Item1)
+            using (var server = tuple.Item2)
+            {
+                var serverSsl = new SslStream(new NetworkStream(server), false, IgnoreAllCertificateErrors, null, EncryptionPolicy.RequireEncryption);
+                var clientSsl = new SslStream(new NetworkStream(client), false, IgnoreAllCertificateErrors, null, EncryptionPolicy.RequireEncryption);
+
+
+                var serverAuth = serverSsl.AuthenticateAsServerAsync(SomeCertificate);
+                var clientAuth = clientSsl.AuthenticateAsClientAsync("somesite");
+
+                await serverAuth;
+                await clientAuth;
+
+                var serverPipe = StreamConnector.GetDuplex(serverSsl);
+                var clientPipe = StreamConnector.GetDuplex(clientSsl);
+
+                await PingPong(clientPipe, serverPipe, LoopCount);
             }
             Log.DebugLog("All good!");
         }

@@ -1,8 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net462;netcoreapp2.1</TargetFrameworks>
-    <LangVersion>7.2</LangVersion>
+    <TargetFrameworks>net46;netcoreapp2.0</TargetFrameworks>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon />
   </PropertyGroup>
@@ -13,13 +12,11 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.4.0-beta.1.build3958" />
     <DotNetCliToolReference Include="dotnet-xunit" Version="2.4.0-beta.1.build3958" />
   </ItemGroup>
-
   <ItemGroup>
     <None Include="..\somesite.pfx" Link="somesite.pfx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\..\src\Pipelines.Sockets.Unofficial\Pipelines.Sockets.Unofficial.csproj" />
   </ItemGroup>

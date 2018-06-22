@@ -18,6 +18,8 @@ namespace BasicRunner
 
         static async Task RunTest(Func<Task> method, string label)
         {
+            Console.WriteLine();
+            Console.WriteLine();
             for (int i = 0; i < 10; i++)
             {
 #if DEBUG
@@ -44,15 +46,16 @@ namespace BasicRunner
             Console.WriteLine($"Scheduler: {PingPongTests.Scheduler}");
             var parent = new PingPongTests(Console.Out);
             
-            await RunTest(parent.Basic_Pipelines_PingPong, "Socket=>Pipelines=>PingPong");
+            //await RunTest(parent.Basic_Pipelines_PingPong, "Socket=>Pipelines=>PingPong");
             //await RunTest(parent.Basic_NetworkStream_PingPong, "Socket=>NetworkStream=>PingPong");
             //await RunTest(parent.Basic_NetworkStream_Pipelines_PingPong, "Socket=>NetworkStream=>Pipelines=>PingPong");
 
-            //if (PingPongTests.RunTLS)
-            //{
-            //    await RunTest(parent.ServerClientDoubleInverted_SslStream_PingPong, "Socket=>Pipelines=>Inverter=>SslStream=>Inverter=>PingPong");
-            //    await RunTest(parent.ServerClient_SslStream_PingPong, "Socket=>NetworkStream=>SslStream=>PingPong");
-            //}
+            if (PingPongTests.RunTLS)
+            {
+                await RunTest(parent.ServerClientDoubleInverted_SslStream_PingPong, "Socket=>Pipelines=>Inverter=>SslStream=>Inverter=>PingPong");
+                await RunTest(parent.ServerClient_SslStream_PingPong, "Socket=>NetworkStream=>SslStream=>PingPong");
+                await RunTest(parent.ServerClient_SslStream_Inverter_PingPong, "Socket=>NetworkStream=>SslStream=>Inverter=>PingPong");
+            }
 
         }
     }

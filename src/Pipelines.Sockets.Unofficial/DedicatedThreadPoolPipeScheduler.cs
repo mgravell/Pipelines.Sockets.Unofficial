@@ -45,10 +45,21 @@ namespace Pipelines.Sockets.Unofficial
             }
         }
 
+        private readonly struct WorkItem
+        {
+            public readonly Action<object> Action;
+            public readonly object State;
+            public WorkItem(Action<object> action, object state)
+            {
+                Action = action;
+                State = state;
+            }
+        }
+
         private volatile bool _disposed;
         private readonly object ThreadSyncLock = new object();
         private int _threadCount;
-        readonly Queue<(Action<object> action, object state)> _queue = new Queue<(Action<object> action, object state)>();
+        readonly Queue<WorkItem> _queue = new Queue<WorkItem>();
         private bool StartWorker()
         {
             bool create = false;
@@ -87,7 +98,7 @@ namespace Pipelines.Sockets.Unofficial
             int queueLength;
             lock (_queue)
             {
-                _queue.Enqueue((action, state));
+                _queue.Enqueue(new WorkItem(action, state));
                 if(_queue.Count == 1)
                 {
                     Monitor.Pulse(_queue); // just the one? pulse a single worker
@@ -140,20 +151,20 @@ namespace Pipelines.Sockets.Unofficial
 
         private void RunSingleItem()
         {
-            (Action<object> action, object state) next;
+            WorkItem next;
             lock (_queue)
             {
                 if (_queue.Count == 0) return;
                 next = _queue.Dequeue();
             }
-            Execute(next.action, next.state);
+            Execute(next.Action, next.State);
         }
         private void RunWorkLoop()
         {
             Interlocked.Increment(ref _busyCount);
             while (true)
             {
-                (Action<object> action, object state) next;
+                WorkItem next;
                 lock (_queue)
                 {
                     if (_queue.Count == 0)
@@ -168,7 +179,7 @@ namespace Pipelines.Sockets.Unofficial
                     }
                     next = _queue.Dequeue();
                 }
-                Execute(next.action, next.state);
+                Execute(next.Action, next.State);
             }
         }
         /// <summary>

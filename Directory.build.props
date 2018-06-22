@@ -1,7 +1,6 @@
 <Project>
   <PropertyGroup>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <LangVersion>7.2</LangVersion>
+    <LangVersion>latest</LangVersion>
 
     <PackageId>$(AssemblyName)</PackageId>
     <PackageLicenseUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial/LICENSE.txt</PackageLicenseUrl>    
@@ -10,6 +9,7 @@
 
     <DebugSymbols>true</DebugSymbols>
     <DebugType>embedded</DebugType>
+    <LibVer>4.5.0</LibVer>
   </PropertyGroup>
   
   <ItemGroup>

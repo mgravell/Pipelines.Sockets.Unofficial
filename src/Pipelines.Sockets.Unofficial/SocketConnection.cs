@@ -34,7 +34,9 @@ namespace Pipelines.Sockets.Unofficial
         }
 
 #if DEBUG
+#pragma warning disable CS1591
         public static void SetLog(System.IO.TextWriter writer) => Helpers.Log = writer;
+#pragma warning restore CS1591
 #endif
 
         [Conditional("VERBOSE")]

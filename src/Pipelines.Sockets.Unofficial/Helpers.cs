@@ -10,11 +10,13 @@ namespace Pipelines.Sockets.Unofficial
 {
 
 #if DEBUG
+#pragma warning disable CS1591
     public static class DebugCounters
     {
         public static void Reset() => Helpers.ResetCounters();
         public static string GetSummary() => Helpers.GetCounterSummary();
     }
+#pragma warning restore CS1591
 #endif
 
     internal enum Counter
