@@ -58,7 +58,7 @@ namespace Pipelines.Sockets.Unofficial
                 WriteImpl(buffer.Span);
 
                 var flush = _writer.FlushAsync(cancellationToken);
-                return new ValueTask(flush.IsCompletedSuccessfully ? Task.CompletedTask : flush.AsTask());
+                return flush.IsCompletedSuccessfully ? default : new ValueTask(flush.AsTask());
             }
         }
     }

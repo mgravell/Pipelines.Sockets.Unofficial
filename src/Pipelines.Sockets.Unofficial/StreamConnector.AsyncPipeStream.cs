@@ -383,19 +383,26 @@ namespace Pipelines.Sockets.Unofficial
                 if (!from.IsCanceled)
                 {
                     var buffer = from.Buffer;
-
                     int remaining = to.Length;
-
-                    if (remaining != 0)
+                    if (buffer.IsSingleSegment)
                     {
-                        foreach (var segment in buffer)
+                        var segSpan = buffer.First.Span;
+                        bytesRead = Math.Min(segSpan.Length, remaining);
+                        segSpan.Slice(0, bytesRead).CopyTo(to);
+                    }
+                    else
+                    {
+                        if (remaining != 0)
                         {
-                            var segSpan = segment.Span;
-                            int take = Math.Min(segSpan.Length, remaining);
-                            segSpan.Slice(0, take).CopyTo(to);
-                            to = to.Slice(take);
-                            bytesRead += take;
-                            remaining -= take;
+                            foreach (var segment in buffer)
+                            {
+                                var segSpan = segment.Span;
+                                int take = Math.Min(segSpan.Length, remaining);
+                                segSpan.Slice(0, take).CopyTo(to);
+                                to = to.Slice(take);
+                                bytesRead += take;
+                                remaining -= take;
+                            }
                         }
                     }
                     var end = buffer.GetPosition(bytesRead);
