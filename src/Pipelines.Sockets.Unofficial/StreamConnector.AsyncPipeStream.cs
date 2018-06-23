@@ -96,12 +96,16 @@ namespace Pipelines.Sockets.Unofficial
             {
                 DebugLog();
                 AssertCanRead();
-                var memory = new Memory<byte>(buffer, offset, count);
+                Helpers.Incr(Counter.PipeStreamRead);
+                return Read(new Memory<byte>(buffer, offset, count));
+            }
+            private int Read(Memory<byte> memory)
+            {
                 var pendingRead = PendingRead;
                 lock (pendingRead.SyncLock)
                 {
                     pendingRead.AssertAvailable();
-                    if (count == 0) return 0;
+                    if (memory.IsEmpty) return 0;
                     
                     if (_reader.TryRead(out var result))
                     {
@@ -125,9 +129,22 @@ namespace Pipelines.Sockets.Unofficial
             public override int ReadByte()
             {
                 DebugLog();
+                Helpers.Incr(Counter.PipeStreamReadByte);
                 AssertCanRead();
+                var pendingRead = PendingRead;
+                lock (pendingRead.SyncLock)
+                {
+                    pendingRead.AssertAvailable();
+                    ReadOnlySequence<byte> buffer;
+                    if (_reader.TryRead(out var readResult) && !(buffer = readResult.Buffer).IsEmpty)
+                    {
+                        var b = buffer.First.Span[0];
+                        _reader.AdvanceTo(buffer.GetPosition(1));
+                        return b;
+                    }
+                }
                 var arr = ArrayPool<byte>.Shared.Rent(1);
-                int bytes = Read(arr, 0, 1);
+                int bytes = Read(new Memory<byte>(arr, 0, 1));
                 var result = bytes <= 0 ? -1 : arr[0];
                 ArrayPool<byte>.Shared.Return(arr);
                 return result;
@@ -138,9 +155,10 @@ namespace Pipelines.Sockets.Unofficial
             public override void Write(byte[] buffer, int offset, int count)
             {
                 DebugLog();
+                Helpers.Incr(Counter.PipeStreamWrite);
                 var from = new Span<byte>(buffer, offset, count);
                 Write(from);
-                Flush();
+                FlushImpl();
             }
             private void Write(Span<byte> from)
             {
@@ -165,6 +183,7 @@ namespace Pipelines.Sockets.Unofficial
             public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
             {
                 DebugLog();
+                Helpers.Incr(Counter.PipeStreamWriteAsync);
                 Write(new Span<byte>(buffer, offset, count));
                 return FlushAsync();
             }
@@ -174,9 +193,12 @@ namespace Pipelines.Sockets.Unofficial
             public override void WriteByte(byte value)
             {
                 DebugLog();
-                Span<byte> from = stackalloc byte[1] { value };
-                Write(from);
-                Flush();
+                Helpers.Incr(Counter.PipeStreamWriteByte);
+                AssertCanWrite();
+                var to = _writer.GetSpan(1);
+                to[0] = value;
+                _writer.Advance(1);
+                FlushImpl();
             }
             /// <summary>
             /// Begin an asynchronous write operation
@@ -184,8 +206,9 @@ namespace Pipelines.Sockets.Unofficial
             public override IAsyncResult BeginWrite(byte[] buffer, int offset, int count, AsyncCallback callback, object state)
             {
                 DebugLog();
+                Helpers.Incr(Counter.PipeStreamBeginWrite);
                 Write(buffer, offset, count);
-                Flush();
+                FlushImpl(); // TODO: use async flush here
                 var obj = PendingWrite;
                 PendingWrite.AsyncState = state;
                 callback(obj);
@@ -230,6 +253,12 @@ namespace Pipelines.Sockets.Unofficial
             {
                 AssertCanWrite();
                 DebugLog($"Flushing {_writer}");
+                Helpers.Incr(Counter.PipeStreamFlush);
+                FlushImpl();
+            }
+
+            private void FlushImpl()
+            {
                 var flush = _writer.FlushAsync();
                 if (flush.IsCompleted) return;
 
@@ -248,6 +277,7 @@ namespace Pipelines.Sockets.Unofficial
             {
                 AssertCanWrite();
                 DebugLog($"Flushing {_writer}");
+                Helpers.Incr(Counter.PipeStreamFlushAsync);
                 var flush = _writer.FlushAsync(cancellationToken);
                 return flush.IsCompletedSuccessfully ? Task.CompletedTask : flush.AsTask();
             }
@@ -294,6 +324,7 @@ namespace Pipelines.Sockets.Unofficial
             {
                 DebugLog("init");
                 AssertCanRead();
+                Helpers.Incr(Counter.PipeStreamBeginRead);
                 var memory = new Memory<byte>(buffer, offset, count);
                 var pendingRead = PendingRead;
                 lock (pendingRead.SyncLock)
@@ -377,6 +408,7 @@ namespace Pipelines.Sockets.Unofficial
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 DebugLog("init");
+                Helpers.Incr(Counter.PipeStreamReadAsync);
                 AssertCanRead();
                 var memory = new Memory<byte>(buffer, offset, count);
                 var pendingRead = PendingRead;

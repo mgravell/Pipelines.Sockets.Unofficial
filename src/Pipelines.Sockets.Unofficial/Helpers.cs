@@ -51,8 +51,17 @@ namespace Pipelines.Sockets.Unofficial
         ThreadPoolScheduled,
         ThreadPoolExecuted,
 
-        
 
+        PipeStreamWrite,
+        PipeStreamWriteAsync,
+        PipeStreamWriteByte,
+        PipeStreamBeginWrite,
+        PipeStreamRead,
+        PipeStreamReadAsync,
+        PipeStreamReadByte,
+        PipeStreamBeginRead,
+        PipeStreamFlush,
+        PipeStreamFlushAsync,
     }
     internal static class Helpers
     {
@@ -124,6 +133,11 @@ namespace Pipelines.Sockets.Unofficial
 
                 Log?.WriteLine($"[{threadName}, {name}, {caller}]: {message}");
 #endif
+        }
+
+        internal static void Incr(object pipeStreamRead)
+        {
+            throw new NotImplementedException();
         }
     }
 }
