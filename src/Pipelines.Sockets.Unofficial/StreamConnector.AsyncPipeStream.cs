@@ -14,7 +14,7 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Exposes a Stream as a duplex pipe
         /// </summary>
-        public sealed class AsyncPipeStream : Stream
+        public sealed partial class AsyncPipeStream : Stream
         {
             private string Name { get; }
             /// <summary>
@@ -156,11 +156,12 @@ namespace Pipelines.Sockets.Unofficial
             {
                 DebugLog();
                 Helpers.Incr(Counter.PipeStreamWrite);
-                var from = new Span<byte>(buffer, offset, count);
-                Write(from);
+                var from = new ReadOnlySpan<byte>(buffer, offset, count);
+                WriteImpl(from);
                 FlushImpl();
             }
-            private void Write(Span<byte> from)
+
+            private void WriteImpl(ReadOnlySpan<byte> from)
             {
                 AssertCanWrite();
                 int offset = 0;
@@ -184,8 +185,8 @@ namespace Pipelines.Sockets.Unofficial
             {
                 DebugLog();
                 Helpers.Incr(Counter.PipeStreamWriteAsync);
-                Write(new Span<byte>(buffer, offset, count));
-                return FlushAsync();
+                WriteImpl(new ReadOnlySpan<byte>(buffer, offset, count));
+                return FlushAsyncImpl(default);
             }
             /// <summary>
             /// Write a single byte
@@ -278,6 +279,10 @@ namespace Pipelines.Sockets.Unofficial
                 AssertCanWrite();
                 DebugLog($"Flushing {_writer}");
                 Helpers.Incr(Counter.PipeStreamFlushAsync);
+                return FlushAsyncImpl(cancellationToken);
+            }
+            private Task FlushAsyncImpl(CancellationToken cancellationToken)
+            {
                 var flush = _writer.FlushAsync(cancellationToken);
                 return flush.IsCompletedSuccessfully ? Task.CompletedTask : flush.AsTask();
             }
@@ -406,24 +411,26 @@ namespace Pipelines.Sockets.Unofficial
             /// </summary>
             public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
             {
-                cancellationToken.ThrowIfCancellationRequested();
                 DebugLog("init");
                 Helpers.Incr(Counter.PipeStreamReadAsync);
-                AssertCanRead();
-                var memory = new Memory<byte>(buffer, offset, count);
+                return ReadAsyncImpl(new Memory<byte>(buffer, offset, count), cancellationToken).AsTask();
+            }
+            private ValueTask<int> ReadAsyncImpl(Memory<byte> memory, CancellationToken cancellationToken)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                AssertCanRead();                
                 var pendingRead = PendingRead;
                 lock (pendingRead.SyncLock)
                 {
                     pendingRead.AssertAvailable();
 
-                    if (count == 0) return Task.FromResult(0);
-
-
+                    if (memory.IsEmpty) return new ValueTask<int>(0);
+                    
                     DebugLog(nameof(_reader.TryRead));
                     if (_reader.TryRead(out ReadResult result))
                     {
                         DebugLog("sync consume");
-                        return Task.FromResult(ConsumeBytes(result, memory.Span));
+                        return new ValueTask<int>(ConsumeBytes(result, memory.Span));
                     }
                     else
                     {
@@ -432,7 +439,7 @@ namespace Pipelines.Sockets.Unofficial
                         if (pending.IsCompleted)
                         {
                             DebugLog("sync consume");
-                            return Task.FromResult(ConsumeBytes(pending.Result, memory.Span));
+                            return new ValueTask<int>(ConsumeBytes(pending.Result, memory.Span));
                         }
 
                         DebugLog("setting completion data for a task");
@@ -440,7 +447,7 @@ namespace Pipelines.Sockets.Unofficial
                         pendingRead.Init(null, null, memory, tcs, PendingAsyncMode.Task);
                         pendingRead.ReadAwaiter = pending.GetAwaiter();
                         pendingRead.ReadAwaiter.UnsafeOnCompleted(ProcessDataFromAwaiter);
-                        return tcs.Task;
+                        return new ValueTask<int>(tcs.Task);
                     }
                 }
             }

@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netstandard2.0;netcoreapp2.0;net46</TargetFrameworks>
+    <TargetFrameworks>netstandard2.0;netcoreapp2.0;netcoreapp2.1;net46</TargetFrameworks>
     <!-- pipelines is the limiting factor for >= net46-->
     <SignAssembly>true</SignAssembly>
     <DelaySign>false</DelaySign>
@@ -16,17 +16,18 @@
   <PropertyGroup Condition="'$(Configuration)'=='Debug'">
     <!--<DefineConstants>$(DebugSymbols);VERBOSE</DefineConstants>-->
   </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)'=='netcoreapp2.1'">
+    <DefineConstants>$(DebugSymbols);STREAM_SPAN</DefineConstants>
+  </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetFramework)'=='net46'">
-    <PackageReference Include="System.IO.Pipelines" Version="4.5.0" />
     <PackageReference Include="System.Memory" Version="4.5.0" />
     <PackageReference Include="System.Buffers" Version="4.5.0" />
   </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)'=='netstandard2.0'">
-    <PackageReference Include="System.IO.Pipelines" Version="4.5.0" />
     <PackageReference Include="System.Buffers" Version="4.5.0" />
   </ItemGroup>
-  <ItemGroup Condition="'$(TargetFramework)'=='netcoreapp2.0'">
+  <ItemGroup>
     <PackageReference Include="System.IO.Pipelines" Version="4.5.0" />
   </ItemGroup>
 </Project>

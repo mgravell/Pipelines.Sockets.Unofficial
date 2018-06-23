@@ -56,10 +56,16 @@ namespace Pipelines.Sockets.Unofficial
         PipeStreamWriteAsync,
         PipeStreamWriteByte,
         PipeStreamBeginWrite,
+        PipeStreamWriteSpan,
+        PipeStreamWriteAsyncMemory,
+
         PipeStreamRead,
         PipeStreamReadAsync,
         PipeStreamReadByte,
         PipeStreamBeginRead,
+        PipeStreamReadSpan,
+        PipeStreamReadAsyncMemory,
+
         PipeStreamFlush,
         PipeStreamFlushAsync,
     }
