@@ -21,6 +21,8 @@ namespace Pipelines.Sockets.Unofficial
 
     internal enum Counter
     {
+        SocketGetBufferList,
+
         SocketSendAsyncSingleSync,
         SocketSendAsyncSingleAsync,
         SocketSendAsyncMultiSync,
@@ -117,6 +119,7 @@ namespace Pipelines.Sockets.Unofficial
             }
 #endif
         }
+
 
         internal static ArraySegment<byte> GetArray(this Memory<byte> buffer) => GetArray((ReadOnlyMemory<byte>)buffer);
         internal static ArraySegment<byte> GetArray(this ReadOnlyMemory<byte> buffer)

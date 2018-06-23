@@ -245,7 +245,7 @@ namespace Pipelines.Sockets.Unofficial
            
         private static int SendSingle(Socket socket, ReadOnlyMemory<byte> segment)
         {
-#if NETCOREAPP2_1
+#if SOCKET_STREAM_BUFFERS
             return socket.Send(segment.Span);
 #else
             var arr = segment.GetArray();
@@ -262,7 +262,7 @@ namespace Pipelines.Sockets.Unofficial
         private static int Receive(Socket socket, Memory<byte> buffer)
         {
 
-#if NETCOREAPP2_1
+#if SOCKET_STREAM_BUFFERS
             return socket.Receive(buffer.Span);
 #else
             if (buffer.IsEmpty)

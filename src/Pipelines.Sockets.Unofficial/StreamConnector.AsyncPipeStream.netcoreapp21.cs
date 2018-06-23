@@ -1,4 +1,4 @@
-﻿#if STREAM_SPAN
+﻿#if SOCKET_STREAM_BUFFERS
 using System;
 using System.Buffers;
 using System.Collections.Generic;

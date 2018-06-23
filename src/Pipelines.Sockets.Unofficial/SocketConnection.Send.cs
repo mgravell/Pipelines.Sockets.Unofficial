@@ -112,8 +112,8 @@ namespace Pipelines.Sockets.Unofficial
                 return SendAsync(socket, args, buffer.First, name);
             }
 
-#if NETCOREAPP2_1
-            if (!args.MemoryBuffer.Equals(Memory<byte>.Empty))
+#if SOCKET_STREAM_BUFFERS
+            if (!args.MemoryBuffer.IsEmpty)
 #else
             if (args.Buffer != null)
 #endif
@@ -145,7 +145,7 @@ namespace Pipelines.Sockets.Unofficial
                 args.BufferList = null;
             }
 
-#if NETCOREAPP2_1
+#if SOCKET_STREAM_BUFFERS
             args.SetBuffer(MemoryMarshal.AsMemory(memory));
 #else
             var segment = memory.GetArray();
@@ -168,6 +168,7 @@ namespace Pipelines.Sockets.Unofficial
 
         private static List<ArraySegment<byte>> GetBufferList(SocketAsyncEventArgs args, ReadOnlySequence<byte> buffer)
         {
+            Helpers.Incr(Counter.SocketGetBufferList);
             Debug.Assert(!buffer.IsEmpty);
             Debug.Assert(!buffer.IsSingleSegment);
 

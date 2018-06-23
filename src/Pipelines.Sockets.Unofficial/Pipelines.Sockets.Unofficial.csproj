@@ -17,7 +17,7 @@
     <!--<DefineConstants>$(DebugSymbols);VERBOSE</DefineConstants>-->
   </PropertyGroup>
   <PropertyGroup Condition="'$(TargetFramework)'=='netcoreapp2.1'">
-    <DefineConstants>$(DebugSymbols);STREAM_SPAN</DefineConstants>
+    <DefineConstants>$(DebugSymbols);SOCKET_STREAM_BUFFERS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetFramework)'=='net46'">

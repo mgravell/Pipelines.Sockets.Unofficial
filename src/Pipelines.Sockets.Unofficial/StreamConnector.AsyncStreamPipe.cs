@@ -58,12 +58,14 @@ namespace Pipelines.Sockets.Unofficial
                 {
                     while (true)
                     {
-                        var arr = GetArray(writer.GetMemory(1));
-
+                        var memory = writer.GetMemory(1);
+#if SOCKET_STREAM_BUFFERS
+                        int read = await _inner.ReadAsync(memory);
+#else
+                        var arr = memory.GetArray();
                         int read = await _inner.ReadAsync(arr.Array, arr.Offset, arr.Count);
-
+#endif
                         if (read <= 0) break;
-
                         writer.Advance(read);
                         // need to flush regularly, a: to respect backoffs, and b: to awaken the reader
                         await writer.FlushAsync();
@@ -110,36 +112,34 @@ namespace Pipelines.Sockets.Unofficial
                     if (buffer.IsEmpty && result.IsCompleted) break; // that's all, folks
                 }
             }
-            static ArraySegment<byte> GetArray(ReadOnlyMemory<byte> memory)
-            {
-                if (!MemoryMarshal.TryGetArray<byte>(MemoryMarshal.AsMemory<byte>(memory), out var arr))
-                    throw new InvalidOperationException("Cannot obtain array");
-                return arr;
-            }
-            static ArraySegment<byte> GetArray(Memory<byte> memory)
-            {
-                if (!MemoryMarshal.TryGetArray<byte>(memory, out var arr))
-                    throw new InvalidOperationException("Cannot obtain array");
-                return arr;
-            }
-
             static Task WriteBuffer(Stream target, ReadOnlySequence<byte> data, string name)
             {
                 async Task WriteBufferAwaited(Stream ttarget, ReadOnlySequence<byte> ddata, string nname)
                 {
                     foreach (var segment in ddata)
                     {
-                        var arr = GetArray(segment);
-                        Helpers.DebugLog(name, $"writing {arr.Count} bytes to '{target}'...");
+                        Helpers.DebugLog(name, $"writing {segment.Length} bytes to '{target}'...");
+#if SOCKET_STREAM_BUFFERS
+                        await ttarget.WriteAsync(segment);
+#else
+                        var arr = segment.GetArray();
                         await ttarget.WriteAsync(arr.Array, arr.Offset, arr.Count);
+#endif
                         Helpers.DebugLog(name, $"write complete");
+
                     }
                 }
                 if (data.IsSingleSegment)
                 {
-                    var arr = GetArray(data.First);
-                    Helpers.DebugLog(name, $"writing {arr.Count} bytes to '{target}'...");
+                    
+                    Helpers.DebugLog(name, $"writing {data.Length} bytes to '{target}'...");
+#if SOCKET_STREAM_BUFFERS
+                    var vt = target.WriteAsync(data.First);
+                    return vt.IsCompletedSuccessfully ? Task.CompletedTask : vt.AsTask();
+#else
+                    var arr = data.First.GetArray();
                     return target.WriteAsync(arr.Array, arr.Offset, arr.Count);
+#endif
                 }
                 else
                 {

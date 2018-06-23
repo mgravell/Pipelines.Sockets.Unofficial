@@ -138,7 +138,7 @@ namespace Pipelines.Sockets.Unofficial
 
         private static SocketAwaitable ReceiveAsync(Socket socket, SocketAsyncEventArgs args, Memory<byte> buffer, string name)
         {
-#if NETCOREAPP2_1
+#if SOCKET_STREAM_BUFFERS
             args.SetBuffer(buffer);
 #else
 
