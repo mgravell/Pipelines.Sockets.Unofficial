@@ -146,15 +146,10 @@ namespace Pipelines.Sockets.Unofficial
                 if (string.IsNullOrWhiteSpace(threadName)) threadName = thread.ManagedThreadId.ToString();
                     
                 var s = $"[{threadName}, {name}, {caller}]: {message}";
-                try
+                lock (log)
                 {
-                    log.WriteLine(s);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"WriteLine failed for {log.GetType().FullName}; {ex.Message}");
-                    Console.WriteLine($"Attempted to write: {s}");
-                    Console.WriteLine(ex.StackTrace);
+                    try { log.WriteLine(s); }
+                    catch { }
                 }
             }
 #endif
