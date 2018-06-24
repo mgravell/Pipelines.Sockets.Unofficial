@@ -48,7 +48,7 @@ namespace BasicRunner
             Console.WriteLine($"Scheduler: {PingPongTests.Scheduler}");
             Console.WriteLine($"Detailed trace to 'log.txt'");
 
-            Console.WriteLine(typeof(System.Buffers.ReadOnlySequence<byte>).Assembly.Location);
+            // Console.WriteLine(typeof(System.Buffers.ReadOnlySequence<byte>).Assembly.Location);
 
 
             using (var logFile = new StreamWriter("log.txt", false))
@@ -58,22 +58,36 @@ namespace BasicRunner
                 //SocketConnection.SetLog(Console.Out);
 #endif
 
+                char[] buffer = new char[2048];
                 async ValueTask MeasureAndTime(TextReader reader)
                 {
-                    int count = 0;
+
+                    //int count = 0;
                     long len = 0;
-                    string line;
+                    
                     var watch = Stopwatch.StartNew();
-                    while ((line = await reader.ReadLineAsync()) != null)
+
+                    int charsRead;
+                    do
                     {
-                        len += line.Length;
-                        count++;
-                    }
+                        charsRead = await reader.ReadAsync(buffer, 0, 2048);
+                        len += charsRead;
+                    } while (charsRead != 0);
+
+                    //string line;
+                    //while ((line = await reader.ReadLineAsync()) != null)
+                    //{
+                    //    len += line.Length;
+                    //    count++;
+                    //}
                     watch.Stop();
-                    Console.WriteLine($"Lines: {count}; Length: {len}; Time: {watch.ElapsedMilliseconds}ms");
+                    //Console.WriteLine($"Lines: {count}; Length: {len}; Time: {watch.ElapsedMilliseconds}ms");
+                    Console.WriteLine($"Total chars {len}; Time: {watch.ElapsedMilliseconds}ms");
                 }
 
                 const string path = "logcopy.txt";
+                Console.WriteLine();
+                Console.WriteLine($"File size: {(new FileInfo(path).Length)} bytes");
                 Console.WriteLine();
                 Console.WriteLine("Using PipeTextReader/MemoryMappedPipeReader");
                 for (int i = 0; i < 5; i++)
