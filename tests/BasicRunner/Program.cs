@@ -41,7 +41,7 @@ namespace BasicRunner
             }
         }
         static async Task Main()
-        {            
+        {
             Thread.CurrentThread.Name = nameof(Main);
             Console.WriteLine($"Loop count: {PingPongTests.LoopCount}");
             Console.WriteLine($"Scheduler: {PingPongTests.Scheduler}");
