@@ -5,6 +5,7 @@
     <!-- pipelines is the limiting factor for >= net46-->
     <SignAssembly>true</SignAssembly>
     <DelaySign>false</DelaySign>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyOriginatorKeyFile>Pipelines.Sockets.Unofficial.snk</AssemblyOriginatorKeyFile>
     <PackageProjectUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</RepositoryUrl>
@@ -14,10 +15,10 @@
     <Optimize>true</Optimize>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)'=='Debug'">
-    <!--<DefineConstants>$(DebugSymbols);VERBOSE</DefineConstants>-->
+    <DefineConstants>$(DefineConstants);VERBOSE</DefineConstants>
   </PropertyGroup>
   <PropertyGroup Condition="'$(TargetFramework)'=='netcoreapp2.1'">
-    <DefineConstants>$(DebugSymbols);SOCKET_STREAM_BUFFERS</DefineConstants>
+    <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetFramework)'=='net46'">

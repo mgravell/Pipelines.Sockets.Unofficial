@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Collections.Generic;
+using System.Text;
 
 namespace Pipelines.Sockets.Unofficial
 {
@@ -136,17 +137,79 @@ namespace Pipelines.Sockets.Unofficial
         internal static void DebugLog(string name, string message, [CallerMemberName] string caller = null)
         {
 #if VERBOSE
+            
+            var log = Log;
+            if (log != null)
+            {
                 var thread = System.Threading.Thread.CurrentThread;
                 var threadName = thread.Name;
                 if (string.IsNullOrWhiteSpace(threadName)) threadName = thread.ManagedThreadId.ToString();
-
-                Log?.WriteLine($"[{threadName}, {name}, {caller}]: {message}");
+                    
+                var s = $"[{threadName}, {name}, {caller}]: {message}";
+                lock (log)
+                {
+                    try { log.WriteLine(s); }
+                    catch { }
+                }
+            }
 #endif
         }
 
-        internal static void Incr(object pipeStreamRead)
+
+#if SOCKET_STREAM_BUFFERS
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static string AsString(this ReadOnlySpan<char> chars) => new string(chars);
+#else
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe string AsString(this ReadOnlySpan<char> chars)
         {
-            throw new NotImplementedException();
+            fixed (char* charPtr = &MemoryMarshal.GetReference(chars))
+            {
+                return new string(charPtr, 0, chars.Length);
+            }
         }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe void Convert(this Decoder decoder, ReadOnlySpan<byte> bytes, Span<char> chars, bool flush, out int bytesUsed, out int charsUsed, out bool completed)
+        {
+            fixed (byte* bytePtr = &MemoryMarshal.GetReference(bytes))
+            fixed (char* charPtr = &MemoryMarshal.GetReference(chars))
+            {
+                decoder.Convert(bytePtr, bytes.Length, charPtr, chars.Length, flush, out bytesUsed, out charsUsed, out completed);
+            }
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe string GetString(this Encoding encoding, ReadOnlySpan<byte> bytes)
+        {
+            fixed (byte* ptr = &MemoryMarshal.GetReference(bytes))
+            {
+                return encoding.GetString(ptr, bytes.Length);
+            }
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe int GetCharCount(this Decoder decoder, ReadOnlySpan<byte> bytes, bool flush)
+        {
+            fixed (byte* bPtr = &MemoryMarshal.GetReference(bytes))
+            {
+                return decoder.GetCharCount(bPtr, bytes.Length, flush);
+            }
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe int GetCharCount(this Encoding encoding, ReadOnlySpan<byte> bytes)
+        {
+            fixed (byte* bPtr = &MemoryMarshal.GetReference(bytes))
+            {
+                return encoding.GetCharCount(bPtr, bytes.Length);
+            }
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe void Convert(this Encoder encoder, ReadOnlySpan<char> chars, Span<byte> bytes, bool flush, out int bytesUsed, out int charsUsed, out bool completed)
+        {
+            fixed (byte* bytePtr = &MemoryMarshal.GetReference(bytes))
+            fixed (char* charPtr = &MemoryMarshal.GetReference(chars))
+            {
+                encoder.Convert(charPtr, chars.Length, bytePtr, bytes.Length, flush, out bytesUsed, out charsUsed, out completed);
+            }
+        }
+#endif
     }
 }

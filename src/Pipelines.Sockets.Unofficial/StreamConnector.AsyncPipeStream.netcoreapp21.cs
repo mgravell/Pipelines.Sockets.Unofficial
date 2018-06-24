@@ -12,6 +12,9 @@ namespace Pipelines.Sockets.Unofficial
     {
         partial class AsyncPipeStream
         {
+            /// <summary>
+            /// Write a span to the pipe
+            /// </summary>
             public override void Write(ReadOnlySpan<byte> buffer)
             {
                 DebugLog();
@@ -19,6 +22,9 @@ namespace Pipelines.Sockets.Unofficial
                 WriteImpl(buffer);
                 FlushImpl();
             }
+            /// <summary>
+            /// Red a span from the pipe
+            /// </summary>
             public override int Read(Span<byte> buffer)
             {
                 DebugLog();
@@ -44,13 +50,18 @@ namespace Pipelines.Sockets.Unofficial
                 return bytes;
             }
 
+            /// <summary>
+            /// Read a span from the pipe
+            /// </summary>
             public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
             {
                 DebugLog("init");
                 Helpers.Incr(Counter.PipeStreamReadAsyncMemory);
                 return ReadAsyncImpl(buffer, cancellationToken);
             }
-
+            /// <summary>
+            /// Write a span to the pipe
+            /// </summary>
             public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
             {
                 DebugLog();

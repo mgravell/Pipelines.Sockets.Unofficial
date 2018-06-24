@@ -63,6 +63,7 @@ namespace Pipelines.Sockets.Unofficial
         private bool StartWorker()
         {
             bool create = false;
+            int newNumber = 0;
             if (_threadCount < MaxThreads)
             {
                 lock (ThreadSyncLock)
@@ -70,8 +71,7 @@ namespace Pipelines.Sockets.Unofficial
                     if (_threadCount < MaxThreads) // double-check
                     {
                         create = true;
-                        _threadCount++;
-
+                        newNumber = _threadCount++;
                     }
                 }
             }
@@ -80,7 +80,7 @@ namespace Pipelines.Sockets.Unofficial
             {
                 var thread = new Thread(ThreadRunWorkLoop)
                 {
-                    Name = Name,
+                    Name = $"{Name}:{newNumber}",
                     Priority = Priority,
                     IsBackground = true
                 };
