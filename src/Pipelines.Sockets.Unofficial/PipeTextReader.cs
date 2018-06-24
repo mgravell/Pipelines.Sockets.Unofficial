@@ -200,40 +200,51 @@ namespace Pipelines.Sockets.Unofficial
         {
             var decoder = GetDecoder();
             Span<char> chars = stackalloc char[256];
-            int offsetBytes = 0, totalChars = 0;
+            int totalChars = 0;
             foreach (var segment in buffer)
             {
                 var bytes = segment.Span;
-                decoder.Convert(bytes, chars, false, out var bytesUsed, out var charsUsed, out _);
-                for (int i = 0; i < charsUsed; i++)
+                while (!bytes.IsEmpty)
                 {
-                    switch (chars[i])
+                    decoder.Convert(bytes, chars, false, out var bytesUsed, out var charsUsed, out _);
+                    for (int i = 0; i < charsUsed; i++)
                     {
-                        case '\r':
-                            if (i < charsUsed - 1) return ReadToEndOfLine(ref buffer, totalChars + i,
-                                     chars[i + 1] == '\n' ? _crLen + _lfLen : _crLen);
+                        switch (chars[i])
+                        {
+                            case '\r':
+                                if (i < charsUsed - 1)
+                                {
+                                    DebugLog($"found {(chars[i + 1] == '\n' ? "\\r\\n" : "\\r")} at char-offset {totalChars + i}");
+                                    return ReadToEndOfLine(ref buffer, totalChars + i,
+                                         chars[i + 1] == '\n' ? _crLen + _lfLen : _crLen);
+                                }
 
-                            // can't determine if there's a LF, so skip it instead
-                            _skipPrefix = SkipPrefix.LineFeed;
-                            return ReadToEndOfLine(ref buffer, totalChars + i, _crLen);
-                        case '\n':
-                            return ReadToEndOfLine(ref buffer, totalChars + i, _lfLen);
+                                // can't determine if there's a LF, so skip it instead
+                                _skipPrefix = SkipPrefix.LineFeed;
+                                DebugLog($"Found \\r at char-offset {totalChars + i}, trailing prefix: {_skipPrefix}");
+                                return ReadToEndOfLine(ref buffer, totalChars + i, _crLen);
+                            case '\n':
+                                DebugLog($"Found \\n at char-offset {totalChars + i}");
+                                return ReadToEndOfLine(ref buffer, totalChars + i, _lfLen);
+                        }
                     }
+                    bytes = bytes.Slice(bytesUsed);
+                    totalChars += charsUsed;
                 }
-                offsetBytes += bytesUsed;
-                totalChars += charsUsed;
             }
             return null;
         }
 
         private string ReadToEndOfLine(ref ReadOnlySequence<byte> buffer, int charCount, int suffixBytes)
         {
-            if(charCount == 0)
+            if (charCount == 0)
             {
+                DebugLog($"Consuming {suffixBytes} bytes and yielding empty string");
                 buffer = buffer.Slice(suffixBytes);
                 return "";
             }
             string s = GetString(in buffer, charCount, out var payloadBytes);
+            DebugLog($"Consuming {payloadBytes + suffixBytes} bytes and yielding {charCount} characters");
             buffer = buffer.Slice(payloadBytes + suffixBytes);
             return s;
         }
