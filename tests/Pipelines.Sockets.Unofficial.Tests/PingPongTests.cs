@@ -84,6 +84,29 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Log.DebugLog("All good!");
         }
 
+
+        [Fact]
+        public async Task Basic_Pipelines_Text_PingPong()
+        {
+            Log.DebugLog();
+            var tuple = CreateConnectedSocketPair();
+            using (var client = tuple.Item1)
+            using (var server = tuple.Item2)
+            {
+                var clientPipe = SocketConnection.Create(client, InlineReceive, InlineSend, name: "socket client");
+                var serverPipe = SocketConnection.Create(server, InlineReceive, InlineSend, name: "socket server");
+
+                var enc = Encoding.UTF8;
+                await PingPong(
+                    new PipeTextReader(clientPipe.Input, enc),
+                    new PipeTextWriter(clientPipe.Output, enc),
+                    new PipeTextReader(serverPipe.Input, enc),
+                    new PipeTextWriter(serverPipe.Output, enc),
+                    LoopCount);
+            }
+            Log.DebugLog("All good!");
+        }
+
         [Fact]
         public async Task Basic_NetworkStream_PingPong()
         {
@@ -95,6 +118,26 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 var clientStream = new NetworkStream(client);
                 var serverStream = new NetworkStream(server);
                 await PingPong(clientStream, serverStream, LoopCount);
+            }
+            Log.DebugLog("All good!");
+        }
+
+        [Fact]
+        public async Task Basic_NetworkStream_Text_PingPong()
+        {
+            Log.DebugLog();
+            var tuple = CreateConnectedSocketPair();
+            using (var client = tuple.Item1)
+            using (var server = tuple.Item2)
+            {
+                var clientStream = new NetworkStream(client);
+                var serverStream = new NetworkStream(server);
+                await PingPong(
+                    new StreamReader(clientStream),
+                    new StreamWriter(clientStream),
+                    new StreamReader(serverStream),
+                    new StreamWriter(serverStream),                    
+                    LoopCount);
             }
             Log.DebugLog("All good!");
         }
@@ -399,6 +442,30 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 Assert.Equal(expected, s);
             }
         }
+        private async Task PingPong(TextReader clientReader, TextWriter clientWriter, TextReader serverReader, TextWriter serverWriter, int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                Log.DebugLogVerboseWriteLine();
+                Log.DebugLogVerbose($"Test {i}...");
+
+                Log.DebugLogVerbose("Client sending...");
+                var expected = await WritePing(clientWriter, i);
+
+                Log.DebugLogVerbose("Server reading...");
+                string s = await serverReader.ReadLineAsync();
+                Log.DebugLogVerbose($"Server received: '{s}'");
+                Assert.Equal(expected, s);
+
+                Log.DebugLogVerbose("Server sending...");
+                expected = await WritePong(serverWriter, i);
+
+                Log.DebugLogVerbose("Client reading...");
+                s = await clientReader.ReadLineAsync();
+                Log.DebugLogVerbose($"Client received: '{s}'");
+                Assert.Equal(expected, s);
+            }
+        }
         static byte[] GetPayload(string message)
         {
             var utf8 = Encoding.UTF8;
@@ -414,6 +481,20 @@ namespace Pipelines.Sockets.Unofficial.Tests
             var s = PINGPONGPREFIX + "PING:" + i;
             var bytes = GetPayload(s);
             await writer.WriteAsync(bytes);
+            await writer.FlushAsync();
+            return s;
+        }
+        async ValueTask<string> WritePing(TextWriter writer, int i)
+        {
+            var s = PINGPONGPREFIX + "PING:" + i;
+            await writer.WriteLineAsync(s);
+            await writer.FlushAsync();
+            return s;
+        }
+        async ValueTask<string> WritePong(TextWriter writer, int i)
+        {
+            var s = PINGPONGPREFIX + "PONG:" + i;
+            await writer.WriteLineAsync(s);
             await writer.FlushAsync();
             return s;
         }
