@@ -212,6 +212,7 @@ namespace Pipelines.Sockets.Unofficial
 
         private string ReadToEndOfLine(ref ReadOnlySequence<byte> buffer)
         {
+            //TODO: optimize for single-byte encodings - just hunt for bytes 10/13
             var decoder = GetDecoder();
             Span<char> chars = stackalloc char[256];
             int totalChars = 0;
