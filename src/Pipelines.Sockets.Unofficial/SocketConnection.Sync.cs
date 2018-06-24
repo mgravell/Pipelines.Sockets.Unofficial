@@ -136,7 +136,7 @@ namespace Pipelines.Sockets.Unofficial
                     }
 
                     var buffer = _receive.Writer.GetMemory(1);
-                    DebugLog($"leased {buffer.Length} bytes from pool");
+                    DebugLog($"leased {buffer.Length} bytes from pipe");
                     try
                     {
                         DebugLog($"awaiting socket receive...");

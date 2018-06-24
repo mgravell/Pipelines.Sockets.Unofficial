@@ -62,10 +62,13 @@ namespace Pipelines.Sockets.Unofficial
                 _crLen = encoding.GetByteCount("\r");
                 _lfLen = _lineFeed.Length;
             }
-            _skipPrefix = SkipPrefix.Preamble;
 
-#if !SOCKET_STREAM_BUFFERS
+
+#if SOCKET_STREAM_BUFFERS
+            _skipPrefix = encoding.Preamble.IsEmpty ? SkipPrefix.None : SkipPrefix.Preamble;
+#else
             _preamble = encoding.GetPreamble();
+            _skipPrefix = _preamble.IsEmpty ? SkipPrefix.None : SkipPrefix.Preamble;
 #endif
         }
 
@@ -106,21 +109,22 @@ namespace Pipelines.Sockets.Unofficial
             DebugLog($"Checking {chk} of {buffer.Length} bytes for prefix: {_skipPrefix}");
 
             bool isMatch;
-            if (buffer.First.Length <= chk)
+            if (chk <= buffer.First.Length)
             {
-                isMatch = buffer.First.Span.Slice(chk).SequenceEqual(prefix.Slice(chk));
+                isMatch = buffer.First.Span.Slice(0, chk).SequenceEqual(prefix.Slice(0, chk));
             }
             else
             {
                 Span<byte> all = stackalloc byte[chk];
                 buffer.Slice(0, chk).CopyTo(all);
-                isMatch = all.SequenceEqual(prefix.Slice(chk));
+                isMatch = all.SequenceEqual(prefix.Slice(0, chk));
             }
             if (!isMatch)
             {
                 // failure - partial or complete, it doesn't matter
+                DebugLog($"Mismatch; abandoned prefix: {_skipPrefix}");
                 _skipPrefix = SkipPrefix.None; // don't check again
-                DebugLog($"Mismatch; abandoned prefix");
+
                 return true;
             }
             if (prefix.Length == chk)
@@ -135,10 +139,10 @@ namespace Pipelines.Sockets.Unofficial
             DebugLog("Partial match; unable to absorb or abandon yet");
             return false;
         }
-        public override void Close()
+        protected override void Dispose(bool disposing)
         {
-            if (_closeReader) _reader.Complete();
-            base.Close();
+            base.Dispose(disposing);
+            if (disposing && _closeReader) _reader.Complete();
         }
         public override Task<int> ReadAsync(char[] buffer, int index, int count)
             => ReadAsyncImpl(new Memory<char>(buffer, index, count), default).AsTask();
@@ -146,54 +150,64 @@ namespace Pipelines.Sockets.Unofficial
         public override Task<int> ReadBlockAsync(char[] buffer, int index, int count)
             => ReadBlockAsyncImpl(new Memory<char>(buffer, index, count), default).AsTask();
 
-        public override async Task<string> ReadLineAsync()
+        static readonly Task<string>
+            TaskEmptyString = Task.FromResult(""),
+            TaskNullString = Task.FromResult<string>(null);
+        public override Task<string> ReadLineAsync()
         {
-            var decoder = _encoding.GetDecoder();
-            while (true)
+            async Task<string> Awaited()
             {
-                var result = await _reader.ReadAsync();
-                if (result.IsCanceled) throw new InvalidOperationException("Operation cancelled");
-
-                var buffer = result.Buffer;
-                var snapshot = buffer;
-                try
+                while (true)
                 {
-                    if (NeedPrefixCheck) CheckPrefix(ref buffer);
-                    
-                    var line = ReadToEndOfLine(ref buffer); // found a line
-
-                    if (line == null)
-                    {
-                        if (result.IsCompleted) // that's everything
-                        {
-                            if(buffer.IsEmpty)
-                            {
-                                DebugLog("EOF, no data, returning null");
-                                return null;
-                            }
-                            DebugLog("EOF, returning trailing data");
-                            return ConsumeString(buffer);
-                        }
-                        DebugLog("No EOL found; awaiting more data");
-                        _reader.AdvanceTo(buffer.Start, buffer.End);
-                    }
-                    else
-                    {
-                        DebugLog($"{line.Length} characters found; prefix: {_skipPrefix}; remaining buffer: {buffer.Length}");
-                        _reader.AdvanceTo(buffer.Start);
-                        return line;
-                    }
-                }
-                catch(Exception ex)
-                {
-                    Console.WriteLine(ex.Message);
-                    Console.WriteLine(ex.StackTrace);
-                    buffer = snapshot;
-                    var line = ReadToEndOfLine(ref buffer); // found a line
-
-                    throw;
+                    var result = await _reader.ReadAsync();
+                    if (ReadLineAsync(in result, out var s))
+                        return s;
                 }
             }
+            {
+                if (_reader.TryRead(out var result) && ReadLineAsync(in result, out var s))
+                {
+                    if (s == null) return TaskNullString;
+                    if (s.Length == 0) return TaskEmptyString;
+                    return Task.FromResult(s);
+                }
+                return Awaited();
+            }
+        }
+
+        private bool ReadLineAsync(in ReadResult result, out string s)
+        {
+            if (result.IsCanceled) throw new InvalidOperationException("Operation cancelled");
+
+            var buffer = result.Buffer;
+
+            if (NeedPrefixCheck) CheckPrefix(ref buffer);
+
+            var line = ReadToEndOfLine(ref buffer); // found a line
+
+            if (line != null)
+            {
+                DebugLog($"{line.Length} characters found; prefix: {_skipPrefix}; remaining buffer: {buffer.Length}");
+                _reader.AdvanceTo(buffer.Start);
+                s = line;
+                return true;
+            }
+            if (result.IsCompleted) // that's everything
+            {
+                if (buffer.IsEmpty)
+                {
+                    DebugLog("EOF, no data, returning null");
+                    s = null;
+                    return true;
+                }
+                DebugLog("EOF, returning trailing data");
+                s = ConsumeString(buffer);
+                return true;
+            }
+            DebugLog("No EOL found; awaiting more data");
+            _reader.AdvanceTo(buffer.Start, buffer.End);
+            s = default;
+            return false;
         }
 
         private string ReadToEndOfLine(ref ReadOnlySequence<byte> buffer)
@@ -201,12 +215,13 @@ namespace Pipelines.Sockets.Unofficial
             var decoder = GetDecoder();
             Span<char> chars = stackalloc char[256];
             int totalChars = 0;
+
             foreach (var segment in buffer)
             {
                 var bytes = segment.Span;
                 while (!bytes.IsEmpty)
                 {
-                    decoder.Convert(bytes, chars, false, out var bytesUsed, out var charsUsed, out _);
+                    decoder.Convert(bytes, chars, false, out var bytesUsed, out var charsUsed, out var completed);
                     for (int i = 0; i < charsUsed; i++)
                     {
                         switch (chars[i])
@@ -215,6 +230,8 @@ namespace Pipelines.Sockets.Unofficial
                                 if (i < charsUsed - 1)
                                 {
                                     DebugLog($"found {(chars[i + 1] == '\n' ? "\\r\\n" : "\\r")} at char-offset {totalChars + i}");
+                                    if (totalChars == 0 && bytesUsed == bytes.Length && completed)
+                                        return ReadToEndOfLine(ref buffer, chars.Slice(0, i), bytesUsed);
                                     return ReadToEndOfLine(ref buffer, totalChars + i,
                                          chars[i + 1] == '\n' ? _crLen + _lfLen : _crLen);
                                 }
@@ -222,9 +239,13 @@ namespace Pipelines.Sockets.Unofficial
                                 // can't determine if there's a LF, so skip it instead
                                 _skipPrefix = SkipPrefix.LineFeed;
                                 DebugLog($"Found \\r at char-offset {totalChars + i}, trailing prefix: {_skipPrefix}");
+                                if (totalChars == 0 && bytesUsed == bytes.Length && completed)
+                                    return ReadToEndOfLine(ref buffer, chars.Slice(0, i), bytesUsed);
                                 return ReadToEndOfLine(ref buffer, totalChars + i, _crLen);
                             case '\n':
                                 DebugLog($"Found \\n at char-offset {totalChars + i}");
+                                if (totalChars == 0 && bytesUsed == bytes.Length && completed)
+                                    return ReadToEndOfLine(ref buffer, chars.Slice(0, i), bytesUsed);
                                 return ReadToEndOfLine(ref buffer, totalChars + i, _lfLen);
                         }
                     }
@@ -233,6 +254,15 @@ namespace Pipelines.Sockets.Unofficial
                 }
             }
             return null;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private string ReadToEndOfLine(ref ReadOnlySequence<byte> buffer, ReadOnlySpan<char> chars, int bytesUsed)
+        {
+            // optimization when the line was *all* of the first span; this is actually pretty common for 
+            // small messages in a line-terminated socket server conversation, for example
+            buffer = buffer.Slice(bytesUsed);
+            return chars.IsEmpty ? "" : chars.AsString();
         }
 
         private string ReadToEndOfLine(ref ReadOnlySequence<byte> buffer, int charCount, int suffixBytes)
@@ -264,42 +294,36 @@ namespace Pipelines.Sockets.Unofficial
                 _reader.AdvanceTo(buffer.Start);
             }
         }
-        private ValueTask<int> ReadAsyncImpl(Memory<char> chars, CancellationToken cancellationToken)
+
+        bool ReadConsume(ReadResult result, Span<char> chars, bool peek, out int charsRead)
         {
-            async ValueTask<int> Awaited(Memory<char> cchars, CancellationToken ccancellationToken)
+            var buffer = result.Buffer;
+            if (NeedPrefixCheck) CheckPrefix(ref buffer);
+            int bytesUsed = GetString(buffer, chars, out charsRead);
+
+            if ((bytesUsed != 0 && charsRead != 0) || result.IsCompleted)
             {
-                while(true)
-                {
-                    var result = await _reader.ReadAsync(ccancellationToken);
-                    var buffer = result.Buffer;
-                    if (NeedPrefixCheck) CheckPrefix(ref buffer);
-                    int bytesUsed = GetString(buffer, cchars.Span, out int charsRead);
-
-                    if ((bytesUsed != 0 && charsRead != 0) || result.IsCompleted)
-                    {
-                        _reader.AdvanceTo(buffer.GetPosition(bytesUsed));
-                        return charsRead;
-                    }
-                    _reader.AdvanceTo(buffer.Start);
-                }
+                _reader.AdvanceTo(peek ? buffer.Start : buffer.GetPosition(bytesUsed));
+                return true;
             }
-
+            _reader.AdvanceTo(buffer.Start);
+            return false;
+        }
+        private async ValueTask<int> ReadAsyncImplAwaited(Memory<char> chars, CancellationToken cancellationToken, bool peek = false)
+        {
+            while (true)
             {
-                if (_reader.TryRead(out var result))
-                {
-                    var buffer = result.Buffer;
-                    if (NeedPrefixCheck) CheckPrefix(ref buffer);
-                    int bytesUsed = GetString(buffer, chars.Span, out int charsRead);
-
-                    if ((bytesUsed != 0 && charsRead != 0) || result.IsCompleted)
-                    {
-                        _reader.AdvanceTo(buffer.GetPosition(bytesUsed));
-                        return new ValueTask<int>(charsRead);
-                    }
-                    _reader.AdvanceTo(buffer.Start);
-                }
-                return Awaited(chars, cancellationToken);
+                var result = await _reader.ReadAsync(cancellationToken);
+                if (ReadConsume(result, chars.Span, peek, out var charsRead))
+                    return charsRead;
             }
+        }
+        private ValueTask<int> ReadAsyncImpl(Memory<char> chars, CancellationToken cancellationToken, bool peek = false)
+        {
+            if (_reader.TryRead(out var result) && ReadConsume(result, chars.Span, peek, out var charsRead))
+                return new ValueTask<int>(charsRead);
+
+            return ReadAsyncImplAwaited(chars, cancellationToken, peek);
         }
         private async ValueTask<int> ReadBlockAsyncImpl(Memory<char> buffer, CancellationToken cancellationToken)
         {
@@ -346,15 +370,24 @@ namespace Pipelines.Sockets.Unofficial
         public override int ReadBlock(char[] buffer, int index, int count) => ReadBlockAsync(buffer, index, count).Result;
         public override int Read(char[] buffer, int index, int count) => ReadAsync(buffer, index, count).Result;
         public override string ReadToEnd() => ReadToEndAsync().Result;
-        public override int Read()
-        {
-            var arr = ArrayPool<char>.Shared.Rent(1);
-            int bytes = ReadAsync(arr, 0, 1).Result;
-            var result = bytes <= 0 ? -1 : arr[0];
-            ArrayPool<char>.Shared.Return(arr);
-            return result;
-        }
+        public override int Read() => ReadSingleChar(false);
+        public override int Peek() => ReadSingleChar(true);
 
+        private int ReadSingleChar(bool peek)
+        {
+            if (_reader.TryRead(out var result))
+            {
+                Span<char> chars = stackalloc char[1];
+                if (ReadConsume(result, chars, peek, out var charsRead))
+                    return charsRead <= 0 ? -1 : chars[0];
+            }
+
+            var arr = ArrayPool<char>.Shared.Rent(1);
+            int bytes = ReadAsyncImplAwaited(new Memory<char>(arr, 0, 1), default, peek).Result;
+            var finalResult = bytes <= 0 ? -1 : arr[0];
+            ArrayPool<char>.Shared.Return(arr);
+            return finalResult;
+        }
         private string ConsumeString(ReadOnlySequence<byte> buffer)
         {
             var s = GetString(buffer);
@@ -365,7 +398,7 @@ namespace Pipelines.Sockets.Unofficial
         private int GetCharCount(in ReadOnlySequence<byte> buffer)
         {
             var enc = _encoding;
-            
+
             if (enc.IsSingleByte) return (int)checked(buffer.Length);
 
             if (enc is UnicodeEncoding) return (int)checked(buffer.Length / 2);
@@ -399,7 +432,7 @@ namespace Pipelines.Sockets.Unofficial
         }
         string GetString(in ReadOnlySequence<byte> buffer, int charCount, out int totalBytes)
         {
-            if(charCount == 0)
+            if (charCount == 0)
             {
                 totalBytes = 0;
                 return "";
@@ -412,7 +445,7 @@ namespace Pipelines.Sockets.Unofficial
         }
         int GetString(in ReadOnlySequence<byte> buffer, Span<char> chars, out int charsRead)
         {
-            if(chars.IsEmpty)
+            if (chars.IsEmpty)
             {
                 charsRead = 0;
                 return 0;
@@ -429,7 +462,7 @@ namespace Pipelines.Sockets.Unofficial
                 totalBytes += bytesUsed;
                 charsRead += charsUsed;
                 chars = chars.Slice(charsUsed);
-                if (chars.IsEmpty) break;            
+                if (chars.IsEmpty) break;
             }
             return totalBytes;
         }
