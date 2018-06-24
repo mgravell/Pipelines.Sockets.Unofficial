@@ -137,18 +137,29 @@ namespace Pipelines.Sockets.Unofficial
         internal static void DebugLog(string name, string message, [CallerMemberName] string caller = null)
         {
 #if VERBOSE
+            
+            var log = Log;
+            if (log != null)
+            {
                 var thread = System.Threading.Thread.CurrentThread;
                 var threadName = thread.Name;
                 if (string.IsNullOrWhiteSpace(threadName)) threadName = thread.ManagedThreadId.ToString();
-
-                Log?.WriteLine($"[{threadName}, {name}, {caller}]: {message}");
+                    
+                var s = $"[{threadName}, {name}, {caller}]: {message}";
+                try
+                {
+                    log.WriteLine(s);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"WriteLine failed for {log.GetType().FullName}; {ex.Message}");
+                    Console.WriteLine($"Attempted to write: {s}");
+                    Console.WriteLine(ex.StackTrace);
+                }
+            }
 #endif
         }
 
-        internal static void Incr(object pipeStreamRead)
-        {
-            throw new NotImplementedException();
-        }
 #if !SOCKET_STREAM_BUFFERS
         internal static unsafe void Convert(this Decoder decoder, ReadOnlySpan<byte> bytes, Span<char> chars, bool flush, out int bytesUsed, out int charsUsed, out bool completed)
         {
@@ -170,6 +181,13 @@ namespace Pipelines.Sockets.Unofficial
             fixed (byte* bPtr = &MemoryMarshal.GetReference(bytes))
             {
                 return decoder.GetCharCount(bPtr, bytes.Length, flush);
+            }
+        }
+        internal static unsafe int GetCharCount(this Encoding encoding, ReadOnlySpan<byte> bytes)
+        {
+            fixed (byte* bPtr = &MemoryMarshal.GetReference(bytes))
+            {
+                return encoding.GetCharCount(bPtr, bytes.Length);
             }
         }
         internal static unsafe void Convert(this Encoder encoder, ReadOnlySpan<char> chars, Span<byte> bytes, bool flush, out int bytesUsed, out int charsUsed, out bool completed)

@@ -15,10 +15,10 @@
     <Optimize>true</Optimize>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)'=='Debug'">
-    <!--<DefineConstants>$(DebugSymbols);VERBOSE</DefineConstants>-->
+    <DefineConstants>$(DefineConstants);VERBOSE</DefineConstants>
   </PropertyGroup>
   <PropertyGroup Condition="'$(TargetFramework)'=='netcoreapp2.1'">
-    <DefineConstants>$(DebugSymbols);SOCKET_STREAM_BUFFERS</DefineConstants>
+    <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetFramework)'=='net46'">

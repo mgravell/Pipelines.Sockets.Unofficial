@@ -30,6 +30,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             InlineSend = new PipeOptions(PipeOptions.Pool, PipeOptions.ReaderScheduler, PipeScheduler.Inline, PipeOptions.PauseWriterThreshold, PipeOptions.ResumeWriterThreshold, PipeOptions.MinimumSegmentSize, PipeOptions.UseSynchronizationContext);
             InlineReceive = new PipeOptions(PipeOptions.Pool, PipeScheduler.Inline, PipeOptions.WriterScheduler, PipeOptions.PauseWriterThreshold, PipeOptions.ResumeWriterThreshold, PipeOptions.MinimumSegmentSize, PipeOptions.UseSynchronizationContext);
             InlineBoth = new PipeOptions(PipeOptions.Pool, PipeScheduler.Inline, PipeScheduler.Inline, PipeOptions.PauseWriterThreshold, PipeOptions.ResumeWriterThreshold, PipeOptions.MinimumSegmentSize, PipeOptions.UseSynchronizationContext);
+            try { _someCertificate = new X509Certificate2("somesite.pfx"); } catch { }
         }
 
         public const int LoopCount = 5000;
@@ -291,7 +292,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
             Log.DebugLog("All good!");
         }
-        static readonly X509Certificate SomeCertificate = new X509Certificate2("somesite.pfx");
+        static X509Certificate _someCertificate;
+        static X509Certificate SomeCertificate => _someCertificate ?? throw new InvalidOperationException("Certificate unavailable; check disk");
         [Fact]
         public async Task ServerClient_SslStream_PingPong()
         {

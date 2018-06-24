@@ -22,6 +22,8 @@ namespace Pipelines.Sockets.Unofficial
         private readonly ReadOnlyMemory<byte> _preamble;
 #endif
         static readonly ReadOnlyMemory<byte> SingleByteLineFeed = new byte[] { (byte)'\n' };
+        private readonly int _crLen, _lfLen;
+
         private SkipPrefix _skipPrefix;
 
         private Decoder GetDecoder()
@@ -29,6 +31,13 @@ namespace Pipelines.Sockets.Unofficial
             _decoder.Reset();
             return _decoder;
         }
+
+        [Conditional("VERBOSE")]
+        void DebugLog(string message, [CallerMemberName] string caller = null)
+        {
+            Helpers.DebugLog(GetType().Name, message, caller);
+        }
+
         enum SkipPrefix
         {
             None,
@@ -42,13 +51,22 @@ namespace Pipelines.Sockets.Unofficial
             _decoder = encoding.GetDecoder();
             _closeReader = closeReader;
 
-            _lineFeed = (encoding.IsSingleByte || encoding is UTF8Encoding) ? SingleByteLineFeed : encoding.GetBytes("\n");
+            if (encoding.IsSingleByte || encoding is UTF8Encoding)
+            {
+                _lineFeed = SingleByteLineFeed;
+                _crLen = _lfLen = 1;
+            }
+            else
+            {
+                _lineFeed = encoding.GetBytes("\n");
+                _crLen = encoding.GetByteCount("\r");
+                _lfLen = _lineFeed.Length;
+            }
             _skipPrefix = SkipPrefix.Preamble;
 
 #if !SOCKET_STREAM_BUFFERS
             _preamble = encoding.GetPreamble();
 #endif
-
         }
 
 
@@ -57,6 +75,7 @@ namespace Pipelines.Sockets.Unofficial
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => _skipPrefix != SkipPrefix.None;
         }
+
         private bool CheckPrefix(ref ReadOnlySequence<byte> buffer)
         {
             // this method deals with the awkwardness of things like BOMs and
@@ -84,6 +103,7 @@ namespace Pipelines.Sockets.Unofficial
             if (prefix.IsEmpty) return true;
 
             int chk = (int)Math.Min(buffer.Length, prefix.Length);
+            DebugLog($"Checking {chk} of {buffer.Length} bytes for prefix: {_skipPrefix}");
 
             bool isMatch;
             if (buffer.First.Length <= chk)
@@ -100,6 +120,7 @@ namespace Pipelines.Sockets.Unofficial
             {
                 // failure - partial or complete, it doesn't matter
                 _skipPrefix = SkipPrefix.None; // don't check again
+                DebugLog($"Mismatch; abandoned prefix");
                 return true;
             }
             if (prefix.Length == chk)
@@ -107,9 +128,11 @@ namespace Pipelines.Sockets.Unofficial
                 // complete match; absorb the bytes
                 _skipPrefix = SkipPrefix.None;
                 buffer = buffer.Slice(chk);
+                DebugLog($"Match; absorbed prefix; buffer now {buffer.Length} bytes");
                 return true;
             }
             // partial match; can't say anything more just now
+            DebugLog("Partial match; unable to absorb or abandon yet");
             return false;
         }
         public override void Close()
@@ -129,23 +152,46 @@ namespace Pipelines.Sockets.Unofficial
             while (true)
             {
                 var result = await _reader.ReadAsync();
+                if (result.IsCanceled) throw new InvalidOperationException("Operation cancelled");
 
                 var buffer = result.Buffer;
-                if (NeedPrefixCheck) CheckPrefix(ref buffer);
-                if (result.IsCanceled) throw new InvalidOperationException();
-
-                var line = ReadToEndOfLine(ref buffer); // found a line
-
-                if (line == null)
+                var snapshot = buffer;
+                try
                 {
-                    if (result.IsCompleted) return buffer.IsEmpty ? null : ConsumeString(buffer); // that's everything
+                    if (NeedPrefixCheck) CheckPrefix(ref buffer);
+                    
+                    var line = ReadToEndOfLine(ref buffer); // found a line
 
-                    _reader.AdvanceTo(buffer.Start, buffer.End);
+                    if (line == null)
+                    {
+                        if (result.IsCompleted) // that's everything
+                        {
+                            if(buffer.IsEmpty)
+                            {
+                                DebugLog("EOF, no data, returning null");
+                                return null;
+                            }
+                            DebugLog("EOF, returning trailing data");
+                            return ConsumeString(buffer);
+                        }
+                        DebugLog("No EOL found; awaiting more data");
+                        _reader.AdvanceTo(buffer.Start, buffer.End);
+                    }
+                    else
+                    {
+                        DebugLog($"{line.Length} characters found; prefix: {_skipPrefix}; remaining buffer: {buffer.Length}");
+                        _reader.AdvanceTo(buffer.Start);
+                        return line;
+                    }
                 }
-                else
+                catch(Exception ex)
                 {
-                    _reader.AdvanceTo(buffer.Start);
-                    return line;
+                    Console.WriteLine(ex.Message);
+                    Console.WriteLine(ex.StackTrace);
+                    buffer = snapshot;
+                    var line = ReadToEndOfLine(ref buffer); // found a line
+
+                    throw;
                 }
             }
         }
@@ -165,13 +211,13 @@ namespace Pipelines.Sockets.Unofficial
                     {
                         case '\r':
                             if (i < charsUsed - 1) return ReadToEndOfLine(ref buffer, totalChars + i,
-                                     chars[i + 1] == '\n' ? "\r\n" : "\r");
+                                     chars[i + 1] == '\n' ? _crLen + _lfLen : _crLen);
 
                             // can't determine if there's a LF, so skip it instead
                             _skipPrefix = SkipPrefix.LineFeed;
-                            return ReadToEndOfLine(ref buffer, totalChars + i, "\r");
+                            return ReadToEndOfLine(ref buffer, totalChars + i, _crLen);
                         case '\n':
-                            return ReadToEndOfLine(ref buffer, totalChars + i, "\n");
+                            return ReadToEndOfLine(ref buffer, totalChars + i, _lfLen);
                     }
                 }
                 offsetBytes += bytesUsed;
@@ -180,20 +226,16 @@ namespace Pipelines.Sockets.Unofficial
             return null;
         }
 
-        private string ReadToEndOfLine(ref ReadOnlySequence<byte> buffer, int charCount, string suffix)
+        private string ReadToEndOfLine(ref ReadOnlySequence<byte> buffer, int charCount, int suffixBytes)
         {
-            string s = GetString(in buffer, charCount, out var totalBytes);
-            buffer = buffer.Slice(totalBytes);
-
-            if (!string.IsNullOrEmpty(suffix))
+            if(charCount == 0)
             {
-                Span<char> actualSuffix = stackalloc char[suffix.Length];
-                int suffixBytes = GetString(in buffer, actualSuffix, out _);
-                Debug.Assert(actualSuffix.SequenceEqual(suffix.AsSpan()), "I got confused about the line-endings... sorry");
                 buffer = buffer.Slice(suffixBytes);
+                return "";
             }
+            string s = GetString(in buffer, charCount, out var payloadBytes);
+            buffer = buffer.Slice(payloadBytes + suffixBytes);
             return s;
-
         }
 
         public override async Task<string> ReadToEndAsync()
@@ -309,6 +351,27 @@ namespace Pipelines.Sockets.Unofficial
             return s;
         }
 
+        private int GetCharCount(in ReadOnlySequence<byte> buffer)
+        {
+            var enc = _encoding;
+            
+            if (enc.IsSingleByte) return (int)checked(buffer.Length);
+
+            if (enc is UnicodeEncoding) return (int)checked(buffer.Length / 2);
+
+            if (buffer.IsSingleSegment) return buffer.IsEmpty ? 0 : enc.GetCharCount(buffer.First.Span);
+
+            int charCount = 0;
+            var decoder = GetDecoder();
+            foreach (var segment in buffer)
+            {
+                var span = segment.Span;
+                if (span.IsEmpty) continue;
+                charCount += decoder.GetCharCount(span, false);
+            }
+            return charCount;
+
+        }
         private string GetString(in ReadOnlySequence<byte> buffer)
         {
             if (buffer.IsSingleSegment)
@@ -318,21 +381,18 @@ namespace Pipelines.Sockets.Unofficial
                 return _encoding.GetString(span);
             }
 
-            var decoder = GetDecoder();
-
-            int charCount = 0;
-            foreach (var segment in buffer)
-            {
-                var span = segment.Span;
-                if (span.IsEmpty) continue;
-                charCount += decoder.GetCharCount(span, false);
-            }
+            var charCount = GetCharCount(in buffer);
             var s = GetString(in buffer, charCount, out int actualCharCount);
             Debug.Assert(actualCharCount == charCount);
             return s;
         }
         string GetString(in ReadOnlySequence<byte> buffer, int charCount, out int totalBytes)
         {
+            if(charCount == 0)
+            {
+                totalBytes = 0;
+                return "";
+            }
             string s = new string((char)0, charCount);
             var chars = MemoryMarshal.AsMemory(s.AsMemory()).Span;
             totalBytes = GetString(in buffer, chars, out int actualChars);
@@ -341,6 +401,11 @@ namespace Pipelines.Sockets.Unofficial
         }
         int GetString(in ReadOnlySequence<byte> buffer, Span<char> chars, out int charsRead)
         {
+            if(chars.IsEmpty)
+            {
+                charsRead = 0;
+                return 0;
+            }
             var decoder = GetDecoder();
             int totalBytes = 0;
             charsRead = 0;

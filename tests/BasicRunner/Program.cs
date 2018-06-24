@@ -2,6 +2,7 @@
 using Pipelines.Sockets.Unofficial.Tests;
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -44,23 +45,27 @@ namespace BasicRunner
             Thread.CurrentThread.Name = nameof(Main);
             Console.WriteLine($"Loop count: {PingPongTests.LoopCount}");
             Console.WriteLine($"Scheduler: {PingPongTests.Scheduler}");
-            var parent = new PingPongTests(Console.Out);
-
-            //await RunTest(parent.Basic_Pipelines_PingPong, "Socket=>Pipelines=>PingPong");
-            //await RunTest(parent.Basic_NetworkStream_PingPong, "Socket=>NetworkStream=>PingPong");
-
-            await RunTest(parent.Basic_NetworkStream_Text_PingPong, "Socket=>NetworkStream=>TRW=>PingPong");
-            await RunTest(parent.Basic_Pipelines_Text_PingPong, "Socket=>Pipelines=>TRW=>PingPong");
-            
-            //await RunTest(parent.Basic_NetworkStream_Pipelines_PingPong, "Socket=>NetworkStream=>Pipelines=>PingPong");
-
-            if (PingPongTests.RunTLS)
+            Console.WriteLine($"Detailed trace to 'log.txt'");
+            using (var logFile = new StreamWriter("log.txt", false))
             {
-                //await RunTest(parent.ServerClientDoubleInverted_SslStream_PingPong, "Socket=>Pipelines=>Inverter=>SslStream=>Inverter=>PingPong");
-                //await RunTest(parent.ServerClient_SslStream_PingPong, "Socket=>NetworkStream=>SslStream=>PingPong");
-                //await RunTest(parent.ServerClient_SslStream_Inverter_PingPong, "Socket=>NetworkStream=>SslStream=>Inverter=>PingPong");
-            }
+                Console.WriteLine(logFile.GetType().Assembly.Location);
+                var parent = new PingPongTests(logFile);
 
+                //await RunTest(parent.Basic_Pipelines_PingPong, "Socket=>Pipelines=>PingPong");
+                //await RunTest(parent.Basic_NetworkStream_PingPong, "Socket=>NetworkStream=>PingPong");
+
+                //await RunTest(parent.Basic_NetworkStream_Text_PingPong, "Socket=>NetworkStream=>TRW=>PingPong");
+                await RunTest(parent.Basic_Pipelines_Text_PingPong, "Socket=>Pipelines=>TRW=>PingPong");
+
+                //await RunTest(parent.Basic_NetworkStream_Pipelines_PingPong, "Socket=>NetworkStream=>Pipelines=>PingPong");
+
+                if (PingPongTests.RunTLS)
+                {
+                    //await RunTest(parent.ServerClientDoubleInverted_SslStream_PingPong, "Socket=>Pipelines=>Inverter=>SslStream=>Inverter=>PingPong");
+                    //await RunTest(parent.ServerClient_SslStream_PingPong, "Socket=>NetworkStream=>SslStream=>PingPong");
+                    //await RunTest(parent.ServerClient_SslStream_Inverter_PingPong, "Socket=>NetworkStream=>SslStream=>Inverter=>PingPong");
+                }
+            }
         }
     }
 }
