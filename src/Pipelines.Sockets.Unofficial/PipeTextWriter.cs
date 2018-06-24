@@ -27,13 +27,28 @@ namespace Pipelines.Sockets.Unofficial
             _encoder.Reset();
             return _encoder;
         }
-        public PipeTextWriter(PipeWriter writer, Encoding encoding, bool closeWriter = true)
+        public PipeTextWriter(PipeWriter writer, Encoding encoding, bool writeBOM = false, bool closeWriter = true)
         {
             _writer = writer ?? throw new ArgumentNullException(nameof(writer));
             _encoding = encoding ?? throw new ArgumentNullException(nameof(encoding));
             _encoder = encoding.GetEncoder();
             _closeWriter = closeWriter;
             _newLine = Environment.NewLine;
+
+            if(writeBOM)
+            {
+#if SOCKET_STREAM_BUFFERS
+                ReadOnlySpan<byte> preamble = _encoding.Preamble;
+#else
+                ReadOnlySpan<byte> preamble = _encoding.GetPreamble();
+#endif
+                if (!preamble.IsEmpty)
+                {
+                    preamble.CopyTo(writer.GetSpan(preamble.Length));
+                    writer.Advance(preamble.Length);
+                    // note: no flush; defer the flush until we have something of value
+                }
+            }
         }
         protected override void Dispose(bool disposing)
         {
