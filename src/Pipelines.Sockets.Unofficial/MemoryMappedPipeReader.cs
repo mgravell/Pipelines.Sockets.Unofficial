@@ -216,7 +216,7 @@ namespace Pipelines.Sockets.Unofficial
                     var accessor = _file.CreateViewAccessor(_offset, take, MemoryMappedFileAccess.Read);
                     _remaining -= take;
                     _offset += take;
-                    var next = new MappedPage(accessor);
+                    var next = new MappedPage(accessor, take);
 
                     if (_first == null)
                     {
@@ -254,16 +254,17 @@ namespace Pipelines.Sockets.Unofficial
             private MemoryMappedViewAccessor _accessor;
             private SafeBuffer _buffer;
             public int Consumed { get; set; }
-            public unsafe MappedPage(MemoryMappedViewAccessor accessor)
+            public unsafe MappedPage(MemoryMappedViewAccessor accessor, int capacity)
             {
                 _accessor = accessor ?? throw new ArgumentNullException(nameof(accessor));
                 _buffer = s_safeBufferField.GetValue(_accessor) as SafeBuffer ?? throw new InvalidOperationException();
-                int length = checked((int)accessor.Capacity);
+                // note that the *actual* capacity isn't necessarily the same - system page size (rounding up), etc
+                if (capacity < 0 || capacity > accessor.Capacity) throw new ArgumentOutOfRangeException(nameof(capacity));
                 RunningIndex = accessor.PointerOffset;
                 byte* ptr = null;
                 _buffer.AcquirePointer(ref ptr);
-                Memory = new UnmanagedMemoryManager<byte>(ptr, length).Memory;
-                Capacity = length; // want this to still work after disposal; simplifies many things
+                Memory = new UnmanagedMemoryManager<byte>(ptr, capacity).Memory;
+                Capacity = capacity;
             }
             public override string ToString() => $"[{(RunningIndex + Consumed)},{(RunningIndex + Capacity)})";
             public int Capacity { get; }

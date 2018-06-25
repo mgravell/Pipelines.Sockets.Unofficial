@@ -16,7 +16,7 @@ namespace Pipelines.Sockets.Unofficial
     /// </summary>
     public sealed class PipeTextReader : TextReader
     {
-        private readonly bool _closeReader;
+        private readonly bool _closeReader, _useFastNewlineCheck;
         private readonly PipeReader _reader;
         private readonly Decoder _decoder;
         private readonly Encoding _encoding;
@@ -57,8 +57,9 @@ namespace Pipelines.Sockets.Unofficial
             _decoder = encoding.GetDecoder();
             _closeReader = closeReader;
 
-            if (encoding.IsSingleByte || encoding is UTF8Encoding)
+            if (encoding is UTF8Encoding || encoding.IsSingleByte)
             {
+                _useFastNewlineCheck = true;
                 _lineFeed = SingleByteLineFeed;
                 _crLen = _lfLen = 1;
             }
@@ -228,7 +229,69 @@ namespace Pipelines.Sockets.Unofficial
             return false;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private string ReadToEndOfLine(ref ReadOnlySequence<byte> buffer)
+            => _useFastNewlineCheck ? ReadToEndOfLineFast(ref buffer) : ReadToEndOfLineSlow(ref buffer);
+        
+        private string ReadToEndOfLineFast(ref ReadOnlySequence<byte> buffer)
+        {
+            var index = FindEndOfLineIndex(in buffer, out var style);
+            if (index < 0) return null;
+
+            string s;
+            if (index == 0)
+            {
+                s = "";
+            }
+            else
+            {
+                var payload = buffer.Slice(0, index);
+                var decoder = _decoder;
+                int charCount = GetCharCount(in payload, _encoding, ref decoder);
+                s = new string((char)0, charCount);
+
+                var chars = MemoryMarshal.AsMemory(s.AsMemory()).Span;
+                var totalBytes = GetString(in payload, chars, out int actualChars, _encoding, decoder, true);
+                Debug.Assert(actualChars == charCount);
+                Debug.Assert(totalBytes == index);
+            }
+            if (style == "\r") _skipPrefix = SkipPrefix.LineFeed;
+            buffer = buffer.Slice(index + style.Length);
+            return s;
+        }
+        private static int FindEndOfLineIndex(in ReadOnlySequence<byte> buffer, out string style)
+        {
+            if (buffer.IsSingleSegment) return FindEndOfLineIndex(buffer.First.Span, out style);
+
+            int offset = 0;
+            foreach(var segment in buffer)
+            {
+                var span = segment.Span;
+                var index = FindEndOfLineIndex(span, out style);
+                if (index >= 0) return offset + index;
+                offset += span.Length;
+            }
+            style = default;
+            return -1;
+        }
+        private static int FindEndOfLineIndex(ReadOnlySpan<byte> span, out string style)
+        {
+            for(int i = 0; i < span.Length; i++)
+            {
+                switch(span[i])
+                {
+                    case (byte)'\r':
+                        style = i < span.Length - 1 && span[i + 1] == '\r' ? "\r\n" : "\r";
+                        return i;
+                    case (byte)'\n':
+                        style = "\n";
+                        return i;
+                }
+            }
+            style = default;
+            return -1;
+        }
+        private string ReadToEndOfLineSlow(ref ReadOnlySequence<byte> buffer)
         {
             //TODO: optimize for single-byte encodings - just hunt for bytes 10/13
             var decoder = GetDecoder();
@@ -292,7 +355,7 @@ namespace Pipelines.Sockets.Unofficial
                 buffer = buffer.Slice(suffixBytes);
                 return "";
             }
-            string s = GetString(in buffer, charCount, out var payloadBytes, _encoding, _decoder);
+            string s = GetString(in buffer, charCount, out var payloadBytes, _encoding, _decoder, false);
             DebugLog($"Consuming {payloadBytes + suffixBytes} bytes and yielding {charCount} characters");
             buffer = buffer.Slice(payloadBytes + suffixBytes);
             return s;
@@ -442,7 +505,7 @@ namespace Pipelines.Sockets.Unofficial
         }
         private string ConsumeString(ReadOnlySequence<byte> buffer)
         {
-            var s = GetString(buffer, _encoding, _decoder);
+            var s = GetString(buffer, _encoding, _decoder, false);
             _reader.AdvanceTo(buffer.End);
             return s;
         }
@@ -468,7 +531,7 @@ namespace Pipelines.Sockets.Unofficial
             return charCount;
 
         }
-        private static string GetString(in ReadOnlySequence<byte> buffer, Encoding encoding, Decoder decoder)
+        private static string GetString(in ReadOnlySequence<byte> buffer, Encoding encoding, Decoder decoder, bool consumeEntireBuffer)
         {
             if (buffer.IsSingleSegment)
             {
@@ -478,11 +541,11 @@ namespace Pipelines.Sockets.Unofficial
             }
 
             var charCount = GetCharCount(in buffer, encoding, ref decoder);
-            var s = GetString(in buffer, charCount, out int actualCharCount, encoding, decoder);
+            var s = GetString(in buffer, charCount, out int actualCharCount, encoding, decoder, consumeEntireBuffer);
             Debug.Assert(actualCharCount == charCount);
             return s;
         }
-        static string GetString(in ReadOnlySequence<byte> buffer, int charCount, out int totalBytes, Encoding encoding, Decoder decoder)
+        static string GetString(in ReadOnlySequence<byte> buffer, int charCount, out int totalBytes, Encoding encoding, Decoder decoder, bool consumeEntireBuffer)
         {
             if (charCount == 0)
             {
@@ -491,11 +554,11 @@ namespace Pipelines.Sockets.Unofficial
             }
             string s = new string((char)0, charCount);
             var chars = MemoryMarshal.AsMemory(s.AsMemory()).Span;
-            totalBytes = GetString(in buffer, chars, out int actualChars, encoding, decoder, true);
+            totalBytes = GetString(in buffer, chars, out int actualChars, encoding, decoder, consumeEntireBuffer);
             Debug.Assert(actualChars == charCount);
             return s;
         }
-        static int GetString(in ReadOnlySequence<byte> buffer, Span<char> chars, out int charsRead, Encoding encoding, Decoder decoder, bool lengthKnownGood)
+        static int GetString(in ReadOnlySequence<byte> buffer, Span<char> chars, out int charsRead, Encoding encoding, Decoder decoder, bool consumeEntireBuffer)
         {
             if (chars.IsEmpty)
             {
@@ -504,16 +567,12 @@ namespace Pipelines.Sockets.Unofficial
             }
 
             // see if we can do this without touching a decoder
-            if (buffer.IsSingleSegment)
+            if (consumeEntireBuffer && buffer.IsSingleSegment && decoder == null)
             {
                 var bytes = buffer.First.Span;
                 // we need to be sure we have enough space in the output buffer
-                if (lengthKnownGood                                              // already known to be fine
-                    || (decoder == null && (                                     // no decoder (worth thinking more)
-                        chars.Length >= encoding.GetMaxCharCount(bytes.Length)   // worst-case is fine
-                        || chars.Length >= encoding.GetCharCount(bytes)          // *actually* fine
-                    ))
-                )
+                if (chars.Length >= encoding.GetMaxCharCount(bytes.Length)   // worst-case is fine
+                    || chars.Length >= encoding.GetCharCount(bytes))         // *actually* fine
                 {
                     charsRead = encoding.GetChars(bytes, chars);
                     return bytes.Length;
@@ -524,15 +583,23 @@ namespace Pipelines.Sockets.Unofficial
 
             int totalBytes = 0;
             charsRead = 0;
+            bool isComplete = true;
             foreach (var segment in buffer)
             {
                 var bytes = segment.Span;
                 if (bytes.IsEmpty) continue;
-                decoder.Convert(bytes, chars, false, out var bytesUsed, out var charsUsed, out _);
+                decoder.Convert(bytes, chars, false, out var bytesUsed, out var charsUsed, out isComplete);
                 totalBytes += bytesUsed;
                 charsRead += charsUsed;
                 chars = chars.Slice(charsUsed);
                 if (chars.IsEmpty) break;
+            }
+            if (consumeEntireBuffer)
+            {
+                if (!isComplete || totalBytes != buffer.Length)
+                {
+                    throw new InvalidOperationException("Incomplete decoding frame");
+                }
             }
             return totalBytes;
         }
@@ -543,7 +610,7 @@ namespace Pipelines.Sockets.Unofficial
         public static string ReadString(in ReadOnlySequence<byte> buffer, Encoding encoding)
         {
             if (encoding == null) throw new ArgumentNullException(nameof(encoding));
-            return GetString(in buffer, encoding, null);
+            return GetString(in buffer, encoding, null, true);
         }
     }
 }

@@ -56,8 +56,8 @@ namespace BasicRunner
                 SocketConnection.SetLog(log);
                 //SocketConnection.SetLog(Console.Out);
 #endif
-                // await MemoryMappedDecode();
-                await SocketPingPong(log);
+                await MemoryMappedDecode();
+                //await SocketPingPong(log);
             }
 
         }
@@ -67,35 +67,42 @@ namespace BasicRunner
             async ValueTask MeasureAndTime(TextReader reader)
             {
 
-                //int count = 0;
-                long len = 0;
+                int lineCount = 0, nonEmptyLineCount = 0;
+                long charCount = 0;
 
                 var watch = Stopwatch.StartNew();
 
-                int charsRead;
-                do
-                {
-                    charsRead = await reader.ReadAsync(buffer, 0, 2048);
-                    len += charsRead;
-                } while (charsRead != 0);
-
-                //string line;
-                //while ((line = await reader.ReadLineAsync()) != null)
+                //int charsRead;
+                //do
                 //{
-                //    len += line.Length;
-                //    count++;
-                //}
+                //    charsRead = await reader.ReadAsync(buffer, 0, 2048);
+                //    len += charsRead;
+                //} while (charsRead != 0);
+
+                string line;
+                while ((line = await reader.ReadLineAsync()) != null)
+                {
+                    charCount += line.Length;
+                    if (!string.IsNullOrWhiteSpace(line)) nonEmptyLineCount++;
+                    lineCount++;
+                }
                 watch.Stop();
-                //Console.WriteLine($"Lines: {count}; Length: {len}; Time: {watch.ElapsedMilliseconds}ms");
-                Console.WriteLine($"Total chars {len}; Time: {watch.ElapsedMilliseconds}ms");
+                Console.WriteLine($"Lines: {lineCount} ({nonEmptyLineCount} non-empty, {charCount} characters); Time: {watch.ElapsedMilliseconds}ms");
+                //Console.WriteLine($"Total chars {len}; Time: {watch.ElapsedMilliseconds}ms");
             }
 
-            const string path = "logcopy.txt";
+            const string path = "t8.shakespeare.txt";
             Console.WriteLine();
-            Console.WriteLine($"File size: {(new FileInfo(path).Length)} bytes");
+            var fi = new FileInfo(path);
+            if(!fi.Exists)
+            {
+                Console.WriteLine($"Input file not found: {path}");
+                return;
+            }
+            Console.WriteLine($"Reading: {fi.Name}, {fi.Length} bytes");
             Console.WriteLine();
             Console.WriteLine("Using PipeTextReader/MemoryMappedPipeReader");
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < 10; i++)
             {
                 var mmap = MemoryMappedPipeReader.Create(path);
                 using (mmap as IDisposable)
@@ -107,7 +114,7 @@ namespace BasicRunner
             }
             Console.WriteLine();
             Console.WriteLine("Using StreamReader/FileStream");
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < 10; i++)
             {
                 using (var reader = new StreamReader(path, Encoding.UTF8))
                 {
