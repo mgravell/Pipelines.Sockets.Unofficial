@@ -11,6 +11,9 @@ using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
 {
+    /// <summary>
+    /// A TextReader implementation that pulls from a PipeReader
+    /// </summary>
     public sealed class PipeTextReader : TextReader
     {
         private readonly bool _closeReader;
@@ -44,6 +47,9 @@ namespace Pipelines.Sockets.Unofficial
             Preamble,
             LineFeed
         }
+        /// <summary>
+        /// Create a new PipeTextReader instance
+        /// </summary>
         public PipeTextReader(PipeReader reader, Encoding encoding, bool closeReader = true)
         {
             _reader = reader ?? throw new ArgumentNullException(nameof(reader));
@@ -139,20 +145,32 @@ namespace Pipelines.Sockets.Unofficial
             DebugLog("Partial match; unable to absorb or abandon yet");
             return false;
         }
+        /// <summary>
+        /// Release any resources held by the object
+        /// </summary>
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
             if (disposing && _closeReader) _reader.Complete();
         }
+        /// <summary>
+        /// Read some character data into a buffer from the pipe, asynchronously
+        /// </summary>
         public override Task<int> ReadAsync(char[] buffer, int index, int count)
             => ReadAsyncImpl(new Memory<char>(buffer, index, count), default).AsTask();
 
+        /// <summary>
+        /// Attempt to fully populate a buffer with character data from the pipe, asynchronously
+        /// </summary>
         public override Task<int> ReadBlockAsync(char[] buffer, int index, int count)
             => ReadBlockAsyncImpl(new Memory<char>(buffer, index, count), default).AsTask();
 
         static readonly Task<string>
             TaskEmptyString = Task.FromResult(""),
             TaskNullString = Task.FromResult<string>(null);
+        /// <summary>
+        /// Attempt to read a line from the pipe, asynchronously
+        /// </summary>
         public override Task<string> ReadLineAsync()
         {
             async Task<string> Awaited()
@@ -279,7 +297,9 @@ namespace Pipelines.Sockets.Unofficial
             buffer = buffer.Slice(payloadBytes + suffixBytes);
             return s;
         }
-
+        /// <summary>
+        /// Read to the end of the pipe, asynchronously
+        /// </summary>
         public override async Task<string> ReadToEndAsync()
         {
             ReadResult result;
@@ -341,10 +361,20 @@ namespace Pipelines.Sockets.Unofficial
             return totalRead;
         }
 #if SOCKET_STREAM_BUFFERS
+        /// <summary>
+        /// Attempt to partially populate a buffer with character data from the pipe, asynchronously
+        /// </summary>
         public override ValueTask<int> ReadAsync(Memory<char> buffer, CancellationToken cancellationToken = default)
             => ReadAsyncImpl(buffer, cancellationToken);
+        /// <summary>
+        /// Attempt to fully populate a buffer with character data from the pipe, asynchronously
+        /// </summary>
         public override ValueTask<int> ReadBlockAsync(Memory<char> buffer, CancellationToken cancellationToken = default)
             => ReadBlockAsyncImpl(buffer, cancellationToken);
+
+        /// <summary>
+        /// Attempt to partially populate a buffer with character data from the pipe
+        /// </summary>
         public override int Read(Span<char> buffer)
         {
             // sync over async and involves a copy; best we can do, considering
@@ -355,6 +385,9 @@ namespace Pipelines.Sockets.Unofficial
             ArrayPool<char>.Shared.Return(arr);
             return bytes;
         }
+        /// <summary>
+        /// Attempt to fully populate a buffer with character data from the pipe
+        /// </summary>
         public override int ReadBlock(Span<char> buffer)
         {
             // sync over async and involves a copy; best we can do, considering
@@ -367,11 +400,29 @@ namespace Pipelines.Sockets.Unofficial
         }
 #endif
 
+        /// <summary>
+        /// Attempt to read a line from the pipe
+        /// </summary>
         public override string ReadLine() => ReadLineAsync().Result;
+        /// <summary>
+        /// Attempt to fully populate a buffer with character data from the pipe
+        /// </summary>
         public override int ReadBlock(char[] buffer, int index, int count) => ReadBlockAsync(buffer, index, count).Result;
+        /// <summary>
+        /// Attempt to partially populate a buffer with character data from the pipe
+        /// </summary>
         public override int Read(char[] buffer, int index, int count) => ReadAsync(buffer, index, count).Result;
+        /// <summary>
+        /// Read to the end of the pipe
+        /// </summary>
         public override string ReadToEnd() => ReadToEndAsync().Result;
+        /// <summary>
+        /// Read a single character from the pipe
+        /// </summary>
         public override int Read() => ReadSingleChar(false);
+        /// <summary>
+        /// Read a single character from the pipe without consuming it
+        /// </summary>
         public override int Peek() => ReadSingleChar(true);
 
         private int ReadSingleChar(bool peek)

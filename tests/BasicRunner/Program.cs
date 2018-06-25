@@ -47,6 +47,7 @@ namespace BasicRunner
             Thread.CurrentThread.Name = nameof(Main);
             Console.WriteLine($"Loop count: {PingPongTests.LoopCount}");
             Console.WriteLine($"Scheduler: {PingPongTests.Scheduler}");
+            Console.WriteLine($"MemoryMappedPipeReader: {(MemoryMappedPipeReader.IsAvailable ? "available" : "unavailable")}");
             Console.WriteLine($"Detailed trace to 'log.txt'");
 
             using (var log = new StreamWriter("log.txt", false))
@@ -96,10 +97,12 @@ namespace BasicRunner
             Console.WriteLine("Using PipeTextReader/MemoryMappedPipeReader");
             for (int i = 0; i < 5; i++)
             {
-                using (var mmap = MemoryMappedPipeReader.Create(path))
+                var mmap = MemoryMappedPipeReader.Create(path);
+                using (mmap as IDisposable)
                 using (var reader = new PipeTextReader(mmap, Encoding.UTF8))
                 {
                     await MeasureAndTime(reader);
+                    mmap.Complete();
                 }
             }
             Console.WriteLine();

@@ -13,11 +13,17 @@ using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
 {
+    /// <summary>
+    /// Represents a pipe that iterates over a memory-mapped file
+    /// </summary>
     public sealed class MemoryMappedPipeReader : PipeReader, IDisposable
     {
         private MemoryMappedFile _file;
         private readonly int _pageSize;
 
+        /// <summary>
+        /// Get a string representation of the object
+        /// </summary>
         public override string ToString() => Name;
 
         private string Name { get; }
@@ -33,6 +39,9 @@ namespace Pipelines.Sockets.Unofficial
         private long _remaining, _offset;
         private MappedPage _first, _last;
 
+        /// <summary>
+        /// Indicates whether this API is likely to work
+        /// </summary>
         public static bool IsAvailable => s_safeBufferField != null;
         private static void AssertAvailable()
         {
@@ -51,7 +60,7 @@ namespace Pipelines.Sockets.Unofficial
                 Helpers.DebugLog(nameof(MemoryMappedPipeReader), ex.Message);
             }
         }
-        public MemoryMappedPipeReader(MemoryMappedFile file, long length, int pageSize = DEFAULT_PAGE_SIZE, string name = null)
+        private MemoryMappedPipeReader(MemoryMappedFile file, long length, int pageSize = DEFAULT_PAGE_SIZE, string name = null)
         {
             AssertAvailable();
             _file = file ?? throw new ArgumentNullException(nameof(file));
@@ -65,21 +74,38 @@ namespace Pipelines.Sockets.Unofficial
         }
 
         const int DEFAULT_PAGE_SIZE = 64 * 1024;
-        public static MemoryMappedPipeReader Create(string path, int pageSize = DEFAULT_PAGE_SIZE)
+        /// <summary>
+        /// Create a pipe-reader over the provided file
+        /// </summary>
+        public static PipeReader Create(string path, int pageSize = DEFAULT_PAGE_SIZE)
         {
-            AssertAvailable();
-            if (pageSize <= 0) throw new ArgumentOutOfRangeException(nameof(pageSize));
-            var file = new FileInfo(path);
-            if (!file.Exists) throw new FileNotFoundException();
+            if (IsAvailable)
+            {
+                if (pageSize <= 0) throw new ArgumentOutOfRangeException(nameof(pageSize));
+                var file = new FileInfo(path);
+                if (!file.Exists) throw new FileNotFoundException();
 
-            var mmap = MemoryMappedFile.CreateFromFile(path, FileMode.Open, null, file.Length, MemoryMappedFileAccess.Read);
-            return new MemoryMappedPipeReader(mmap, file.Length, pageSize, path);
+                var mmap = MemoryMappedFile.CreateFromFile(path, FileMode.Open, null, file.Length, MemoryMappedFileAccess.Read);
+                return new MemoryMappedPipeReader(mmap, file.Length, pageSize, path);
+            }
+            else
+            {
+                // fallback... FileStream
+                var file = File.OpenRead(path);
+                return StreamConnector.GetReader(file, name: path);
+            }
         }
 
-        public override void Complete(Exception exception = null) => Close();
+        /// <summary>
+        /// Mark the reader as complete
+        /// </summary>
+        /// <param name="exception"></param>
+        public override void Complete(Exception exception = null) => Dispose();
 
-        public void Dispose() => Close();
-        public void Close()
+        /// <summary>
+        /// Releases all resources associated with the object
+        /// </summary>
+        public void Dispose()
         {
             var page = _first;
             while (page != null)
@@ -91,11 +117,22 @@ namespace Pipelines.Sockets.Unofficial
             try { _file?.Dispose(); } catch { }
             _file = null;
         }
+        /// <summary>
+        /// Not implemented
+        /// </summary>
         public override void OnWriterCompleted(Action<Exception, object> callback, object state) { }
-
+        /// <summary>
+        /// Cancels an in-progress read
+        /// </summary>
         public override void CancelPendingRead() { }
 
+        /// <summary>
+        /// Indicates how much data was consumed from a read operation
+        /// </summary>
         public override void AdvanceTo(SequencePosition consumed) => AdvanceTo(consumed, consumed);
+        /// <summary>
+        /// Indicates how much data was consumed, and how much examined, from a read operation
+        /// </summary>
         public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
         {
             var cPage = (MappedPage)consumed.GetObject();
@@ -154,11 +191,15 @@ namespace Pipelines.Sockets.Unofficial
                 var eOffset = examined.GetInteger();
                 _loadMore = ePage == _last && eOffset == ePage.Capacity;
             }
-
-
         }
+        /// <summary>
+        /// Perform an asynchronous read operation
+        /// </summary>
         public override ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = default)
             => new ValueTask<ReadResult>(Read());
+        /// <summary>
+        /// Attempt to perfom a synchronous read operation
+        /// </summary>
         public override bool TryRead(out ReadResult result)
         {
             result = Read();
