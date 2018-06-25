@@ -292,7 +292,7 @@ namespace Pipelines.Sockets.Unofficial
                 buffer = buffer.Slice(suffixBytes);
                 return "";
             }
-            string s = GetString(in buffer, charCount, out var payloadBytes);
+            string s = GetString(in buffer, charCount, out var payloadBytes, _encoding, _decoder);
             DebugLog($"Consuming {payloadBytes + suffixBytes} bytes and yielding {charCount} characters");
             buffer = buffer.Slice(payloadBytes + suffixBytes);
             return s;
@@ -320,7 +320,7 @@ namespace Pipelines.Sockets.Unofficial
         {
             var buffer = result.Buffer;
             if (NeedPrefixCheck) CheckPrefix(ref buffer);
-            int bytesUsed = GetString(buffer, chars, out charsRead);
+            int bytesUsed = GetString(buffer, chars, out charsRead, _encoding, _decoder);
 
             if ((bytesUsed != 0 && charsRead != 0) || result.IsCompleted)
             {
@@ -442,23 +442,23 @@ namespace Pipelines.Sockets.Unofficial
         }
         private string ConsumeString(ReadOnlySequence<byte> buffer)
         {
-            var s = GetString(buffer);
+            var s = GetString(buffer, _encoding, _decoder);
             _reader.AdvanceTo(buffer.End);
             return s;
         }
 
-        private int GetCharCount(in ReadOnlySequence<byte> buffer)
+        private static int GetCharCount(in ReadOnlySequence<byte> buffer, Encoding encoding, ref Decoder decoder)
         {
-            var enc = _encoding;
+            if (encoding.IsSingleByte) return (int)checked(buffer.Length);
 
-            if (enc.IsSingleByte) return (int)checked(buffer.Length);
+            if (encoding is UnicodeEncoding) return (int)checked(buffer.Length / 2);
+            if (encoding is UTF32Encoding) return (int)checked(buffer.Length / 4);
 
-            if (enc is UnicodeEncoding) return (int)checked(buffer.Length / 2);
-
-            if (buffer.IsSingleSegment) return buffer.IsEmpty ? 0 : enc.GetCharCount(buffer.First.Span);
+            if (buffer.IsSingleSegment) return buffer.IsEmpty ? 0 : encoding.GetCharCount(buffer.First.Span);
 
             int charCount = 0;
-            var decoder = GetDecoder();
+            if (decoder == null) decoder = encoding.GetDecoder();
+            else decoder.Reset();
             foreach (var segment in buffer)
             {
                 var span = segment.Span;
@@ -468,21 +468,21 @@ namespace Pipelines.Sockets.Unofficial
             return charCount;
 
         }
-        private string GetString(in ReadOnlySequence<byte> buffer)
+        private static string GetString(in ReadOnlySequence<byte> buffer, Encoding encoding, Decoder decoder)
         {
             if (buffer.IsSingleSegment)
             {
                 var span = buffer.First.Span;
                 if (span.IsEmpty) return "";
-                return _encoding.GetString(span);
+                return encoding.GetString(span);
             }
 
-            var charCount = GetCharCount(in buffer);
-            var s = GetString(in buffer, charCount, out int actualCharCount);
+            var charCount = GetCharCount(in buffer, encoding, ref decoder);
+            var s = GetString(in buffer, charCount, out int actualCharCount, encoding, decoder);
             Debug.Assert(actualCharCount == charCount);
             return s;
         }
-        string GetString(in ReadOnlySequence<byte> buffer, int charCount, out int totalBytes)
+        static string GetString(in ReadOnlySequence<byte> buffer, int charCount, out int totalBytes, Encoding encoding, Decoder decoder)
         {
             if (charCount == 0)
             {
@@ -491,18 +491,31 @@ namespace Pipelines.Sockets.Unofficial
             }
             string s = new string((char)0, charCount);
             var chars = MemoryMarshal.AsMemory(s.AsMemory()).Span;
-            totalBytes = GetString(in buffer, chars, out int actualChars);
+            totalBytes = GetString(in buffer, chars, out int actualChars, encoding, decoder);
             Debug.Assert(actualChars == charCount);
             return s;
         }
-        int GetString(in ReadOnlySequence<byte> buffer, Span<char> chars, out int charsRead)
+        static int GetString(in ReadOnlySequence<byte> buffer, Span<char> chars, out int charsRead, Encoding encoding, Decoder decoder)
         {
             if (chars.IsEmpty)
             {
                 charsRead = 0;
                 return 0;
             }
-            var decoder = GetDecoder();
+
+            if(buffer.IsSingleSegment && decoder == null)
+            {
+                // see if we can do this without creating a decoder
+                var bytes = buffer.First.Span;
+                if(chars.Length >= encoding.GetMaxCharCount(bytes.Length))
+                {
+                    charsRead = encoding.GetChars(bytes, chars);
+                    return bytes.Length;
+                }
+            }
+            if (decoder == null) decoder = encoding.GetDecoder();
+            else decoder.Reset();
+
             int totalBytes = 0;
             charsRead = 0;
 
@@ -517,6 +530,15 @@ namespace Pipelines.Sockets.Unofficial
                 if (chars.IsEmpty) break;
             }
             return totalBytes;
+        }
+
+        /// <summary>
+        /// Decode a buffer as a string using the provided encoding
+        /// </summary>
+        public static string ReadString(in ReadOnlySequence<byte> buffer, Encoding encoding)
+        {
+            if (encoding == null) throw new ArgumentNullException(nameof(encoding));
+            return GetString(in buffer, encoding, null);
         }
     }
 }

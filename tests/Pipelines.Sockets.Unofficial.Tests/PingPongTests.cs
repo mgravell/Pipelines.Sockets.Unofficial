@@ -481,8 +481,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
         async ValueTask<string> WritePing(PipeWriter writer, int i)
         {
             var s = PINGPONGPREFIX + "PING:" + i;
-            var bytes = GetPayload(s);
-            await writer.WriteAsync(bytes);
+            PipeTextWriter.Write(writer, s, Encoding.UTF8);
+            PipeTextWriter.Write(writer, "\n", Encoding.UTF8);
             await writer.FlushAsync();
             return s;
         }
@@ -569,60 +569,12 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 if (split != null)
                 {
                     var contents = buffer.Slice(0, split.Value);
-                    result = ReadString(contents);
+                    result = PipeTextReader.ReadString(contents, Encoding.UTF8);
                     consumed = buffer.GetPosition(1, split.Value);
                 }
                 reader.AdvanceTo(consumed);
             }
             return result;
         }
-
-        internal static unsafe string ReadString(ReadOnlySequence<byte> buffer)
-        {
-            if (buffer.IsSingleSegment)
-            {
-                
-                var span = buffer.First.Span;
-                if (span.IsEmpty) return "";
-                fixed (byte* ptr = &span[0])
-                {
-                    return Encoding.UTF8.GetString(ptr, span.Length);
-                }
-            }
-            var decoder = Encoding.UTF8.GetDecoder();
-            int charCount = 0;
-            foreach (var segment in buffer)
-            {
-                var span = segment.Span;
-                if (span.IsEmpty) continue;
-
-                fixed (byte* bPtr = &span[0])
-                {
-                    charCount += decoder.GetCharCount(bPtr, span.Length, false);
-                }
-            }
-
-            decoder.Reset();
-
-            string s = new string((char)0, charCount);
-            fixed (char* sPtr = s)
-            {
-                char* cPtr = sPtr;
-                foreach (var segment in buffer)
-                {
-                    var span = segment.Span;
-                    if (span.IsEmpty) continue;
-
-                    fixed (byte* bPtr = &span[0])
-                    {
-                        var written = decoder.GetChars(bPtr, span.Length, cPtr, charCount, false);
-                        cPtr += written;
-                        charCount -= written;
-                    }
-                }
-            }
-            return s;
-        }
-
     }
 }

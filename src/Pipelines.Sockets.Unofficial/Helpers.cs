@@ -202,12 +202,30 @@ namespace Pipelines.Sockets.Unofficial
             }
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe int GetChars(this Encoding encoding, ReadOnlySpan<byte> bytes, Span<char> chars)
+        {
+            fixed (byte* bPtr = &MemoryMarshal.GetReference(bytes))
+            fixed (char* cPtr = &MemoryMarshal.GetReference(chars))
+            {
+                return encoding.GetChars(bPtr, bytes.Length, cPtr, chars.Length);
+            }
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe int GetBytes(this Encoding encoding, ReadOnlySpan<char> chars, Span<byte> bytes)
+        {
+            fixed (byte* bPtr = &MemoryMarshal.GetReference(bytes))
+            fixed (char* cPtr = &MemoryMarshal.GetReference(chars))
+            {
+                return encoding.GetBytes(cPtr, chars.Length, bPtr, bytes.Length);
+            }
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static unsafe void Convert(this Encoder encoder, ReadOnlySpan<char> chars, Span<byte> bytes, bool flush, out int bytesUsed, out int charsUsed, out bool completed)
         {
-            fixed (byte* bytePtr = &MemoryMarshal.GetReference(bytes))
-            fixed (char* charPtr = &MemoryMarshal.GetReference(chars))
+            fixed (byte* bPtr = &MemoryMarshal.GetReference(bytes))
+            fixed (char* cPtr = &MemoryMarshal.GetReference(chars))
             {
-                encoder.Convert(charPtr, chars.Length, bytePtr, bytes.Length, flush, out bytesUsed, out charsUsed, out completed);
+                encoder.Convert(cPtr, chars.Length, bPtr, bytes.Length, flush, out bytesUsed, out charsUsed, out completed);
             }
         }
 #endif

@@ -265,27 +265,52 @@ namespace Pipelines.Sockets.Unofficial
             FlushSyncImpl();
         }
 #endif
-        private void WriteImpl(ReadOnlySpan<char> chars)
+        private void WriteImpl(ReadOnlySpan<char> chars) => WriteImpl(_writer, chars, _encoding, _encoder);
+        private static int WriteImpl(PipeWriter writer, ReadOnlySpan<char> chars, Encoding encoding, Encoder encoder)
         {
-            if (chars.IsEmpty) return;
+            if (chars.IsEmpty) return 0;
 
-            var encoder = GetEncoder();
+            int totalBytesUsed = 0;
             bool completed;
             do
             {
-                var bytes = _writer.GetSpan(10);
+                var bytes = writer.GetSpan(10);
+
+                if (totalBytesUsed == 0) // first span 
+                {
+                    if (encoder == null) // no encoder? check to see if we can do this without needing to create one
+                    {
+                        if (bytes.Length >= encoding.GetMaxByteCount(chars.Length))
+                        {
+                            totalBytesUsed = encoding.GetBytes(chars, bytes);
+                            writer.Advance(totalBytesUsed);
+                            return totalBytesUsed;
+                        }
+                        encoder = encoding.GetEncoder();
+                    }
+                    else
+                    {
+                        encoder.Reset();
+                    }
+                }
+                
                 encoder.Convert(chars, bytes, false, out int charsUsed, out int bytesUsed, out completed);
-                _writer.Advance(bytesUsed);
+                Debug.Assert(bytesUsed > 0);
+                writer.Advance(bytesUsed);
+                totalBytesUsed += bytesUsed;
                 chars = chars.Slice(charsUsed);
             }
             while (!chars.IsEmpty);
             if (!completed)
             {
-                var bytes = _writer.GetSpan(10);
+                var bytes = writer.GetSpan(10);
                 encoder.Convert(chars, bytes, true, out int charsUsed, out int bytesUsed, out completed);
-                _writer.Advance(bytesUsed);
                 Debug.Assert(completed);
+                writer.Advance(bytesUsed);
+                totalBytesUsed += bytesUsed;
+
             }
+            return totalBytesUsed;
         }
         /// <summary>
         /// Flush the pipe, asynchronously
@@ -295,5 +320,21 @@ namespace Pipelines.Sockets.Unofficial
         /// Flush the pipe
         /// </summary>
         public override void Flush() => FlushSyncImpl();
+
+        /// <summary>
+        /// Write a buffer to a pipe in the provided encoding
+        /// </summary>
+        public static int Write(PipeWriter writer, ReadOnlySpan<char> value, Encoding encoding)
+        {
+            if (writer == null) throw new ArgumentNullException(nameof(writer));
+            if (encoding == null) throw new ArgumentNullException(nameof(encoding));
+            if (value.IsEmpty) return 0;
+            return WriteImpl(writer, value, encoding, null);
+
+        }
+        /// <summary>
+        /// Write a string to a pipe in the provided encoding
+        /// </summary>
+        public static void Write(PipeWriter writer, string value, Encoding encoding) => Write(writer, value.AsSpan(), encoding);
     }
 }
