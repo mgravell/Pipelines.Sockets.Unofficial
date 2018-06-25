@@ -320,7 +320,7 @@ namespace Pipelines.Sockets.Unofficial
         {
             var buffer = result.Buffer;
             if (NeedPrefixCheck) CheckPrefix(ref buffer);
-            int bytesUsed = GetString(buffer, chars, out charsRead, _encoding, _decoder);
+            int bytesUsed = GetString(buffer, chars, out charsRead, _encoding, _decoder, false);
 
             if ((bytesUsed != 0 && charsRead != 0) || result.IsCompleted)
             {
@@ -491,11 +491,11 @@ namespace Pipelines.Sockets.Unofficial
             }
             string s = new string((char)0, charCount);
             var chars = MemoryMarshal.AsMemory(s.AsMemory()).Span;
-            totalBytes = GetString(in buffer, chars, out int actualChars, encoding, decoder);
+            totalBytes = GetString(in buffer, chars, out int actualChars, encoding, decoder, true);
             Debug.Assert(actualChars == charCount);
             return s;
         }
-        static int GetString(in ReadOnlySequence<byte> buffer, Span<char> chars, out int charsRead, Encoding encoding, Decoder decoder)
+        static int GetString(in ReadOnlySequence<byte> buffer, Span<char> chars, out int charsRead, Encoding encoding, Decoder decoder, bool lengthKnownGood)
         {
             if (chars.IsEmpty)
             {
@@ -503,11 +503,17 @@ namespace Pipelines.Sockets.Unofficial
                 return 0;
             }
 
-            if(buffer.IsSingleSegment && decoder == null)
+            // see if we can do this without touching a decoder
+            if (buffer.IsSingleSegment)
             {
-                // see if we can do this without creating a decoder
                 var bytes = buffer.First.Span;
-                if(chars.Length >= encoding.GetMaxCharCount(bytes.Length))
+                // we need to be sure we have enough space in the output buffer
+                if (lengthKnownGood                                              // already known to be fine
+                    || (decoder == null && (                                     // no decoder (worth thinking more)
+                        chars.Length >= encoding.GetMaxCharCount(bytes.Length)   // worst-case is fine
+                        || chars.Length >= encoding.GetCharCount(bytes)          // *actually* fine
+                    ))
+                )
                 {
                     charsRead = encoding.GetChars(bytes, chars);
                     return bytes.Length;
@@ -518,7 +524,6 @@ namespace Pipelines.Sockets.Unofficial
 
             int totalBytes = 0;
             charsRead = 0;
-
             foreach (var segment in buffer)
             {
                 var bytes = segment.Span;
