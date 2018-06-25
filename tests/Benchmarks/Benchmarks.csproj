@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>net46;netcoreapp2.1</TargetFrameworks>
+    <!--<AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>-->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Pipelines.Sockets.Unofficial\Pipelines.Sockets.Unofficial.csproj" />
+    <ProjectReference Include="..\Pipelines.Sockets.Unofficial.Tests\Pipelines.Sockets.Unofficial.Tests.csproj" />
+    <PackageReference Include="BenchmarkDotNet" Version="0.10.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\somesite.pfx" Link="somesite.pfx" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="somesite.cert" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
