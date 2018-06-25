@@ -512,10 +512,12 @@ namespace Pipelines.Sockets.Unofficial
 
         private static int GetCharCount(in ReadOnlySequence<byte> buffer, Encoding encoding, ref Decoder decoder)
         {
-            if (encoding.IsSingleByte) return (int)checked(buffer.Length);
-
-            if (encoding is UnicodeEncoding) return (int)checked(buffer.Length / 2);
-            if (encoding is UTF32Encoding) return (int)checked(buffer.Length / 4);
+            checked
+            {
+                if (encoding.IsSingleByte) return (int)buffer.Length;
+                if (encoding is UnicodeEncoding) return (int)(buffer.Length >> 1);
+                if (encoding is UTF32Encoding) return (int)(buffer.Length >> 2);
+            }
 
             if (buffer.IsSingleSegment) return buffer.IsEmpty ? 0 : encoding.GetCharCount(buffer.First.Span);
 
