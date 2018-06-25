@@ -43,10 +43,7 @@ namespace Pipelines.Sockets.Unofficial
         /// Indicates whether this API is likely to work
         /// </summary>
         public static bool IsAvailable => s_safeBufferField != null;
-        private static void AssertAvailable()
-        {
-            if (!IsAvailable) throw new PlatformNotSupportedException();
-        }
+
         static readonly FieldInfo s_safeBufferField;
         static MemoryMappedPipeReader()
         {
@@ -62,7 +59,6 @@ namespace Pipelines.Sockets.Unofficial
         }
         private MemoryMappedPipeReader(MemoryMappedFile file, long length, int pageSize = DEFAULT_PAGE_SIZE, string name = null)
         {
-            AssertAvailable();
             _file = file ?? throw new ArgumentNullException(nameof(file));
             if (pageSize <= 0) throw new ArgumentOutOfRangeException(nameof(pageSize));
             if (length < 0) throw new ArgumentOutOfRangeException(nameof(length));
@@ -83,7 +79,7 @@ namespace Pipelines.Sockets.Unofficial
             {
                 if (pageSize <= 0) throw new ArgumentOutOfRangeException(nameof(pageSize));
                 var file = new FileInfo(path);
-                if (!file.Exists) throw new FileNotFoundException();
+                if (!file.Exists) throw new FileNotFoundException("File not found", path);
 
                 var mmap = MemoryMappedFile.CreateFromFile(path, FileMode.Open, null, file.Length, MemoryMappedFileAccess.Read);
                 return new MemoryMappedPipeReader(mmap, file.Length, pageSize, path);

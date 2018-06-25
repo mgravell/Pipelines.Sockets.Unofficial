@@ -63,34 +63,6 @@ namespace BasicRunner
         }
         static async Task MemoryMappedDecode()
         {
-            char[] buffer = new char[2048];
-            async ValueTask MeasureAndTime(TextReader reader)
-            {
-
-                int lineCount = 0, nonEmptyLineCount = 0;
-                long charCount = 0;
-
-                var watch = Stopwatch.StartNew();
-
-                //int charsRead;
-                //do
-                //{
-                //    charsRead = await reader.ReadAsync(buffer, 0, 2048);
-                //    len += charsRead;
-                //} while (charsRead != 0);
-
-                string line;
-                while ((line = await reader.ReadLineAsync()) != null)
-                {
-                    charCount += line.Length;
-                    if (!string.IsNullOrWhiteSpace(line)) nonEmptyLineCount++;
-                    lineCount++;
-                }
-                watch.Stop();
-                Console.WriteLine($"Lines: {lineCount} ({nonEmptyLineCount} non-empty, {charCount} characters); Time: {watch.ElapsedMilliseconds}ms");
-                //Console.WriteLine($"Total chars {len}; Time: {watch.ElapsedMilliseconds}ms");
-            }
-
             const string path = "t8.shakespeare.txt";
             Console.WriteLine();
             var fi = new FileInfo(path);
@@ -100,26 +72,32 @@ namespace BasicRunner
                 return;
             }
             const int REPEAT = 10;
-            Console.WriteLine($"Reading: {fi.Name}, {fi.Length} bytes");
+            var enc = Encoding.ASCII;
+            Console.WriteLine($"Reading: {fi.Name}, {fi.Length} bytes, encoding: {enc.EncodingName}");
             Console.WriteLine();
             Console.WriteLine("Using PipeTextReader/MemoryMappedPipeReader");
             for (int i = 0; i < REPEAT; i++)
             {
                 var mmap = MemoryMappedPipeReader.Create(path);
                 using (mmap as IDisposable)
-                using (var reader = new PipeTextReader(mmap, Encoding.UTF8))
+                using (var reader = new PipeTextReader(mmap, enc))
                 {
-                    await MeasureAndTime(reader);
-                    mmap.Complete();
+                    var watch = Stopwatch.StartNew();
+                    var s = await TestReaderTests.MeasureAndTime(reader);
+                    watch.Stop();
+                    Console.WriteLine($"{s}; time taken: {watch.ElapsedMilliseconds}ms");
                 }
             }
             Console.WriteLine();
             Console.WriteLine("Using StreamReader/FileStream");
             for (int i = 0; i < REPEAT; i++)
             {
-                using (var reader = new StreamReader(path, Encoding.UTF8))
+                using (var reader = new StreamReader(path, enc))
                 {
-                    await MeasureAndTime(reader);
+                    var watch = Stopwatch.StartNew();
+                    var s = await TestReaderTests.MeasureAndTime(reader);
+                    watch.Stop();
+                    Console.WriteLine($"{s}; time taken: {watch.ElapsedMilliseconds}ms");
                 }
             }
         }

@@ -1,11 +1,13 @@
 ﻿using BenchmarkDotNet.Attributes;
+using Pipelines.Sockets.Unofficial;
 using Pipelines.Sockets.Unofficial.Tests;
+using System;
 using System.IO;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace Benchmarks
 {
-    [KeepBenchmarkFiles]
     [Config(typeof(Config))]
     public class BasicTests
     {
@@ -25,5 +27,32 @@ namespace Benchmarks
 
         [Benchmark(Description = "Socket=>NetworkStream=>Pipelines=>PingPong")]
         public Task BasicNetworkStreamPipelines() => PPTests.Basic_NetworkStream_Pipelines_PingPong();
+    }
+
+
+    [Config(typeof(Config))]
+    public class TextTests
+    {
+        const string path = "t8.shakespeare.txt";
+        static readonly Encoding encoding = Encoding.UTF8;
+        [Benchmark(Baseline = true, Description = "StreamReader/FileStream")]
+        public async ValueTask<string> TestFileStream()
+        {
+            using (var reader = new StreamReader(path, encoding))
+            {
+                return await TestReaderTests.MeasureAndTime(reader);
+            }
+        }
+
+        [Benchmark(Description = "PipeTextReader/MemoryMappedPipeReader")]
+        public async ValueTask<string> BasicNetworkStream()
+        {
+            var mmap = MemoryMappedPipeReader.Create(path);
+            using (mmap as IDisposable)
+            using (var reader = new PipeTextReader(mmap, encoding))
+            {
+                return await TestReaderTests.MeasureAndTime(reader);
+            }
+        }
     }
 }
