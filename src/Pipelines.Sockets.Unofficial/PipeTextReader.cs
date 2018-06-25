@@ -519,7 +519,11 @@ namespace Pipelines.Sockets.Unofficial
                 if (encoding is UTF32Encoding) return (int)(buffer.Length >> 2);
             }
 
-            if (buffer.IsSingleSegment) return buffer.IsEmpty ? 0 : encoding.GetCharCount(buffer.First.Span);
+            if (buffer.IsSingleSegment)
+            {
+                var span = buffer.First.Span;
+                return span.IsEmpty ? 0 : encoding.GetCharCount(span);
+            }
 
             int charCount = 0;
             if (decoder == null) decoder = encoding.GetDecoder();
