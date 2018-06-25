@@ -99,10 +99,11 @@ namespace BasicRunner
                 Console.WriteLine($"Input file not found: {path}");
                 return;
             }
+            const int REPEAT = 10;
             Console.WriteLine($"Reading: {fi.Name}, {fi.Length} bytes");
             Console.WriteLine();
             Console.WriteLine("Using PipeTextReader/MemoryMappedPipeReader");
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < REPEAT; i++)
             {
                 var mmap = MemoryMappedPipeReader.Create(path);
                 using (mmap as IDisposable)
@@ -114,7 +115,7 @@ namespace BasicRunner
             }
             Console.WriteLine();
             Console.WriteLine("Using StreamReader/FileStream");
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < REPEAT; i++)
             {
                 using (var reader = new StreamReader(path, Encoding.UTF8))
                 {

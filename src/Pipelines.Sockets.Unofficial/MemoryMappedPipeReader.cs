@@ -191,6 +191,18 @@ namespace Pipelines.Sockets.Unofficial
                 var eOffset = examined.GetInteger();
                 _loadMore = ePage == _last && eOffset == ePage.Capacity;
             }
+            DebugLog($"After AdvanceTo, {CountAvailable(_first)} available bytes, {_remaining} remaining unloaded bytes, load more: {_loadMore}");
+        }
+
+        static long CountAvailable(MappedPage page)
+        {
+            long total = 0;
+            while(page != null)
+            {
+                total += page.Capacity - page.Consumed;
+                page = page.Next;
+            }
+            return total;
         }
         /// <summary>
         /// Perform an asynchronous read operation
@@ -212,11 +224,14 @@ namespace Pipelines.Sockets.Unofficial
                 if (_remaining != 0)
                 {
                     var take = (int)Math.Min(_remaining, _pageSize);
-                    DebugLog($"Loading next {take} bytes...");
+                    DebugLog($"Loading {take} bytes from offet {_offset}...");
                     var accessor = _file.CreateViewAccessor(_offset, take, MemoryMappedFileAccess.Read);
+                    
+                    var next = new MappedPage(accessor, _offset, take);
+                    Debug.Assert(next.RunningIndex == _offset);
                     _remaining -= take;
                     _offset += take;
-                    var next = new MappedPage(accessor, take);
+
 
                     if (_first == null)
                     {
@@ -239,8 +254,9 @@ namespace Pipelines.Sockets.Unofficial
                 return new ReadResult(default, false, true);
             }
             var buffer = new ReadOnlySequence<byte>(_first, _first.Consumed, _last, _last.Capacity);
-            DebugLog($"Read making {buffer.Length} bytes available");
-            return new ReadResult(buffer, false, _remaining != 0);
+            var result = new ReadResult(buffer, false, _remaining == 0);
+            DebugLog($"Read making {buffer.Length} bytes available; is completed: {result.IsCompleted}");
+            return result;
         }
 
         private sealed class MappedPage : ReadOnlySequenceSegment<byte>, IDisposable
@@ -254,16 +270,16 @@ namespace Pipelines.Sockets.Unofficial
             private MemoryMappedViewAccessor _accessor;
             private SafeBuffer _buffer;
             public int Consumed { get; set; }
-            public unsafe MappedPage(MemoryMappedViewAccessor accessor, int capacity)
+            public unsafe MappedPage(MemoryMappedViewAccessor accessor, long offset, int capacity)
             {
                 _accessor = accessor ?? throw new ArgumentNullException(nameof(accessor));
                 _buffer = s_safeBufferField.GetValue(_accessor) as SafeBuffer ?? throw new InvalidOperationException();
                 // note that the *actual* capacity isn't necessarily the same - system page size (rounding up), etc
                 if (capacity < 0 || capacity > accessor.Capacity) throw new ArgumentOutOfRangeException(nameof(capacity));
-                RunningIndex = accessor.PointerOffset;
+                RunningIndex = offset;
                 byte* ptr = null;
                 _buffer.AcquirePointer(ref ptr);
-                Memory = new UnmanagedMemoryManager<byte>(ptr, capacity).Memory;
+                Memory = new UnmanagedMemoryManager<byte>(ptr + accessor.PointerOffset, capacity).Memory;
                 Capacity = capacity;
             }
             public override string ToString() => $"[{(RunningIndex + Consumed)},{(RunningIndex + Capacity)})";

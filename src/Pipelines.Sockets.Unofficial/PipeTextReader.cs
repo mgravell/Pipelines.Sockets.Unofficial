@@ -200,7 +200,16 @@ namespace Pipelines.Sockets.Unofficial
 
             var buffer = result.Buffer;
 
-            if (NeedPrefixCheck) CheckPrefix(ref buffer);
+            if (NeedPrefixCheck)
+            {
+                if(!CheckPrefix(ref buffer) && !result.IsCompleted)
+                {
+                    // not enough data
+                    s = null;
+                    _reader.AdvanceTo(buffer.Start, buffer.End);
+                    return false; 
+                }
+            }
 
             var line = ReadToEndOfLine(ref buffer); // found a line
 
@@ -372,17 +381,34 @@ namespace Pipelines.Sockets.Unofficial
                 if (result.IsCanceled) throw new InvalidOperationException();
 
                 var buffer = result.Buffer;
-                if (NeedPrefixCheck) CheckPrefix(ref buffer);
+                if (NeedPrefixCheck)
+                {
+                    if(!CheckPrefix(ref buffer) && !result.IsCompleted)
+                    {
+                        // need more data
+                        _reader.AdvanceTo(buffer.Start, buffer.End);
+                        continue;
+                    }
+                }
 
                 if (result.IsCompleted) return ConsumeString(buffer);
-                _reader.AdvanceTo(buffer.Start);
+                _reader.AdvanceTo(buffer.Start, buffer.End);
             }
         }
 
         bool ReadConsume(ReadResult result, Span<char> chars, bool peek, out int charsRead)
         {
             var buffer = result.Buffer;
-            if (NeedPrefixCheck) CheckPrefix(ref buffer);
+            if (NeedPrefixCheck)
+            {
+                if(!CheckPrefix(ref buffer) && !result.IsCompleted)
+                {
+                    // need more data
+                    charsRead = 0;
+                    _reader.AdvanceTo(buffer.Start, buffer.End);
+                    return false;
+                }
+            }
             int bytesUsed = GetString(buffer, chars, out charsRead, _encoding, _decoder, false);
 
             if ((bytesUsed != 0 && charsRead != 0) || result.IsCompleted)
@@ -390,7 +416,7 @@ namespace Pipelines.Sockets.Unofficial
                 _reader.AdvanceTo(peek ? buffer.Start : buffer.GetPosition(bytesUsed));
                 return true;
             }
-            _reader.AdvanceTo(buffer.Start);
+            _reader.AdvanceTo(buffer.Start, buffer.End);
             return false;
         }
         private async ValueTask<int> ReadAsyncImplAwaited(Memory<char> chars, CancellationToken cancellationToken, bool peek = false)
