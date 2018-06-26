@@ -20,6 +20,7 @@ namespace Pipelines.Sockets.Unofficial
         private readonly PipeReader _reader;
         private readonly Decoder _decoder;
         private readonly Encoding _encoding;
+        private readonly int _maxBytesPerChar;
         private readonly ReadOnlyMemory<byte> _lineFeed;
 #if !SOCKET_STREAM_BUFFERS
         private readonly ReadOnlyMemory<byte> _preamble;
@@ -50,7 +51,12 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Create a new PipeTextReader instance
         /// </summary>
-        public PipeTextReader(PipeReader reader, Encoding encoding, bool closeReader = true)
+        public static TextReader Create(PipeReader reader, Encoding encoding, bool closeReader = true, int bufferSize = BufferedTextReader.DefaultBufferSize)
+        {
+            TextReader tr = new PipeTextReader(reader, encoding, closeReader);
+            return bufferSize > 0 ? new BufferedTextReader(tr, bufferSize, closeReader) : tr;
+        }
+        private PipeTextReader(PipeReader reader, Encoding encoding, bool closeReader)
         {
             _reader = reader ?? throw new ArgumentNullException(nameof(reader));
             _encoding = encoding ?? throw new ArgumentNullException(nameof(encoding));
@@ -69,6 +75,7 @@ namespace Pipelines.Sockets.Unofficial
                 _crLen = encoding.GetByteCount("\r");
                 _lfLen = _lineFeed.Length;
             }
+            _maxBytesPerChar = encoding.GetMaxByteCount(1); // over-reports, but... meh
 
 
 #if SOCKET_STREAM_BUFFERS
@@ -514,15 +521,53 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public override int Peek() => ReadSingleChar(true);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int ReadSingleChar(bool peek)
-        {
-            if (_reader.TryRead(out var result))
-            {
-                Span<char> chars = stackalloc char[1];
-                if (ReadConsume(result, chars, peek, out var charsRead))
-                    return charsRead <= 0 ? -1 : chars[0];
-            }
+            => ReadSingleCharFast(peek) ?? ReadSingleCharSlow(peek);
 
+        private int? ReadSingleCharFast(bool peek)
+        {
+            if (!_reader.TryRead(out var result)) return null;
+            
+            var buffer = result.Buffer;
+            if (NeedPrefixCheck)
+            {
+                if (!CheckPrefix(ref buffer) && !result.IsCompleted)
+                {   // not enough data
+                    _reader.AdvanceTo(buffer.Start, buffer.End);
+                    return null;
+                }
+            }
+            Span<char> chars = stackalloc char[1];
+            var decoder = GetDecoder();
+            if(buffer.IsSingleSegment)
+            {
+                decoder.Convert(buffer.First.Span, chars, false, out int bytesUsed, out int charsUsed, out bool completed);
+                if(charsUsed == 1)
+                {
+                    _reader.AdvanceTo(peek ? buffer.Start : buffer.GetPosition(bytesUsed), buffer.End);
+                    return chars[0];
+                }
+            }
+            else
+            {
+                int totalBytes = 0;
+                foreach(var segment in buffer)
+                {
+                    decoder.Convert(segment.Span, chars, false, out int bytesUsed, out int charsUsed, out bool completed);
+                    totalBytes += bytesUsed;
+                    if (charsUsed == 1)
+                    {
+                        _reader.AdvanceTo(peek ? buffer.Start : buffer.GetPosition(totalBytes), buffer.End);
+                        return chars[0];
+                    }
+                }
+            }
+            _reader.AdvanceTo(buffer.Start, buffer.End);
+            return null;
+        }
+        private int ReadSingleCharSlow(bool peek)
+        {
             var arr = ArrayPool<char>.Shared.Rent(1);
             int bytes = ReadAsyncImplAwaited(new Memory<char>(arr, 0, 1), default, peek).Result;
             var finalResult = bytes <= 0 ? -1 : arr[0];
