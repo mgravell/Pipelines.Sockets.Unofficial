@@ -9,6 +9,25 @@ using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
 {
+
+    // HUGE caution; I *think* this approach is insurmountable given the current text decoding APIs; there exist multiple
+    // places when we'd need to be able to either:
+    // - rewind a decoder to a previous state
+    // - know how many bytes read during a conversion were buffered in the decoder rather than becoming part of the output
+    //
+    // Unfortunately, since neither of those exist: I don't think we can do what we need here. Consider: Peek() on UTF8
+    // (Peek makes for simple examples; ReadLine() is similar, though)
+    // Options:
+    // - if we use a stateful decoder, the decoder could be "dirty" before we start; we then run a convert until we EOF or
+    // get exactly one char; now we need to return to the previous state where there the decoder was dirty
+    // - the alternative is to assume that decoders are flushed before each operation, but to do *that* we need to be able to
+    // "push back" the unused bytes into the pipe
+    //
+    // OK, in the Peek case, it sounds like we can just use a single char length convert and it *should* stop reading eagerly,
+    // but we get similar problems in ReadLine. Here, we need to decode forwards until we find a CR or LF (or both). If we
+    // can't assume the above safety, then we end up having to decode character-by-character, to ensure that we can "push back"
+    // the right amount of bytes after the newline - because we can't rewind the state correctly.
+
     /// <summary>
     ///  A TextWriter implementation that pushes to a PipeWriter
     /// </summary>
