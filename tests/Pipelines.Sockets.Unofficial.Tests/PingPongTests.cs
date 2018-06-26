@@ -99,10 +99,10 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
                 var enc = Encoding.UTF8;
                 await PingPong(
-                    new PipeTextReader(clientPipe.Input, enc),
-                    new PipeTextWriter(clientPipe.Output, enc),
-                    new PipeTextReader(serverPipe.Input, enc),
-                    new PipeTextWriter(serverPipe.Output, enc),
+                    PipeTextReader.Create(clientPipe.Input, enc),
+                    PipeTextWriter.Create(clientPipe.Output, enc),
+                    PipeTextReader.Create(serverPipe.Input, enc),
+                    PipeTextWriter.Create(serverPipe.Output, enc),
                     LoopCount);
             }
             Log.DebugLog("All good!");

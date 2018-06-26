@@ -36,12 +36,18 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Create a new instance of a PipeTextWriter
         /// </summary>
-        public PipeTextWriter(PipeWriter writer, Encoding encoding, bool writeBOM = false, bool closeWriter = true)
+        public static TextWriter Create(PipeWriter writer, Encoding encoding, bool writeBOM = false, bool closeWriter = true, bool autoFlush = true)
+            => new PipeTextWriter(writer, encoding, writeBOM, closeWriter, autoFlush);
+
+        private bool AutoFlush { get; }
+
+        private PipeTextWriter(PipeWriter writer, Encoding encoding, bool writeBOM, bool closeWriter, bool autoFlush)
         {
             _writer = writer ?? throw new ArgumentNullException(nameof(writer));
             _encoding = encoding ?? throw new ArgumentNullException(nameof(encoding));
             _encoder = encoding.GetEncoder();
             _closeWriter = closeWriter;
+            AutoFlush = autoFlush;
             _newLine = Environment.NewLine;
 
             if(writeBOM)
@@ -216,16 +222,26 @@ namespace Pipelines.Sockets.Unofficial
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private Task FlushAsyncImpl(CancellationToken cancellationToken = default)
+        private Task FlushAsyncImpl(bool forced = false, CancellationToken cancellationToken = default)
         {
-            var flush = _writer.FlushAsync(cancellationToken);
-            return flush.IsCompletedSuccessfully ? Task.CompletedTask : flush.AsTask();
+            if (forced || AutoFlush)
+            {
+                var flush = _writer.FlushAsync(cancellationToken);
+                return flush.IsCompletedSuccessfully ? Task.CompletedTask : flush.AsTask();
+            }
+            else
+            {
+                return Task.CompletedTask;
+            }
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void FlushSyncImpl()
+        private void FlushSyncImpl(bool forced = false)
         {
-            var flush = _writer.FlushAsync();
-            if (!flush.IsCompletedSuccessfully) flush.AsTask().Wait();
+            if (forced || AutoFlush)
+            {
+                var flush = _writer.FlushAsync();
+                if (!flush.IsCompletedSuccessfully) flush.AsTask().Wait();
+            }
         }
 
 #if SOCKET_STREAM_BUFFERS
@@ -315,11 +331,11 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Flush the pipe, asynchronously
         /// </summary>
-        public override Task FlushAsync() => FlushAsyncImpl();
+        public override Task FlushAsync() => FlushAsyncImpl(forced: true);
         /// <summary>
         /// Flush the pipe
         /// </summary>
-        public override void Flush() => FlushSyncImpl();
+        public override void Flush() => FlushSyncImpl(forced: true);
 
         /// <summary>
         /// Write a buffer to a pipe in the provided encoding

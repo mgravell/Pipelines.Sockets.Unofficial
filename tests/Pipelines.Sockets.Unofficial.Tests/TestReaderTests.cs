@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial.Tests
@@ -10,13 +11,20 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
             int lineCount = 0, nonEmptyLineCount = 0;
             long charCount = 0;
-            
-            string line;
-            while ((line = await reader.ReadLineAsync()) != null)
+
+            try
             {
-                charCount += line.Length;
-                if (!string.IsNullOrWhiteSpace(line)) nonEmptyLineCount++;
-                lineCount++;
+                string line;
+                while ((line = await reader.ReadLineAsync()) != null)
+                {
+                    charCount += line.Length;
+                    if (!string.IsNullOrWhiteSpace(line)) nonEmptyLineCount++;
+                    lineCount++;
+                }
+            }
+            catch (Exception ex)
+            {
+                return ex.Message;
             }
             return $"Lines: {lineCount} ({nonEmptyLineCount} non-empty, {charCount} characters)";
         }

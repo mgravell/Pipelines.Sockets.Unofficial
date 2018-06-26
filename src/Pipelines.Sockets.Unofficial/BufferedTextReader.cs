@@ -224,7 +224,7 @@ namespace Pipelines.Sockets.Unofficial
             {
                 var more = ReadMoreAsync();
                 if (!more.IsCompleted) return AwaitedMore(more, this);
-                if(!more.Result) return null;
+                if(!more.Result) return TaskNull;
             }
             var s = ReadLineLocal(out var trailingLF);
             if (s != null)
@@ -235,7 +235,7 @@ namespace Pipelines.Sockets.Unofficial
                     if (!read.IsCompleted) return AwaitedPeek(read, this, s);
                     if (read.Result && Peek() == '\n') Read();
                 }
-                return Task.FromResult(s); ;
+                return Task.FromResult(s);
             }
             string local = LocalString();
             Debug.Assert(local != null); // because we checked _remaining at the top
