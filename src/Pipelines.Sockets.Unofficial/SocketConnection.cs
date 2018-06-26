@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -22,14 +23,20 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public static void SetRecommendedClientOptions(Socket socket)
         {
+            if (socket.AddressFamily == AddressFamily.Unix) return;
+
             try { socket.NoDelay = true; } catch (Exception ex) { Helpers.DebugLog(nameof(SocketConnection), ex.Message); }
+
             try { SetFastLoopbackOption(socket); } catch (Exception ex) { Helpers.DebugLog(nameof(SocketConnection), ex.Message); }
         }
+
         /// <summary>
         /// Set recommended socket options for server sockets
         /// </summary>
         public static void SetRecommendedServerOptions(Socket socket)
         {
+            if (socket.AddressFamily == AddressFamily.Unix) return;
+
             try { socket.NoDelay = true; } catch (Exception ex) { Helpers.DebugLog(nameof(SocketConnection), ex.Message); }
         }
 
