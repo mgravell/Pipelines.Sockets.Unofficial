@@ -16,6 +16,8 @@ namespace Pipelines.Sockets.Unofficial
     {
         public static void Reset() => Helpers.ResetCounters();
         public static string GetSummary() => Helpers.GetCounterSummary();
+
+        public static void SetLog(System.IO.TextWriter log) => Helpers.Log = log ?? System.IO.TextWriter.Null;
     }
 #pragma warning restore CS1591
 #endif
@@ -130,7 +132,7 @@ namespace Pipelines.Sockets.Unofficial
         }
 
 #if DEBUG
-        internal static System.IO.TextWriter Log = Console.Out;
+        internal static System.IO.TextWriter Log = System.IO.TextWriter.Null;
 #endif
 
         [Conditional("VERBOSE")]

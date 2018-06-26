@@ -39,7 +39,7 @@ namespace Pipelines.Sockets.Unofficial
                         var receive = ReceiveAsync(Socket, args, buffer, Name);
                         Helpers.Incr(receive.IsCompleted ? Counter.SocketReceiveSync : Counter.SocketReceiveAsync);
                         var bytesReceived = await receive;
-                        DebugLog($"received {bytesReceived} bytes");
+                        DebugLog($"received {bytesReceived} bytes ({args.BytesTransferred}, {args.SocketError})");
 
                         if (bytesReceived == 0)
                         {

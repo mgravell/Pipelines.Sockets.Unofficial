@@ -47,7 +47,7 @@ namespace Pipelines.Sockets.Unofficial
 #endif
 
         [Conditional("VERBOSE")]
-        private void DebugLog(string message, [CallerMemberName] string caller = null) => Helpers.DebugLog(Name, message, caller);
+        private void DebugLog(string message, [CallerMemberName] string caller = null, [CallerLineNumber] int lineNumber = 0) => Helpers.DebugLog(Name, message, $"{caller}#{lineNumber}");
 
         /// <summary>
         /// Release any resources held by this instance
