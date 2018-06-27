@@ -28,9 +28,11 @@ namespace Pipelines.Sockets.Unofficial
             Func<SocketConnection, Task> onConnected = null,
             Socket socket = null, string name = null)
         {
+            var addressFamily = endpoint.AddressFamily == AddressFamily.Unspecified ? AddressFamily.InterNetwork : endpoint.AddressFamily;
+            var protocolType = addressFamily == AddressFamily.Unix ? ProtocolType.Unspecified : ProtocolType.Tcp;
             if (socket == null)
             {
-                socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
+                socket = new Socket(addressFamily, SocketType.Stream, protocolType);
             }
             if (sendPipeOptions == null) sendPipeOptions = PipeOptions.Default;
             if (receivePipeOptions == null) receivePipeOptions = PipeOptions.Default;
