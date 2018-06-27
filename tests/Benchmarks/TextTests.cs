@@ -36,7 +36,7 @@ namespace Benchmarks
             {
                 var mmap = MemoryMappedPipeReader.Create(path);
                 using (mmap as IDisposable)
-                using (var reader = new PipeTextReader(mmap, encoding))
+                using (var reader = PipeTextReader.Create(mmap, encoding))
                 {
                     x += (await TestReaderTests.MeasureAndTime(reader)).Length;
                 }

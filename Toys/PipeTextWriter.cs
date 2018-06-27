@@ -9,6 +9,25 @@ using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
 {
+
+    // HUGE caution; I *think* this approach is insurmountable given the current text decoding APIs; there exist multiple
+    // places when we'd need to be able to either:
+    // - rewind a decoder to a previous state
+    // - know how many bytes read during a conversion were buffered in the decoder rather than becoming part of the output
+    //
+    // Unfortunately, since neither of those exist: I don't think we can do what we need here. Consider: Peek() on UTF8
+    // (Peek makes for simple examples; ReadLine() is similar, though)
+    // Options:
+    // - if we use a stateful decoder, the decoder could be "dirty" before we start; we then run a convert until we EOF or
+    // get exactly one char; now we need to return to the previous state where there the decoder was dirty
+    // - the alternative is to assume that decoders are flushed before each operation, but to do *that* we need to be able to
+    // "push back" the unused bytes into the pipe
+    //
+    // OK, in the Peek case, it sounds like we can just use a single char length convert and it *should* stop reading eagerly,
+    // but we get similar problems in ReadLine. Here, we need to decode forwards until we find a CR or LF (or both). If we
+    // can't assume the above safety, then we end up having to decode character-by-character, to ensure that we can "push back"
+    // the right amount of bytes after the newline - because we can't rewind the state correctly.
+
     /// <summary>
     ///  A TextWriter implementation that pushes to a PipeWriter
     /// </summary>
@@ -36,12 +55,18 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Create a new instance of a PipeTextWriter
         /// </summary>
-        public PipeTextWriter(PipeWriter writer, Encoding encoding, bool writeBOM = false, bool closeWriter = true)
+        public static TextWriter Create(PipeWriter writer, Encoding encoding, bool writeBOM = false, bool closeWriter = true, bool autoFlush = true)
+            => new PipeTextWriter(writer, encoding, writeBOM, closeWriter, autoFlush);
+
+        private bool AutoFlush { get; }
+
+        private PipeTextWriter(PipeWriter writer, Encoding encoding, bool writeBOM, bool closeWriter, bool autoFlush)
         {
             _writer = writer ?? throw new ArgumentNullException(nameof(writer));
             _encoding = encoding ?? throw new ArgumentNullException(nameof(encoding));
             _encoder = encoding.GetEncoder();
             _closeWriter = closeWriter;
+            AutoFlush = autoFlush;
             _newLine = Environment.NewLine;
 
             if(writeBOM)
@@ -216,16 +241,26 @@ namespace Pipelines.Sockets.Unofficial
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private Task FlushAsyncImpl(CancellationToken cancellationToken = default)
+        private Task FlushAsyncImpl(bool forced = false, CancellationToken cancellationToken = default)
         {
-            var flush = _writer.FlushAsync(cancellationToken);
-            return flush.IsCompletedSuccessfully ? Task.CompletedTask : flush.AsTask();
+            if (forced || AutoFlush)
+            {
+                var flush = _writer.FlushAsync(cancellationToken);
+                return flush.IsCompletedSuccessfully ? Task.CompletedTask : flush.AsTask();
+            }
+            else
+            {
+                return Task.CompletedTask;
+            }
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void FlushSyncImpl()
+        private void FlushSyncImpl(bool forced = false)
         {
-            var flush = _writer.FlushAsync();
-            if (!flush.IsCompletedSuccessfully) flush.AsTask().Wait();
+            if (forced || AutoFlush)
+            {
+                var flush = _writer.FlushAsync();
+                if (!flush.IsCompletedSuccessfully) flush.AsTask().Wait();
+            }
         }
 
 #if SOCKET_STREAM_BUFFERS
@@ -315,11 +350,11 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Flush the pipe, asynchronously
         /// </summary>
-        public override Task FlushAsync() => FlushAsyncImpl();
+        public override Task FlushAsync() => FlushAsyncImpl(forced: true);
         /// <summary>
         /// Flush the pipe
         /// </summary>
-        public override void Flush() => FlushSyncImpl();
+        public override void Flush() => FlushSyncImpl(forced: true);
 
         /// <summary>
         /// Write a buffer to a pipe in the provided encoding

@@ -21,6 +21,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BasicRunner", "tests\BasicR
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Benchmarks", "tests\Benchmarks\Benchmarks.csproj", "{E2F83D6A-00C6-4085-8BA5-A3EF9FBD61B9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Toys", "Toys\Toys.csproj", "{C0075241-906D-4159-B93A-84338C7E1463}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -43,6 +45,10 @@ Global
 		{E2F83D6A-00C6-4085-8BA5-A3EF9FBD61B9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E2F83D6A-00C6-4085-8BA5-A3EF9FBD61B9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E2F83D6A-00C6-4085-8BA5-A3EF9FBD61B9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C0075241-906D-4159-B93A-84338C7E1463}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C0075241-906D-4159-B93A-84338C7E1463}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C0075241-906D-4159-B93A-84338C7E1463}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C0075241-906D-4159-B93A-84338C7E1463}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

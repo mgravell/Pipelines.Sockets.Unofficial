@@ -75,12 +75,26 @@ namespace BasicRunner
             var enc = Encoding.ASCII;
             Console.WriteLine($"Reading: {fi.Name}, {fi.Length} bytes, encoding: {enc.EncodingName}");
             Console.WriteLine();
-            Console.WriteLine("Using PipeTextReader/MemoryMappedPipeReader");
+            Console.WriteLine("Using PipeTextReader/MemoryMappedPipeReader (no buffer)");
             for (int i = 0; i < REPEAT; i++)
             {
                 var mmap = MemoryMappedPipeReader.Create(path);
                 using (mmap as IDisposable)
-                using (var reader = new PipeTextReader(mmap, enc))
+                using (var reader = PipeTextReader.Create(mmap, enc, bufferSize: 0))
+                {
+                    var watch = Stopwatch.StartNew();
+                    var s = await TestReaderTests.MeasureAndTime(reader);
+                    watch.Stop();
+                    Console.WriteLine($"{s}; time taken: {watch.ElapsedMilliseconds}ms");
+                }
+            }
+            Console.WriteLine();
+            Console.WriteLine("Using PipeTextReader/MemoryMappedPipeReader (leased buffer)");
+            for (int i = 0; i < REPEAT; i++)
+            {
+                var mmap = MemoryMappedPipeReader.Create(path);
+                using (mmap as IDisposable)
+                using (var reader = PipeTextReader.Create(mmap, enc))
                 {
                     var watch = Stopwatch.StartNew();
                     var s = await TestReaderTests.MeasureAndTime(reader);

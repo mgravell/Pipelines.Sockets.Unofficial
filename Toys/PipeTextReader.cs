@@ -39,7 +39,7 @@ namespace Pipelines.Sockets.Unofficial
         [Conditional("VERBOSE")]
         void DebugLog(string message, [CallerMemberName] string caller = null)
         {
-            Helpers.DebugLog(GetType().Name, message, caller);
+            Debug.WriteLine($"{GetType().Name}/{caller}: {message}");
         }
 
         enum SkipPrefix

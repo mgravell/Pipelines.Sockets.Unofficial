@@ -12,19 +12,25 @@ namespace Pipelines.Sockets.Unofficial
         /// Create a duplex pipe that represents the provided stream
         /// </summary>
         public static IDuplexPipe GetDuplex(Stream stream, PipeOptions pipeOptions = null, string name = null)
-            => new AsyncStreamPipe(stream, pipeOptions, true, true, name);
+            => new AsyncStreamPipe(stream, pipeOptions, pipeOptions, true, true, name);
+
+        /// <summary>
+        /// Create a duplex pipe that represents the provided stream
+        /// </summary>
+        public static IDuplexPipe GetDuplex(Stream stream, PipeOptions sendPipeOptions, PipeOptions receivePipeOptions, string name = null)
+            => new AsyncStreamPipe(stream, sendPipeOptions, receivePipeOptions, true, true, name);
 
         /// <summary>
         /// Create a PipeReader that consumes the provided stream
         /// </summary>
         public static PipeReader GetReader(Stream stream, PipeOptions pipeOptions = null, string name = null)
-            => new AsyncStreamPipe(stream, pipeOptions, true, false, name).Input;
+            => new AsyncStreamPipe(stream, null, pipeOptions, true, false, name).Input;
 
         /// <summary>
         /// Create a PipeWriter feeds the provided stream
         /// </summary>
         public static PipeWriter GetWriter(Stream stream, PipeOptions pipeOptions = null, string name = null)
-            => new AsyncStreamPipe(stream, pipeOptions, false, true, name).Output;
+            => new AsyncStreamPipe(stream, pipeOptions, null, false, true, name).Output;
 
         /// <summary>
         /// Create a duplex stream that represents the provided reader and writer

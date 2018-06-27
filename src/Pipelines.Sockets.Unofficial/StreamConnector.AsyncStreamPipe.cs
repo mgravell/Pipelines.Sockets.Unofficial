@@ -25,9 +25,10 @@ namespace Pipelines.Sockets.Unofficial
             public override string ToString() => Name;
 
 
-            public AsyncStreamPipe(Stream stream, PipeOptions pipeOptions, bool read, bool write, string name)
+            public AsyncStreamPipe(Stream stream, PipeOptions sendPipeOptions, PipeOptions receivePipeOptions, bool read, bool write, string name)
             {
-                if (pipeOptions == null) pipeOptions = PipeOptions.Default;
+                if (sendPipeOptions == null) sendPipeOptions = PipeOptions.Default;
+                if (receivePipeOptions == null) receivePipeOptions = PipeOptions.Default;
                 _inner = stream ?? throw new ArgumentNullException(nameof(stream));
                 if (string.IsNullOrWhiteSpace(name)) name = GetType().Name;
                 Name = name ?? GetType().Name;
@@ -36,15 +37,14 @@ namespace Pipelines.Sockets.Unofficial
                 if (read)
                 {
                     if (!stream.CanWrite) throw new InvalidOperationException("Cannot create a read pipe over a non-writable stream");
-                    _readPipe = new Pipe(pipeOptions);
-                    pipeOptions.ReaderScheduler.Schedule(obj => ((AsyncStreamPipe)obj).CopyFromStreamToReadPipe(), this);
+                    _readPipe = new Pipe(receivePipeOptions);
+                    receivePipeOptions.ReaderScheduler.Schedule(obj => ((AsyncStreamPipe)obj).CopyFromStreamToReadPipe(), this);
                 }
                 if (write)
                 {
                     if (!stream.CanRead) throw new InvalidOperationException("Cannot create a write pipe over a non-readable stream");
-                    _writePipe = new Pipe(pipeOptions);
-                    pipeOptions.WriterScheduler.Schedule(obj => ((AsyncStreamPipe)obj).CopyFromWritePipeToStream(), this);
-
+                    _writePipe = new Pipe(sendPipeOptions);
+                    sendPipeOptions.WriterScheduler.Schedule(obj => ((AsyncStreamPipe)obj).CopyFromWritePipeToStream(), this);
                 }
             }
 
