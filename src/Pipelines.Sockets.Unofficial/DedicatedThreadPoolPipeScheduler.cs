@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -17,9 +16,11 @@ namespace Pipelines.Sockets.Unofficial
         /// The name of the pool
         /// </summary>
         public override string ToString() => Name;
-        private int MaxThreads { get; }
-        
-        private int MinThreads { get; }
+
+        /// <summary>
+        /// The maximum number of workers associated with this pool
+        /// </summary>
+        public int MaxWorkerCount { get; }
 
         private int UseThreadPoolQueueLength { get; }
        
@@ -29,17 +30,16 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Create a new dedicated thread-pool
         /// </summary>
-        public DedicatedThreadPoolPipeScheduler(string name = null, int minThreads = 1, int maxThreads = 5, int useThreadPoolQueueLength = 10,
+        public DedicatedThreadPoolPipeScheduler(string name = null, int minWorkers = 1, int maxWorkers = 5, int useThreadPoolQueueLength = 10,
             ThreadPriority priority = ThreadPriority.Normal)
         {
-            if (minThreads < 0) throw new ArgumentNullException(nameof(minThreads));
-            if (minThreads < maxThreads) minThreads = maxThreads;
-            MinThreads = minThreads;
-            MaxThreads = maxThreads;
+            if (minWorkers < 0) throw new ArgumentNullException(nameof(minWorkers));
+            if (minWorkers > maxWorkers) minWorkers = maxWorkers;
+            MaxWorkerCount = maxWorkers;
             UseThreadPoolQueueLength = useThreadPoolQueueLength;
             if (string.IsNullOrWhiteSpace(name)) name = GetType().Name;
             Name = name.Trim();
-            for (int i = 0; i < minThreads; i++)
+            for (int i = 0; i < minWorkers; i++)
             {
                 StartWorker();
             }
@@ -57,18 +57,18 @@ namespace Pipelines.Sockets.Unofficial
         }
 
         private volatile bool _disposed;
-        private readonly object ThreadSyncLock = new object();
+        private readonly object ThreadCountSyncLock = new object();
         private int _threadCount;
         readonly Queue<WorkItem> _queue = new Queue<WorkItem>();
         private bool StartWorker()
         {
             bool create = false;
             int newNumber = 0;
-            if (_threadCount < MaxThreads)
+            if (_threadCount < MaxWorkerCount)
             {
-                lock (ThreadSyncLock)
+                lock (ThreadCountSyncLock)
                 {
-                    if (_threadCount < MaxThreads) // double-check
+                    if (_threadCount < MaxWorkerCount) // double-check
                     {
                         create = true;
                         newNumber = _threadCount++;
@@ -134,6 +134,11 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public int BusyCount => Thread.VolatileRead(ref _busyCount);
 
+        /// <summary>
+        /// The number of workers currently instantiated
+        /// </summary>
+        public int WorkerCount => Thread.VolatileRead(ref _threadCount);
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void Execute(Action<object> action, object state)
         {
@@ -185,6 +190,10 @@ namespace Pipelines.Sockets.Unofficial
                     next = _queue.Dequeue();
                 }
                 Execute(next.Action, next.State);
+            }
+            lock (ThreadCountSyncLock)
+            {
+                _threadCount--;
             }
         }
         /// <summary>
