@@ -17,14 +17,6 @@ namespace Pipelines.Sockets.Unofficial
         /// When no data is currently available, perform a zero-length read as a buffer-free wait mechanism
         /// </summary>
         ZeroLengthReads = 1 << 0,
-        /// <summary>
-        /// Use a dedicated reader thread with all-synchronous IO
-        /// </summary>
-        SyncReader = 1 << 1,
-        /// <summary>
-        /// Use a dedicated writer thread with all-synchronous IO
-        /// </summary>
-        SyncWriter = 1 << 2,
     }
     partial class SocketConnection
     {

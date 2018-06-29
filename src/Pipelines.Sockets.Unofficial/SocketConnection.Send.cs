@@ -5,12 +5,13 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
+using System.Threading;
 
 namespace Pipelines.Sockets.Unofficial
 {
     partial class SocketConnection
     {
+        SocketAwaitable _writerAwaitable;
         private async void DoSendAsync()
         {
             Exception error = null;
@@ -27,9 +28,11 @@ namespace Pipelines.Sockets.Unofficial
                     }
                     else
                     {
+                        Helpers.Incr(Counter.OpenSendReadAsync);
                         var read = _send.Reader.ReadAsync();
                         Helpers.Incr(read.IsCompleted ? Counter.SocketPipeReadReadSync : Counter.SocketPipeReadReadAsync);
                         result = await read;
+                        Helpers.Decr(Counter.OpenSendReadAsync);
                     }
                     var buffer = result.Buffer;
 
@@ -43,11 +46,13 @@ namespace Pipelines.Sockets.Unofficial
                     {
                         if (!buffer.IsEmpty)
                         {
-                            if (args == null) args = CreateArgs(_sendOptions.WriterScheduler);
+                            if (args == null) args = CreateArgs(_sendOptions.WriterScheduler, out _writerAwaitable);
                             DebugLog($"sending {buffer.Length} bytes over socket...");
+                            Helpers.Incr(Counter.OpenSendWriteAsync);
                             var send = SendAsync(Socket, args, buffer, Name);
                             Helpers.Incr(send.IsCompleted ? Counter.SocketSendAsyncSync : Counter.SocketSendAsyncAsync);
                             await send;
+                            Helpers.Decr(Counter.OpenSendWriteAsync);
                         }
                         else if (result.IsCompleted)
                         {

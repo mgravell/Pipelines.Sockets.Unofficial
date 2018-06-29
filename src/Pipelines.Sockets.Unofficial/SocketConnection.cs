@@ -17,6 +17,9 @@ namespace Pipelines.Sockets.Unofficial
     /// </summary>
     public sealed partial class SocketConnection : IDuplexPipe, IDisposable
     {
+#if DEBUG
+        ~SocketConnection() => Helpers.Incr(Counter.SocketConnectionCollectedWithoutDispose);
+#endif
 
         /// <summary>
         /// Set recommended socket options for client sockets
@@ -54,6 +57,13 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public void Dispose()
         {
+#if DEBUG
+            GC.SuppressFinalize(this);
+#endif
+            try { Socket?.Close(); } catch { }
+            try { _readerAwaitable?.Complete(0, SocketError.Shutdown); } catch { }
+            try { _writerAwaitable?.Complete(0, SocketError.Shutdown); } catch { }
+
             Socket?.Dispose();
             // Socket = null;
         }
@@ -104,10 +114,11 @@ namespace Pipelines.Sockets.Unofficial
         private volatile bool _sendAborted, _receiveAborted;
 #pragma warning restore CS0414, CS0649
 
-        private static SocketAsyncEventArgs CreateArgs(PipeScheduler scheduler)
+        private static SocketAsyncEventArgs CreateArgs(PipeScheduler scheduler, out SocketAwaitable awaitable)
         {
             if (ReferenceEquals(scheduler, PipeScheduler.Inline)) scheduler = null;
-            var args = new SocketAsyncEventArgs { UserToken = new SocketAwaitable(scheduler) };
+            awaitable = new SocketAwaitable(scheduler);
+            var args = new SocketAsyncEventArgs { UserToken = awaitable };
             args.Completed += _OnCompleted;
             return args;
         }
@@ -156,15 +167,8 @@ namespace Pipelines.Sockets.Unofficial
             _receiveOptions = receivePipeOptions;
             _sendOptions = sendPipeOptions;
 
-            if (HasFlag(SocketConnectionOptions.SyncWriter))
-                RunThreadAsTask(this, s_DoSendAsync, nameof(DoSendSync));
-            else
-                sendPipeOptions.ReaderScheduler.Schedule(s_DoSendAsync, this);
-
-            if (HasFlag(SocketConnectionOptions.SyncReader))
-                RunThreadAsTask(this, s_DoReceiveAsync, nameof(DoReceiveSync));
-            else
-                receivePipeOptions.ReaderScheduler.Schedule(s_DoReceiveAsync, this);
+            sendPipeOptions.ReaderScheduler.Schedule(s_DoSendAsync, this);
+            receivePipeOptions.ReaderScheduler.Schedule(s_DoReceiveAsync, this);
         }
 
         private static void DoReceiveAsync(object s) => ((SocketConnection)s).DoReceiveAsync();

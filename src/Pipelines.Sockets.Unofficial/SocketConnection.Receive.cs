@@ -2,28 +2,31 @@
 using System.IO;
 using System.IO.Pipelines;
 using System.Net.Sockets;
-using System.Threading.Tasks;
+using System.Threading;
 
 namespace Pipelines.Sockets.Unofficial
 {
     partial class SocketConnection
     {
+        SocketAwaitable _readerAwaitable;
         private async void DoReceiveAsync()
         {
             Exception error = null;
             DebugLog("starting receive loop");
             try
             {
-                var args = CreateArgs(_receiveOptions.ReaderScheduler);
+                var args = CreateArgs(_receiveOptions.ReaderScheduler, out _readerAwaitable);
                 while (true)
                 {
                     if (ZeroLengthReads && Socket.Available == 0)
                     {
                         DebugLog($"awaiting zero-length receive...");
-                        
+
+                        Helpers.Incr(Counter.OpenReceiveReadAsync);
                         var receive = ReceiveAsync(Socket, args, default, Name);
                         Helpers.Incr(receive.IsCompleted ? Counter.SocketZeroLengthReceiveSync : Counter.SocketZeroLengthReceiveAsync);
                         await receive;
+                        Helpers.Decr(Counter.OpenReceiveReadAsync);
                         DebugLog($"zero-length receive complete; now {Socket.Available} bytes available");
 
                         // this *could* be because data is now available, or it *could* be because of
@@ -36,9 +39,11 @@ namespace Pipelines.Sockets.Unofficial
                     try
                     {
                         DebugLog($"awaiting socket receive...");
+                        Helpers.Incr(Counter.OpenReceiveReadAsync);
                         var receive = ReceiveAsync(Socket, args, buffer, Name);
                         Helpers.Incr(receive.IsCompleted ? Counter.SocketReceiveSync : Counter.SocketReceiveAsync);
                         var bytesReceived = await receive;
+                        Helpers.Decr(Counter.OpenReceiveReadAsync);
                         DebugLog($"received {bytesReceived} bytes ({args.BytesTransferred}, {args.SocketError})");
 
                         if (bytesReceived == 0)
@@ -54,6 +59,7 @@ namespace Pipelines.Sockets.Unofficial
                     }
 
                     DebugLog("flushing pipe");
+                    Helpers.Incr(Counter.OpenReceiveFlushAsync);
                     var flushTask = _receive.Writer.FlushAsync();
                     Helpers.Incr(flushTask.IsCompleted ? Counter.SocketPipeFlushSync : Counter.SocketPipeFlushAsync);
 
@@ -68,6 +74,7 @@ namespace Pipelines.Sockets.Unofficial
                         result = await flushTask;
                         DebugLog("pipe flushed (async)");
                     }
+                    Helpers.Decr(Counter.OpenReceiveFlushAsync);
 
                     if (result.IsCompleted)
                     {

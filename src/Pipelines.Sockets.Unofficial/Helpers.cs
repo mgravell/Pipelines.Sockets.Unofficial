@@ -72,6 +72,12 @@ namespace Pipelines.Sockets.Unofficial
 
         PipeStreamFlush,
         PipeStreamFlushAsync,
+
+        OpenReceiveReadAsync,
+        OpenReceiveFlushAsync,
+        OpenSendReadAsync,
+        OpenSendWriteAsync,
+        SocketConnectionCollectedWithoutDispose,
     }
     internal static class Helpers
     {
@@ -107,6 +113,13 @@ namespace Pipelines.Sockets.Unofficial
         {
 #if DEBUG
             Interlocked.Increment(ref _counters[(int)counter]);
+#endif
+        }
+        [Conditional("DEBUG")]
+        internal static void Decr(Counter counter)
+        {
+#if DEBUG
+            Interlocked.Decrement(ref _counters[(int)counter]);
 #endif
         }
         [Conditional("DEBUG")]
