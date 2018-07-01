@@ -36,9 +36,9 @@ namespace Pipelines.Sockets.Unofficial
                     }
                     var buffer = result.Buffer;
 
-                    if (result.IsCanceled)
+                    if (result.IsCanceled || (result.IsCompleted && buffer.IsEmpty))
                     {
-                        DebugLog("cancelled");
+                        DebugLog(result.IsCanceled ? "cancelled" : "complete");
                         break;
                     }
 

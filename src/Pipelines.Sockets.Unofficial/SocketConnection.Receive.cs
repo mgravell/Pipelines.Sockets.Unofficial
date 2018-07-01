@@ -11,6 +11,8 @@ namespace Pipelines.Sockets.Unofficial
         SocketAwaitable _readerAwaitable;
         private async void DoReceiveAsync()
         {
+            _receive.Writer.OnReaderCompleted(
+                (ex, state) => ((Socket)state).Shutdown(SocketShutdown.Receive), Socket);
             Exception error = null;
             DebugLog("starting receive loop");
             try
@@ -45,13 +47,13 @@ namespace Pipelines.Sockets.Unofficial
                         var bytesReceived = await receive;
                         Helpers.Decr(Counter.OpenReceiveReadAsync);
                         DebugLog($"received {bytesReceived} bytes ({args.BytesTransferred}, {args.SocketError})");
+                        
+                        _receive.Writer.Advance(bytesReceived);
 
                         if (bytesReceived == 0)
                         {
                             break;
                         }
-
-                        _receive.Writer.Advance(bytesReceived);
                     }
                     finally
                     {
