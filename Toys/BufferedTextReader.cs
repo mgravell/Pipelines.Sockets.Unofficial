@@ -2,6 +2,7 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -9,6 +10,15 @@ namespace Pipelines.Sockets.Unofficial
 {
     internal sealed class BufferedTextReader : TextReader
     {
+        [Conditional("VERBOSE")]
+        void DebugLog(string message, [CallerMemberName] string caller = null)
+        {
+            lock (Utils.DebugLog)
+            {
+                Utils.DebugLog.WriteLine($"{GetType().Name}/{caller}: {message}");
+            }
+        }
+
         private TextReader _source;
         private readonly bool _closeSource;
         private char[] _buffer;
@@ -26,14 +36,17 @@ namespace Pipelines.Sockets.Unofficial
             async ValueTask<bool> Awaited(BufferedTextReader @this, Task<int> ttask)
             {
                 @this._remaining = await ttask;
+                DebugLog($"{_remaining} chars read asynchronously");
                 return @this._remaining != 0;
             }
             Debug.Assert(_remaining == 0);
             _offset = 0;
-            var task = _source.ReadBlockAsync(_buffer, 0, _buffer.Length);
+            DebugLog("Reading...");
+            var task = _source.ReadAsync(_buffer, 0, _buffer.Length);
             if (task.IsCompleted)
             {
                 _remaining = task.Result;
+                DebugLog($"{_remaining} chars read synchronously");
                 return new ValueTask<bool>(_remaining != 0);
             }
             return Awaited(this, task);

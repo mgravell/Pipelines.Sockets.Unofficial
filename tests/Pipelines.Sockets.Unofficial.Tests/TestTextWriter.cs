@@ -32,8 +32,22 @@ namespace Pipelines.Sockets.Unofficial.Tests
         }
         public override void WriteLine(string value)
         {
-            _log?.WriteLine(value);
-            _text?.WriteLine(value);
+            var tmp = _log;
+            if(tmp != null)
+            {
+                lock(tmp)
+                {
+                    tmp.WriteLine(value);
+                }
+            }
+            var tmp2 = _text;
+            if (tmp2 != null)
+            {
+                lock(tmp2)
+                {
+                    tmp2.WriteLine(value);
+                }
+            }            
         }
 
         [Conditional("DEBUG")]

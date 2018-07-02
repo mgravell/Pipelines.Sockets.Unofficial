@@ -21,7 +21,7 @@ namespace BasicRunner
         static async Task RunTest(Func<Task> method, string label)
         {
             Console.WriteLine();
-            Console.WriteLine();
+            Console.WriteLine($"Starting {label}...");
             for (int i = 0; i < 10; i++)
             {
 #if DEBUG
@@ -40,6 +40,7 @@ namespace BasicRunner
                 }
 #endif
             }
+            Console.WriteLine($"Completed {label}");
         }
 
         static async Task Main()
@@ -53,11 +54,12 @@ namespace BasicRunner
             using (var log = new StreamWriter("log.txt", false))
             {
 #if DEBUG
-                SocketConnection.SetLog(log);
+                //SocketConnection.SetLog(log);
+                //Utils.DebugLog = Console.Out;
                 //SocketConnection.SetLog(Console.Out);
 #endif
-                await MemoryMappedDecode();
-                //await SocketPingPong(log);
+                //await MemoryMappedDecode();
+                await SocketPingPong(Console.Out);
             }
 
         }
@@ -125,9 +127,9 @@ namespace BasicRunner
 
             await RunTest(parent.Basic_NetworkStream_PingPong, "Socket=>NetworkStream=>PingPong");
             await RunTest(parent.Basic_NetworkStream_Text_PingPong, "Socket=>NetworkStream=>TRW=>PingPong");
-            
 
-            //await RunTest(parent.Basic_NetworkStream_Pipelines_PingPong, "Socket=>NetworkStream=>Pipelines=>PingPong");
+
+            await RunTest(parent.Basic_NetworkStream_Pipelines_PingPong, "Socket=>NetworkStream=>Pipelines=>PingPong");
 
             if (PingPongTests.RunTLS)
             {

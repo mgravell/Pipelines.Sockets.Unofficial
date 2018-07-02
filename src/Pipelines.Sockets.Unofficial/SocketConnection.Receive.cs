@@ -40,10 +40,11 @@ namespace Pipelines.Sockets.Unofficial
                     DebugLog($"leased {buffer.Length} bytes from pipe");
                     try
                     {
-                        DebugLog($"awaiting socket receive...");
+                        DebugLog($"initiating socket receive...");
                         Helpers.Incr(Counter.OpenReceiveReadAsync);
                         var receive = ReceiveAsync(Socket, args, buffer, Name);
                         Helpers.Incr(receive.IsCompleted ? Counter.SocketReceiveSync : Counter.SocketReceiveAsync);
+                        DebugLog(receive.IsCompleted ? "receive is sync" : "receive is async");
                         var bytesReceived = await receive;
                         Helpers.Decr(Counter.OpenReceiveReadAsync);
                         DebugLog($"received {bytesReceived} bytes ({args.BytesTransferred}, {args.SocketError})");

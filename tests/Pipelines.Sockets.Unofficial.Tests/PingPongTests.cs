@@ -548,7 +548,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             while (true)
             {
                 bytes = await stream.ReadAsync(buffer, 0, 1);
-
+                
                 if (bytes <= 0 || buffer[0] == (byte)'\n') break;
                 ms.WriteByte(buffer[0]);
             }
