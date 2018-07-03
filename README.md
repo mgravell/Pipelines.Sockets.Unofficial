@@ -11,19 +11,9 @@ It draws inspiration from:
 
 and aims to provide a high-performance implementation of the `IDuplexPipe` interface, providing both client and server APIs. At the moment the API is *very* preliminary.
 
-It is completely unofficial and should not be interpreted as anything other than a bridge.
+Key APIs:
 
+- `SocketConnection` - interacting with a `Socket` as a pipe
+- `StreamConnection` - interacting with a `Stream` as a pipe, or a pipe as a `Stream`
 
-Complete:
-
-- TCP support
-- basic client connect
-
-Planned:
-
-- server API
-- socket option configuration
-- deferred read/write loop spawn
-- optional "optimize for large volumes of idle connections" (aka "zero-length reads")
-- UDP support
-- your suggestions here...
+It is provided under the MIT license.
