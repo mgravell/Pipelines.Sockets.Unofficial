@@ -10,6 +10,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		.gitignore = .gitignore
 		Directory.build.props = Directory.build.props
 		global.json = global.json
+		LICENSE = LICENSE
 		NuGet.config = NuGet.config
 		README.md = README.md
 		version.json = version.json
@@ -21,7 +22,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BasicRunner", "tests\BasicR
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Benchmarks", "tests\Benchmarks\Benchmarks.csproj", "{E2F83D6A-00C6-4085-8BA5-A3EF9FBD61B9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Toys", "Toys\Toys.csproj", "{C0075241-906D-4159-B93A-84338C7E1463}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Toys", "Toys\Toys.csproj", "{C0075241-906D-4159-B93A-84338C7E1463}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
