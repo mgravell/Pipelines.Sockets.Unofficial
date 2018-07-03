@@ -3,7 +3,7 @@
     <LangVersion>latest</LangVersion>
 
     <PackageId>$(AssemblyName)</PackageId>
-    <PackageLicenseUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial/LICENSE.txt</PackageLicenseUrl>    
+    <PackageLicenseUrl>https://raw.githubusercontent.com/mgravell/Pipelines.Sockets.Unofficial/master/LICENSE</PackageLicenseUrl>    
     <PackageProjectUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</RepositoryUrl>
 
