@@ -79,10 +79,10 @@ namespace Pipelines.Sockets.Unofficial
                     }
                     Helpers.Decr(Counter.OpenReceiveFlushAsync);
 
-                    if (result.IsCompleted)
+                    if (result.IsCanceled || result.IsCompleted)
                     {
                         // Pipe consumer is shut down, do we stop writing
-                        DebugLog("complete");
+                        DebugLog(result.IsCanceled ? "canceled" : "complete");
                         break;
                     }
                 }

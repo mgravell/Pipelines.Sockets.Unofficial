@@ -68,7 +68,8 @@ namespace Pipelines.Sockets.Unofficial
                         if (read <= 0) break;
                         writer.Advance(read);
                         // need to flush regularly, a: to respect backoffs, and b: to awaken the reader
-                        await writer.FlushAsync();
+                        var flush = await writer.FlushAsync();
+                        if (flush.IsCompleted || flush.IsCanceled) break;
                     }
                 }
                 catch (Exception ex)
@@ -87,7 +88,7 @@ namespace Pipelines.Sockets.Unofficial
                     var pending = reader.ReadAsync();
                     if (!pending.IsCompleted)
                     {
-                        // then: not currently anything to do; this
+                        // then: not currently anything to do synchronously; this
                         // would be a great time to flush! this *could*
                         // result in over-flushing if reader and writer
                         // are *just about* in sync, but... it'll do
@@ -109,6 +110,8 @@ namespace Pipelines.Sockets.Unofficial
                         }
                     } while (!(buffer.IsEmpty && result.IsCompleted)
                         && reader.TryRead(out result));
+
+                    if (result.IsCanceled) break;
                     if (buffer.IsEmpty && result.IsCompleted) break; // that's all, folks
                 }
             }
