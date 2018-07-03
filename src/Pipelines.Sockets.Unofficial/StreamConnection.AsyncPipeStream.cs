@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
 {
-    partial class StreamConnector
+    partial class StreamConnection
     {
         /// <summary>
         /// Exposes a Stream as a duplex pipe

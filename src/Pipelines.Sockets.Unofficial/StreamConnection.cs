@@ -6,7 +6,7 @@ namespace Pipelines.Sockets.Unofficial
     /// <summary>
     /// Provides serves to shim between streams and pipelines
     /// </summary>
-    public static partial class StreamConnector
+    public static partial class StreamConnection
     {
         /// <summary>
         /// Create a duplex pipe that represents the provided stream

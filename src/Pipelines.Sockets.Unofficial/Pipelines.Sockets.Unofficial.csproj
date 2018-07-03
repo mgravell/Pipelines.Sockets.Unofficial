@@ -9,6 +9,7 @@
     <AssemblyOriginatorKeyFile>Pipelines.Sockets.Unofficial.snk</AssemblyOriginatorKeyFile>
     <PackageProjectUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</RepositoryUrl>
+    <Copyright>Marc Gravell 2018</Copyright>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
     <GenerateDocumentationFile>true</GenerateDocumentationFile>

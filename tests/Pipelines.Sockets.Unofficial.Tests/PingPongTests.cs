@@ -154,8 +154,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 var clientStream = new NetworkStream(client);
                 var serverStream = new NetworkStream(server);
 
-                var clientPipe = StreamConnector.GetDuplex(clientStream, name: "client");
-                var serverPipe = StreamConnector.GetDuplex(serverStream, name: "server");
+                var clientPipe = StreamConnection.GetDuplex(clientStream, name: "client");
+                var serverPipe = StreamConnection.GetDuplex(serverStream, name: "server");
                 await PingPong(clientPipe, serverPipe, LoopCount);
             }
             Log.DebugLog("All good!");
@@ -172,7 +172,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
                 var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
 
-                var clientStream = StreamConnector.GetDuplex(clientPipe, name: "stream client");
+                var clientStream = StreamConnection.GetDuplex(clientPipe, name: "stream client");
 
                 await PingPong(clientStream, serverPipe, LoopCount);
             }
@@ -190,9 +190,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
                 var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
 
-                var clientStream = StreamConnector.GetDuplex(clientPipe, name: "stream client");
+                var clientStream = StreamConnection.GetDuplex(clientPipe, name: "stream client");
 
-                var clientRevert = StreamConnector.GetDuplex(clientStream, name: "revert client");
+                var clientRevert = StreamConnection.GetDuplex(clientStream, name: "revert client");
 
                 await PingPong(clientRevert, serverPipe, LoopCount);
             }
@@ -210,7 +210,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
                 var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
 
-                var serverStream = StreamConnector.GetDuplex(serverPipe, name: "stream server");
+                var serverStream = StreamConnection.GetDuplex(serverPipe, name: "stream server");
 
                 await PingPong(clientPipe, serverStream, LoopCount);
             }
@@ -229,8 +229,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
                 var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
 
-                var serverStream = StreamConnector.GetDuplex(serverPipe, name: "stream server");
-                var serverRevert = StreamConnector.GetDuplex(serverStream, PipeOptions, name: "revert server");
+                var serverStream = StreamConnection.GetDuplex(serverPipe, name: "stream server");
+                var serverRevert = StreamConnection.GetDuplex(serverStream, PipeOptions, name: "revert server");
 
                 await PingPong(clientPipe, serverRevert, LoopCount);
             }
@@ -248,11 +248,11 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
                 var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
 
-                var serverStream = StreamConnector.GetDuplex(serverPipe, name: "stream server");
-                var serverRevert = StreamConnector.GetDuplex(serverStream, PipeOptions, name: "revert server");
+                var serverStream = StreamConnection.GetDuplex(serverPipe, name: "stream server");
+                var serverRevert = StreamConnection.GetDuplex(serverStream, PipeOptions, name: "revert server");
 
-                var clientStream = StreamConnector.GetDuplex(clientPipe, name: "stream client");
-                var clientRevert = StreamConnector.GetDuplex(clientStream, PipeOptions, name: "revert client");
+                var clientStream = StreamConnection.GetDuplex(clientPipe, name: "stream client");
+                var clientRevert = StreamConnection.GetDuplex(clientStream, PipeOptions, name: "revert client");
 
                 await PingPong(clientRevert, serverRevert, LoopCount);
             }
@@ -271,10 +271,10 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 var clientPipe = SocketConnection.Create(client, PipeOptions, name: "socket client");
                 var serverPipe = SocketConnection.Create(server, PipeOptions, name: "socket server");
 
-                var serverStream = StreamConnector.GetDuplex(serverPipe, name: "stream server");
+                var serverStream = StreamConnection.GetDuplex(serverPipe, name: "stream server");
                 var serverSsl = new SslStream(serverStream, false, IgnoreAllCertificateErrors, null, EncryptionPolicy.RequireEncryption);
 
-                var clientStream = StreamConnector.GetDuplex(clientPipe, name: "stream client");
+                var clientStream = StreamConnection.GetDuplex(clientPipe, name: "stream client");
                 var clientSsl = new SslStream(clientStream, false, IgnoreAllCertificateErrors, null, EncryptionPolicy.RequireEncryption);
                 
                 var serverAuth = serverSsl.AuthenticateAsServerAsync(SomeCertificate);
@@ -283,8 +283,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 await serverAuth;
                 await clientAuth;
                 
-                var serverRevert = StreamConnector.GetDuplex(serverSsl, PipeOptions, name: "revert server");
-                var clientRevert = StreamConnector.GetDuplex(clientSsl, PipeOptions, name: "revert client");
+                var serverRevert = StreamConnection.GetDuplex(serverSsl, PipeOptions, name: "revert server");
+                var clientRevert = StreamConnection.GetDuplex(clientSsl, PipeOptions, name: "revert client");
 
 
 
@@ -334,8 +334,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 await serverAuth;
                 await clientAuth;
 
-                var serverPipe = StreamConnector.GetDuplex(serverSsl);
-                var clientPipe = StreamConnector.GetDuplex(clientSsl);
+                var serverPipe = StreamConnection.GetDuplex(serverSsl);
+                var clientPipe = StreamConnection.GetDuplex(clientSsl);
 
                 await PingPong(clientPipe, serverPipe, LoopCount);
             }

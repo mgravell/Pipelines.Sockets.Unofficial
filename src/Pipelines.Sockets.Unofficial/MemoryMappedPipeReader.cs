@@ -88,7 +88,7 @@ namespace Pipelines.Sockets.Unofficial
             {
                 // fallback... FileStream
                 var file = File.OpenRead(path);
-                return StreamConnector.GetReader(file, name: path);
+                return StreamConnection.GetReader(file, name: path);
             }
         }
 

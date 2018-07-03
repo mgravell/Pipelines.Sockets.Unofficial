@@ -4,12 +4,11 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
 {
-    partial class StreamConnector
+    partial class StreamConnection
     {
         private sealed class AsyncStreamPipe : IDuplexPipe
         {
