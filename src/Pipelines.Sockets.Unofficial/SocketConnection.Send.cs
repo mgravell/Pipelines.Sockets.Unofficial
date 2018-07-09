@@ -136,7 +136,7 @@ namespace Pipelines.Sockets.Unofficial
             else
             {
                 Helpers.Incr(Counter.SocketSendAsyncMultiSync);
-                OnCompleted(args);
+                SocketAwaitable.OnCompleted(args);
             }
 
             return GetAwaitable(args);
@@ -165,7 +165,7 @@ namespace Pipelines.Sockets.Unofficial
             else
             {
                 Helpers.Incr(Counter.SocketSendAsyncSingleSync);
-                OnCompleted(args);
+                SocketAwaitable.OnCompleted(args);
             }
 
             return GetAwaitable(args);

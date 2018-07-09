@@ -172,7 +172,7 @@ namespace Pipelines.Sockets.Unofficial
             }
 #endif
             Helpers.DebugLog(name, $"## {nameof(socket.ReceiveAsync)} <={buffer.Length}");
-            if (!socket.ReceiveAsync(args)) OnCompleted(args);
+            if (!socket.ReceiveAsync(args)) SocketAwaitable.OnCompleted(args);
 
             return GetAwaitable(args);
         }

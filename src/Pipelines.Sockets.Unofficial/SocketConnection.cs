@@ -116,22 +116,15 @@ namespace Pipelines.Sockets.Unofficial
 
         private static SocketAsyncEventArgs CreateArgs(PipeScheduler scheduler, out SocketAwaitable awaitable)
         {
-            if (ReferenceEquals(scheduler, PipeScheduler.Inline)) scheduler = null;
             awaitable = new SocketAwaitable(scheduler);
             var args = new SocketAsyncEventArgs { UserToken = awaitable };
-            args.Completed += _OnCompleted;
+            args.Completed += SocketAwaitable.Callback;
             return args;
         }
-        static void OnCompleted(object sender, SocketAsyncEventArgs e) => OnCompleted(e);
-        static readonly EventHandler<SocketAsyncEventArgs> _OnCompleted = OnCompleted;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static SocketAwaitable GetAwaitable(SocketAsyncEventArgs args)
             => (SocketAwaitable)args.UserToken;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static void OnCompleted(SocketAsyncEventArgs args)
-            => ((SocketAwaitable)args.UserToken).Complete(args.BytesTransferred, args.SocketError);
 
         /// <summary>
         /// Create a SocketConnection instance over an existing socket

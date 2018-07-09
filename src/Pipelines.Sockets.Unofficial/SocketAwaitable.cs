@@ -9,7 +9,10 @@ using System.Threading;
 
 namespace Pipelines.Sockets.Unofficial
 {
-    internal sealed class SocketAwaitable : ICriticalNotifyCompletion
+    /// <summary>
+    /// An awaitable reusable token that is compatible with SocketAsyncEventArgs usage
+    /// </summary>
+    public sealed class SocketAwaitable : ICriticalNotifyCompletion
     {
         private static void NoOp() { }
         private static readonly Action _callbackCompleted = NoOp; // get better debug info by avoiding inline delegate here
@@ -19,7 +22,12 @@ namespace Pipelines.Sockets.Unofficial
         private SocketError _error;
         private readonly PipeScheduler _scheduler;
 
-        public SocketAwaitable(PipeScheduler scheduler) => _scheduler = scheduler;
+        /// <summary>
+        /// Create a new SocketAwaitable instance, optionally providing a callback scheduler
+        /// </summary>
+        /// <param name="scheduler"></param>
+        public SocketAwaitable(PipeScheduler scheduler = null) => _scheduler =
+            ReferenceEquals(scheduler, PipeScheduler.Inline) ? null : scheduler;
 
         public SocketAwaitable GetAwaiter() => this;
         public bool IsCompleted => ReferenceEquals(_callback, _callbackCompleted);
@@ -56,6 +64,12 @@ namespace Pipelines.Sockets.Unofficial
         {
             Interlocked.Exchange(ref _callback, _callbackCompleted)?.Invoke();
         }
+        public static EventHandler<SocketAsyncEventArgs> Callback = (sender,args) => ((SocketAwaitable)args.UserToken).Complete(args.BytesTransferred, args.SocketError);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void OnCompleted(SocketAsyncEventArgs args)
+            => ((SocketAwaitable)args.UserToken).Complete(args.BytesTransferred, args.SocketError);
+
         public void Complete(int bytesTransferred, SocketError socketError)
         {
             _error = socketError;
