@@ -8,7 +8,7 @@ namespace Benchmarks
     [Config(typeof(Config))]
     public class BasicTests
     {
-        public static PingPongTests PPTests { get; } = new PingPongTests(TextWriter.Null);
+        public static PingPongTests PPTests { get; } = PingPongTests.Create(TextWriter.Null);
 
         [Benchmark(Baseline = true, Description = "Socket=>Pipelines=>PingPong", OperationsPerInvoke = PingPongTests.LoopCount)]
         public Task BasicPipelines() => PPTests.Basic_Pipelines_PingPong();

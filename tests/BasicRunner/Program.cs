@@ -120,7 +120,7 @@ namespace BasicRunner
         static async Task SocketPingPong(TextWriter log)
         {
 
-            var parent = new PingPongTests(log);
+            var parent = PingPongTests.Create(log);
 
             await RunTest(parent.Basic_Pipelines_PingPong, "Socket=>Pipelines=>PingPong");
             await RunTest(parent.Basic_Pipelines_Text_PingPong, "Socket=>Pipelines=>TRW=>PingPong");

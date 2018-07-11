@@ -41,7 +41,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
         private TestTextWriter Log { get; }
         public static bool RunTLS => PipeOptions.ReaderScheduler != PipeScheduler.ThreadPool;
 
-        public PingPongTests(TextWriter output)
+        public static PingPongTests Create(TextWriter output) => new PingPongTests(output);
+        private PingPongTests(TextWriter output)
         {
             Log = new TestTextWriter(output);
         }
