@@ -60,24 +60,21 @@ namespace Pipelines.Sockets.Unofficial
             OnCompleted(continuation);
         }
 
-        public void Complete()
-        {
-            Interlocked.Exchange(ref _callback, _callbackCompleted)?.Invoke();
-        }
-        public static EventHandler<SocketAsyncEventArgs> Callback = (sender,args) => ((SocketAwaitable)args.UserToken).Complete(args.BytesTransferred, args.SocketError);
+        public static EventHandler<SocketAsyncEventArgs> Callback = (sender,args) => ((SocketAwaitable)args.UserToken).TryComplete(args.BytesTransferred, args.SocketError);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void OnCompleted(SocketAsyncEventArgs args)
-            => ((SocketAwaitable)args.UserToken).Complete(args.BytesTransferred, args.SocketError);
+            => ((SocketAwaitable)args.UserToken).TryComplete(args.BytesTransferred, args.SocketError);
 
-        public void Complete(int bytesTransferred, SocketError socketError)
+        public bool TryComplete(int bytesTransferred, SocketError socketError)
         {
             _error = socketError;
             _bytesTransfered = bytesTransferred;
             var action = Interlocked.Exchange(ref _callback, _callbackCompleted);
-            if (action == null)
+            if (action == null || (object)action == (object)_callbackCompleted)
             {
                 Helpers.Incr(Counter.SocketAwaitableCallbackNone);
+                return false;
             }
             else
             {
@@ -91,6 +88,7 @@ namespace Pipelines.Sockets.Unofficial
                     Helpers.Incr(Counter.SocketAwaitableCallbackSchedule);
                     _scheduler.Schedule(InvokeStateAsAction, action);
                 }
+                return true;
             }
         }
         private static void InvokeStateAsActionImpl(object state) => ((Action)state).Invoke();

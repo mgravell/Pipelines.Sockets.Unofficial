@@ -61,8 +61,8 @@ namespace Pipelines.Sockets.Unofficial
             GC.SuppressFinalize(this);
 #endif
             try { Socket?.Close(); } catch { }
-            try { _readerAwaitable?.Complete(0, SocketError.Shutdown); } catch { }
-            try { _writerAwaitable?.Complete(0, SocketError.Shutdown); } catch { }
+            try { _readerAwaitable?.TryComplete(0, SocketError.Shutdown); } catch { }
+            try { _writerAwaitable?.TryComplete(0, SocketError.Shutdown); } catch { }
 
             Socket?.Dispose();
             // Socket = null;
