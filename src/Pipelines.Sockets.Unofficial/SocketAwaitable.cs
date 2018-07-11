@@ -68,13 +68,17 @@ namespace Pipelines.Sockets.Unofficial
 
         public bool TryComplete(int bytesTransferred, SocketError socketError)
         {
+            var action = Interlocked.Exchange(ref _callback, _callbackCompleted);
+            if ((object)action == (object)_callbackCompleted)
+            {
+                return false;
+            }
             _error = socketError;
             _bytesTransfered = bytesTransferred;
-            var action = Interlocked.Exchange(ref _callback, _callbackCompleted);
-            if (action == null || (object)action == (object)_callbackCompleted)
+            
+            if (action == null)
             {
                 Helpers.Incr(Counter.SocketAwaitableCallbackNone);
-                return false;
             }
             else
             {
@@ -88,8 +92,8 @@ namespace Pipelines.Sockets.Unofficial
                     Helpers.Incr(Counter.SocketAwaitableCallbackSchedule);
                     _scheduler.Schedule(InvokeStateAsAction, action);
                 }
-                return true;
             }
+            return true;
         }
         private static void InvokeStateAsActionImpl(object state) => ((Action)state).Invoke();
         internal static readonly Action<object> InvokeStateAsAction = InvokeStateAsActionImpl;
