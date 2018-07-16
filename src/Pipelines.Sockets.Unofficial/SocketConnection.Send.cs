@@ -16,9 +16,9 @@ namespace Pipelines.Sockets.Unofficial
         {
             Exception error = null;
             DebugLog("starting send loop");
+            SocketAsyncEventArgs args = null;
             try
             {
-                SocketAsyncEventArgs args = null;
                 while (true)
                 {
                     DebugLog("awaiting data from pipe...");
@@ -105,6 +105,8 @@ namespace Pipelines.Sockets.Unofficial
                 DebugLog($"marking {nameof(Output)} as complete");
                 try { _send.Writer.Complete(error); } catch { }
                 try { _send.Reader.Complete(error); } catch { }
+
+                if (args != null) try { args.Dispose(); } catch { }
             }
             DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
             //return error;

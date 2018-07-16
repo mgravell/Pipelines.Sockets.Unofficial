@@ -38,12 +38,13 @@ namespace Pipelines.Sockets.Unofficial
             if (receivePipeOptions == null) receivePipeOptions = PipeOptions.Default;
 
             SetRecommendedClientOptions(socket);
-            var args = CreateArgs(receivePipeOptions.ReaderScheduler, out _);
 
+            using (var args = CreateArgs(receivePipeOptions.ReaderScheduler, out _))
+            {
+                Helpers.DebugLog(name, $"connecting to {endpoint}...");
 
-            Helpers.DebugLog(name, $"connecting to {endpoint}...");
-
-            await ConnectAsync(socket, args, endpoint);
+                await ConnectAsync(socket, args, endpoint);
+            }
 
             Helpers.DebugLog(name, "connected");
 

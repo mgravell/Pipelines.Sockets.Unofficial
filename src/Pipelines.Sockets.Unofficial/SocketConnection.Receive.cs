@@ -15,9 +15,10 @@ namespace Pipelines.Sockets.Unofficial
                 (ex, state) => ((Socket)state).Shutdown(SocketShutdown.Receive), Socket);
             Exception error = null;
             DebugLog("starting receive loop");
+            SocketAsyncEventArgs args = null;
             try
             {
-                var args = CreateArgs(_receiveOptions.ReaderScheduler, out _readerAwaitable);
+                args = CreateArgs(_receiveOptions.ReaderScheduler, out _readerAwaitable);
                 while (true)
                 {
                     if (ZeroLengthReads && Socket.Available == 0)
@@ -48,7 +49,7 @@ namespace Pipelines.Sockets.Unofficial
                         var bytesReceived = await receive;
                         Helpers.Decr(Counter.OpenReceiveReadAsync);
                         DebugLog($"received {bytesReceived} bytes ({args.BytesTransferred}, {args.SocketError})");
-                        
+
                         _receive.Writer.Advance(bytesReceived);
 
                         if (bytesReceived == 0)
@@ -140,6 +141,8 @@ namespace Pipelines.Sockets.Unofficial
                 // pipe if they choose
                 DebugLog($"marking {nameof(Input)} as complete");
                 try { _receive.Writer.Complete(error); } catch { }
+
+                if (args != null) try { args.Dispose(); } catch { }
             }
 
             DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
