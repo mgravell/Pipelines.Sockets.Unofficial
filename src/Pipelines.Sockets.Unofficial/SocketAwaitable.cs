@@ -60,19 +60,11 @@ namespace Pipelines.Sockets.Unofficial
             OnCompleted(continuation);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static SocketAwaitable GetAwaitable(SocketAsyncEventArgs args)
-        {
-            var token = args.UserToken;
-            if (token is SocketAwaitable sa) return sa;
-            if (token is WeakReference wr) return wr.Target as SocketAwaitable;
-            return null;
-        }
-
-        public static EventHandler<SocketAsyncEventArgs> Callback = (sender,args) => GetAwaitable(args)?.TryComplete(args.BytesTransferred, args.SocketError);
+        public static EventHandler<SocketAsyncEventArgs> Callback = (sender,args) => ((SocketAwaitable)args.UserToken).TryComplete(args.BytesTransferred, args.SocketError);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void OnCompleted(SocketAsyncEventArgs args) => GetAwaitable(args)?.TryComplete(args.BytesTransferred, args.SocketError);
+        public static void OnCompleted(SocketAsyncEventArgs args)
+            => ((SocketAwaitable)args.UserToken).TryComplete(args.BytesTransferred, args.SocketError);
 
         public bool TryComplete(int bytesTransferred, SocketError socketError)
         {
