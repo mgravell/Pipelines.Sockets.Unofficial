@@ -114,25 +114,24 @@ namespace Pipelines.Sockets.Unofficial
         private volatile bool _sendAborted, _receiveAborted;
 #pragma warning restore CS0414, CS0649
 
-        private static SocketAsyncEventArgs CreateArgs(PipeScheduler scheduler, out SocketAwaitable awaitable)
+        private static SocketAsyncEventArgs CreateArgs(PipeScheduler scheduler, bool collectable, out SocketAwaitable awaitable)
         {
             awaitable = new SocketAwaitable(scheduler);
-            var args = new SocketAsyncEventArgs { UserToken = awaitable };
+            var args = new SocketAsyncEventArgs
+            {
+                UserToken = collectable ? new WeakReference(awaitable) : (object)awaitable
+            };
             args.Completed += SocketAwaitable.Callback;
             return args;
         }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static SocketAwaitable GetAwaitable(SocketAsyncEventArgs args)
-            => (SocketAwaitable)args.UserToken;
 
         /// <summary>
         /// Create a SocketConnection instance over an existing socket
         /// </summary>
         public static SocketConnection Create(Socket socket, PipeOptions pipeOptions = null,
-            SocketConnectionOptions socketConnectionOptions = SocketConnectionOptions.None, string name = null)
+            SocketConnectionOptions socketConnectionOptions = SocketConnectionOptions.None, string name = null, bool collectable = false)
         {
-            var conn = new SocketConnection(socket, pipeOptions, pipeOptions, socketConnectionOptions, name);
+            var conn = new SocketConnection(socket, pipeOptions, pipeOptions, socketConnectionOptions, name, collectable);
             return conn;
         }
 
@@ -140,12 +139,12 @@ namespace Pipelines.Sockets.Unofficial
         /// Create a SocketConnection instance over an existing socket
         /// </summary>
         public static SocketConnection Create(Socket socket, PipeOptions sendPipeOptions, PipeOptions receivePipeOptions,
-            SocketConnectionOptions socketConnectionOptions = SocketConnectionOptions.None, string name = null)
+            SocketConnectionOptions socketConnectionOptions = SocketConnectionOptions.None, string name = null, bool collectable = false)
         {
-            var conn = new SocketConnection(socket, sendPipeOptions, receivePipeOptions, socketConnectionOptions, name);
+            var conn = new SocketConnection(socket, sendPipeOptions, receivePipeOptions, socketConnectionOptions, name, collectable);
             return conn;
         }
-        private SocketConnection(Socket socket, PipeOptions sendPipeOptions, PipeOptions receivePipeOptions, SocketConnectionOptions socketConnectionOptions, string name = null)
+        private SocketConnection(Socket socket, PipeOptions sendPipeOptions, PipeOptions receivePipeOptions, SocketConnectionOptions socketConnectionOptions, string name, bool collectable)
         {
             if (string.IsNullOrWhiteSpace(name)) name = GetType().Name;
             Name = name.Trim();
@@ -154,6 +153,7 @@ namespace Pipelines.Sockets.Unofficial
 
             Socket = socket;
             SocketConnectionOptions = socketConnectionOptions;
+            _collectable = collectable;
             _send = new Pipe(sendPipeOptions);
             _receive = new Pipe(receivePipeOptions);
 
@@ -163,6 +163,7 @@ namespace Pipelines.Sockets.Unofficial
             sendPipeOptions.ReaderScheduler.Schedule(s_DoSendAsync, this);
             receivePipeOptions.ReaderScheduler.Schedule(s_DoReceiveAsync, this);
         }
+        private readonly bool _collectable;
 
         private static void DoReceiveAsync(object s) => ((SocketConnection)s).DoReceiveAsync();
         private static readonly Action<object> s_DoReceiveAsync = DoReceiveAsync;

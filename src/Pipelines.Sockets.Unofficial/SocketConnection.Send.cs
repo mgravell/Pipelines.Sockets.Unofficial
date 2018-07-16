@@ -5,7 +5,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
-using System.Threading;
 
 namespace Pipelines.Sockets.Unofficial
 {
@@ -46,7 +45,7 @@ namespace Pipelines.Sockets.Unofficial
                     {
                         if (!buffer.IsEmpty)
                         {
-                            if (args == null) args = CreateArgs(_sendOptions.WriterScheduler, out _writerAwaitable);
+                            if (args == null) args = CreateArgs(_sendOptions.WriterScheduler, _collectable, out _writerAwaitable);
                             DebugLog($"sending {buffer.Length} bytes over socket...");
                             Helpers.Incr(Counter.OpenSendWriteAsync);
                             var send = SendAsync(Socket, args, buffer, Name);
@@ -139,7 +138,7 @@ namespace Pipelines.Sockets.Unofficial
                 SocketAwaitable.OnCompleted(args);
             }
 
-            return GetAwaitable(args);
+            return SocketAwaitable.GetAwaitable(args);
         }
 
         static SocketAwaitable SendAsync(Socket socket, SocketAsyncEventArgs args, ReadOnlyMemory<byte> memory, string name)
@@ -168,7 +167,7 @@ namespace Pipelines.Sockets.Unofficial
                 SocketAwaitable.OnCompleted(args);
             }
 
-            return GetAwaitable(args);
+            return SocketAwaitable.GetAwaitable(args);
         }
 
         private static List<ArraySegment<byte>> GetBufferList(SocketAsyncEventArgs args, ReadOnlySequence<byte> buffer)

@@ -38,8 +38,7 @@ namespace Pipelines.Sockets.Unofficial
             if (receivePipeOptions == null) receivePipeOptions = PipeOptions.Default;
 
             SetRecommendedClientOptions(socket);
-            var args = CreateArgs(receivePipeOptions.ReaderScheduler, out _);
-
+            var args = CreateArgs(receivePipeOptions.ReaderScheduler, false, out _);
 
             Helpers.DebugLog(name, $"connecting to {endpoint}...");
 
@@ -78,7 +77,7 @@ namespace Pipelines.Sockets.Unofficial
         {
             args.RemoteEndPoint = endpoint;
             if (!socket.ConnectAsync(args)) SocketAwaitable.OnCompleted(args);
-            return GetAwaitable(args);
+            return SocketAwaitable.GetAwaitable(args);
         }
 
     }
