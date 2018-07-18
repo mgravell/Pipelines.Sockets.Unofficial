@@ -35,13 +35,13 @@ namespace Pipelines.Sockets.Unofficial
                 if (!(read || write)) throw new ArgumentException("At least one of read/write must be set");
                 if (read)
                 {
-                    if (!stream.CanWrite) throw new InvalidOperationException("Cannot create a read pipe over a non-writable stream");
+                    if (!stream.CanRead) throw new InvalidOperationException("Cannot create a read pipe over a non-readable stream");
                     _readPipe = new Pipe(receivePipeOptions);
                     receivePipeOptions.ReaderScheduler.Schedule(obj => ((AsyncStreamPipe)obj).CopyFromStreamToReadPipe(), this);
                 }
                 if (write)
                 {
-                    if (!stream.CanRead) throw new InvalidOperationException("Cannot create a write pipe over a non-readable stream");
+                    if (!stream.CanWrite) throw new InvalidOperationException("Cannot create a write pipe over a non-writable stream");
                     _writePipe = new Pipe(sendPipeOptions);
                     sendPipeOptions.WriterScheduler.Schedule(obj => ((AsyncStreamPipe)obj).CopyFromWritePipeToStream(), this);
                 }
