@@ -64,7 +64,7 @@ namespace Pipelines.Sockets.Unofficial
             try { _readerAwaitable?.TryComplete(0, SocketError.Shutdown); } catch { }
             try { _writerAwaitable?.TryComplete(0, SocketError.Shutdown); } catch { }
 
-            Socket?.Dispose();
+            try { Socket?.Dispose(); } catch { }
             // Socket = null;
         }
         /// <summary>

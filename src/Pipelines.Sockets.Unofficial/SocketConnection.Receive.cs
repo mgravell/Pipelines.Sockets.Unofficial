@@ -12,7 +12,11 @@ namespace Pipelines.Sockets.Unofficial
         private async void DoReceiveAsync()
         {
             _receive.Writer.OnReaderCompleted(
-                (ex, state) => ((Socket)state).Shutdown(SocketShutdown.Receive), Socket);
+                (ex, state) =>
+                {
+                    try { ((Socket)state).Shutdown(SocketShutdown.Receive); }
+                    catch { }
+                }, Socket);
             Exception error = null;
             DebugLog("starting receive loop");
             SocketAsyncEventArgs args = null;
