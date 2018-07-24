@@ -10,6 +10,7 @@
     <DebugSymbols>true</DebugSymbols>
     <DebugType>embedded</DebugType>
     <LibVer>4.5.0</LibVer>
+    <MSBuildWarningsAsMessages>NETSDK1069</MSBuildWarningsAsMessages>
   </PropertyGroup>
   
   <ItemGroup>
