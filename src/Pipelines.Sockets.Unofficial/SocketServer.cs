@@ -6,9 +6,15 @@ using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
 {
+    /// <summary>
+    /// Represents a multi-client socket-server capable of dispatching pipeline clients
+    /// </summary>
     public abstract class SocketServer : IDisposable
     {
         private Socket _listener;
+        /// <summary>
+        /// Start listening as a server
+        /// </summary>
         public void Listen(
             EndPoint endPoint,
             AddressFamily addressFamily = AddressFamily.InterNetwork,
@@ -27,6 +33,9 @@ namespace Pipelines.Sockets.Unofficial
 
             OnStarted(endPoint);
         }
+        /// <summary>
+        /// Stop listening as a server
+        /// </summary>
         public void Stop()
         {
             var socket = _listener;
@@ -36,11 +45,17 @@ namespace Pipelines.Sockets.Unofficial
                 try { socket.Dispose(); } catch { }
             }
         }
+        /// <summary>
+        /// Release any resources associated with this instance
+        /// </summary>
         public void Dispose()
         {
             Stop();
             Dispose(true);
         }
+        /// <summary>
+        /// Release any resources associated with this instance
+        /// </summary>
         protected virtual void Dispose(bool disposing) { }
         static void FireAndForget(Task task)
         {
@@ -54,6 +69,9 @@ namespace Pipelines.Sockets.Unofficial
             task.ContinueWith(t => GC.KeepAlive(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
         }
 
+        /// <summary>
+        /// Create a new instance of a socket server
+        /// </summary>
         protected SocketServer()
         {
             RunClientAsync = async boxed =>
@@ -105,11 +123,26 @@ namespace Pipelines.Sockets.Unofficial
             catch (ObjectDisposedException) { }
             catch (Exception ex) { OnServerFaulted(ex); }
         }
+        /// <summary>
+        /// Invoked when the server has faulted
+        /// </summary>
         protected virtual void OnServerFaulted(Exception exception) { }
+        /// <summary>
+        /// Invoked when a client has faulted
+        /// </summary>
         protected virtual void OnClientFaulted(in ClientConnection client, Exception exception) { }
+        /// <summary>
+        /// Invoked when the server starts
+        /// </summary>
         protected virtual void OnStarted(EndPoint endPoint) { }
+        /// <summary>
+        /// Invoked when a new client connects
+        /// </summary>
         protected abstract Task OnClientConnectedAsync(in ClientConnection client);
 
+        /// <summary>
+        /// The state of a client connection
+        /// </summary>
         protected readonly struct ClientConnection
         {
             internal ClientConnection(IDuplexPipe transport, EndPoint remoteEndPoint)
@@ -117,7 +150,13 @@ namespace Pipelines.Sockets.Unofficial
                 Transport = transport;
                 RemoteEndPoint = remoteEndPoint;
             }
+            /// <summary>
+            /// The transport to use for this connection
+            /// </summary>
             public IDuplexPipe Transport { get; }
+            /// <summary>
+            /// The remote endpoint that the client connected from
+            /// </summary>
             public EndPoint RemoteEndPoint { get; }
         }
     }
