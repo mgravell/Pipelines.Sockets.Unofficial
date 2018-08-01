@@ -84,6 +84,14 @@ namespace Pipelines.Sockets.Unofficial
         /// The input's writer was completed
         /// </summary>
         OutputWriterCompleted = 303,
+        /// <summary>
+        /// An application defined exit was triggered by the client
+        /// </summary>
+        ProtocolExitClient = 400,
+        /// <summary>
+        /// An application defined exit was triggered by the server
+        /// </summary>
+        ProtocolExitServer = 401
     }
 
     /// <summary>
@@ -108,6 +116,22 @@ namespace Pipelines.Sockets.Unofficial
         private bool TrySetShutdown(PipeShutdownKind kind) => kind != PipeShutdownKind.None
             && Interlocked.CompareExchange(ref _socketShutdownKind, (int)kind, 0) == 0;
 
+        /// <summary>
+        /// Try to signal the pipe shutdown reason as being due to an application protocol event
+        /// </summary>
+        /// <param name="kind">The kind of shutdown; only protocol-related reasons will succeed</param>
+        /// <returns>True if successful</returns>
+        public bool TrySetProtocolShutdown(PipeShutdownKind kind)
+        {
+            switch (kind)
+            {
+                case PipeShutdownKind.ProtocolExitClient:
+                case PipeShutdownKind.ProtocolExitServer:
+                    return TrySetShutdown(kind);
+                default:
+                    return false;
+            }
+        }
         private bool TrySetShutdown(PipeShutdownKind kind, SocketError socketError)
         {
             bool win = TrySetShutdown(kind);
