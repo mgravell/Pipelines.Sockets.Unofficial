@@ -1,6 +1,4 @@
-﻿// Licensed under the Apache License, Version 2.0.
-
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Net.Sockets;

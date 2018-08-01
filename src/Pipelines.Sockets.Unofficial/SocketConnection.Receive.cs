@@ -2,7 +2,6 @@
 using System.IO;
 using System.IO.Pipelines;
 using System.Net.Sockets;
-using System.Threading;
 
 namespace Pipelines.Sockets.Unofficial
 {
@@ -91,9 +90,11 @@ namespace Pipelines.Sockets.Unofficial
                         break;
                     }
                 }
+                TrySetShutdown(PipeShutdownKind.ReadEndOfStream);
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset)
             {
+                TrySetShutdown(PipeShutdownKind.ReadSocketError, ex.SocketErrorCode);
                 DebugLog($"fail: {ex.SocketErrorCode}");
                 error = new ConnectionResetException(ex.Message, ex);
             }
@@ -102,15 +103,24 @@ namespace Pipelines.Sockets.Unofficial
                                              ex.SocketErrorCode == SocketError.Interrupted ||
                                              ex.SocketErrorCode == SocketError.InvalidArgument)
             {
+                TrySetShutdown(PipeShutdownKind.ReadSocketError, ex.SocketErrorCode);
                 DebugLog($"fail: {ex.SocketErrorCode}");
                 if (!_receiveAborted)
                 {
                     // Calling Dispose after ReceiveAsync can cause an "InvalidArgument" error on *nix.
                     error = new ConnectionAbortedException();
                 }
+
+            }
+            catch (SocketException ex)
+            {
+                TrySetShutdown(PipeShutdownKind.ReadSocketError, ex.SocketErrorCode);
+                DebugLog($"fail: {ex.SocketErrorCode}");
+                error = ex;
             }
             catch (ObjectDisposedException)
             {
+                TrySetShutdown(PipeShutdownKind.ReadDisposed);
                 DebugLog($"fail: disposed");
                 if (!_receiveAborted)
                 {
@@ -119,11 +129,13 @@ namespace Pipelines.Sockets.Unofficial
             }
             catch (IOException ex)
             {
+                TrySetShutdown(PipeShutdownKind.ReadIOException);
                 DebugLog($"fail - io: {ex.Message}");
                 error = ex;
             }
             catch (Exception ex)
             {
+                TrySetShutdown(PipeShutdownKind.ReadException);
                 DebugLog($"fail: {ex.Message}");
                 error = new IOException(ex.Message, ex);
             }

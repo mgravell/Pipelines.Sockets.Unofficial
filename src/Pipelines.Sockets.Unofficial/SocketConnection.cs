@@ -1,17 +1,31 @@
-﻿// Licensed under the Apache License, Version 2.0.
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
 {
+    public enum PipeShutdownKind
+    {
+        None = 0, // important this stays zero for default value, etc
+        PipeDisposed = 1,
+
+        ReadEndOfStream = 2,
+        ReadDisposed = 4,
+        ReadIOException = 5,
+        ReadException = 6,
+        ReadSocketError = 7,
+
+        WriteEndOfStream = 8,
+        WriteDisposed = 9,
+        WriteIOException = 10,
+        WriteException = 11,
+        WriteSocketError = 12,        
+    }
     /// <summary>
     /// Reperesents a duplex pipe over managed sockets
     /// </summary>
@@ -20,6 +34,20 @@ namespace Pipelines.Sockets.Unofficial
 #if DEBUG
         ~SocketConnection() => Helpers.Incr(Counter.SocketConnectionCollectedWithoutDispose);
 #endif
+
+        private int _socketShutdownKind;
+        public PipeShutdownKind ShutdownKind => (PipeShutdownKind)Thread.VolatileRead(ref _socketShutdownKind);
+        public SocketError SocketError {get; private set;}
+
+        private bool TrySetShutdown(PipeShutdownKind kind) => kind != PipeShutdownKind.None &&
+            Interlocked.CompareExchange(ref _socketShutdownKind, (int)kind, 0) == 0;
+
+        private bool TrySetShutdown(PipeShutdownKind kind, SocketError socketError)
+        {
+            bool win = TrySetShutdown(kind);
+            if (win) SocketError = socketError;
+            return win;
+        }
 
         /// <summary>
         /// Set recommended socket options for client sockets
@@ -57,6 +85,7 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public void Dispose()
         {
+            TrySetShutdown(PipeShutdownKind.PipeDisposed);
 #if DEBUG
             GC.SuppressFinalize(this);
 #endif

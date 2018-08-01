@@ -5,7 +5,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
-using System.Threading;
 
 namespace Pipelines.Sockets.Unofficial
 {
@@ -66,24 +65,35 @@ namespace Pipelines.Sockets.Unofficial
                         _send.Reader.AdvanceTo(buffer.End);
                     }
                 }
+                TrySetShutdown(PipeShutdownKind.WriteEndOfStream);
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.OperationAborted)
             {
+                TrySetShutdown(PipeShutdownKind.WriteSocketError, ex.SocketErrorCode);
                 DebugLog($"fail: {ex.SocketErrorCode}");
                 error = null;
             }
+            catch (SocketException ex)
+            {
+                TrySetShutdown(PipeShutdownKind.WriteSocketError, ex.SocketErrorCode);
+                DebugLog($"fail: {ex.SocketErrorCode}");
+                error = ex;
+            }
             catch (ObjectDisposedException)
             {
+                TrySetShutdown(PipeShutdownKind.WriteDisposed);
                 DebugLog("fail: disposed");
                 error = null;
             }
             catch (IOException ex)
             {
+                TrySetShutdown(PipeShutdownKind.WriteIOException);
                 DebugLog($"fail - io: {ex.Message}");
                 error = ex;
             }
             catch (Exception ex)
             {
+                TrySetShutdown(PipeShutdownKind.WriteException);
                 DebugLog($"fail: {ex.Message}");
                 error = new IOException(ex.Message, ex);
             }
