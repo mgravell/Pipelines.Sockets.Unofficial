@@ -5,17 +5,12 @@ using System.Net.Sockets;
 
 namespace Pipelines.Sockets.Unofficial
 {
-    partial class SocketConnection
+    public partial class SocketConnection
     {
-        SocketAwaitable _readerAwaitable;
+        private SocketAwaitable _readerAwaitable;
+
         private async void DoReceiveAsync()
         {
-            _receive.Writer.OnReaderCompleted(
-                (ex, state) =>
-                {
-                    try { ((Socket)state).Shutdown(SocketShutdown.Receive); }
-                    catch { }
-                }, Socket);
             Exception error = null;
             DebugLog("starting receive loop");
             SocketAsyncEventArgs args = null;
@@ -40,7 +35,7 @@ namespace Pipelines.Sockets.Unofficial
                         // read to find out which
                     }
 
-                    var buffer = _receive.Writer.GetMemory(1);
+                    var buffer = _receiveFromSocket.Writer.GetMemory(1);
                     DebugLog($"leased {buffer.Length} bytes from pipe");
                     try
                     {
@@ -53,7 +48,7 @@ namespace Pipelines.Sockets.Unofficial
                         Helpers.Decr(Counter.OpenReceiveReadAsync);
                         DebugLog($"received {bytesReceived} bytes ({args.BytesTransferred}, {args.SocketError})");
 
-                        _receive.Writer.Advance(bytesReceived);
+                        _receiveFromSocket.Writer.Advance(bytesReceived);
 
                         if (bytesReceived == 0)
                         {
@@ -67,7 +62,7 @@ namespace Pipelines.Sockets.Unofficial
 
                     DebugLog("flushing pipe");
                     Helpers.Incr(Counter.OpenReceiveFlushAsync);
-                    var flushTask = _receive.Writer.FlushAsync();
+                    var flushTask = _receiveFromSocket.Writer.FlushAsync();
                     Helpers.Incr(flushTask.IsCompleted ? Counter.SocketPipeFlushSync : Counter.SocketPipeFlushAsync);
 
                     FlushResult result;
@@ -98,10 +93,10 @@ namespace Pipelines.Sockets.Unofficial
                 DebugLog($"fail: {ex.SocketErrorCode}");
                 error = new ConnectionResetException(ex.Message, ex);
             }
-            catch (SocketException ex) when (ex.SocketErrorCode == SocketError.OperationAborted ||
-                                             ex.SocketErrorCode == SocketError.ConnectionAborted ||
-                                             ex.SocketErrorCode == SocketError.Interrupted ||
-                                             ex.SocketErrorCode == SocketError.InvalidArgument)
+            catch (SocketException ex) when (ex.SocketErrorCode == SocketError.OperationAborted
+                                             || ex.SocketErrorCode == SocketError.ConnectionAborted
+                                             || ex.SocketErrorCode == SocketError.Interrupted
+                                             || ex.SocketErrorCode == SocketError.InvalidArgument)
             {
                 TrySetShutdown(PipeShutdownKind.ReadSocketError, ex.SocketErrorCode);
                 DebugLog($"fail: {ex.SocketErrorCode}");
@@ -110,7 +105,6 @@ namespace Pipelines.Sockets.Unofficial
                     // Calling Dispose after ReceiveAsync can cause an "InvalidArgument" error on *nix.
                     error = new ConnectionAbortedException();
                 }
-
             }
             catch (SocketException ex)
             {
@@ -156,7 +150,7 @@ namespace Pipelines.Sockets.Unofficial
                 // be writing any more, but callers can still drain the
                 // pipe if they choose
                 DebugLog($"marking {nameof(Input)} as complete");
-                try { _receive.Writer.Complete(error); } catch { }
+                try { _receiveFromSocket.Writer.Complete(error); } catch { }
 
                 if (args != null) try { args.Dispose(); } catch { }
             }

@@ -31,6 +31,7 @@ namespace Pipelines.Sockets.Unofficial
         /// Gets an awaiter that represents the pending operation
         /// </summary>
         public SocketAwaitable GetAwaiter() => this;
+
         /// <summary>
         /// Indicates whether the pending operation is complete
         /// </summary>
@@ -52,21 +53,24 @@ namespace Pipelines.Sockets.Unofficial
 
             return _bytesTransfered;
         }
+
         /// <summary>
         /// Schedule a callback to be invoked when the operation completes
         /// </summary>
         public void OnCompleted(Action continuation)
         {
-            if (ReferenceEquals(_callback, _callbackCompleted) ||
-                ReferenceEquals(Interlocked.CompareExchange(ref _callback, continuation, null), _callbackCompleted))
+            if (ReferenceEquals(_callback, _callbackCompleted)
+                || ReferenceEquals(Interlocked.CompareExchange(ref _callback, continuation, null), _callbackCompleted))
             {
                 continuation(); // sync completion; don't use scheduler
             }
         }
+
         /// <summary>
         /// Schedule a callback to be invoked when the operation completes
         /// </summary>
         public void UnsafeOnCompleted(Action continuation) => OnCompleted(continuation);
+
         /// <summary>
         /// Provides a callback suitable for use with SocketAsyncEventArgs where the UserToken is a SocketAwaitable
         /// </summary>
@@ -91,7 +95,7 @@ namespace Pipelines.Sockets.Unofficial
             }
             _error = socketError;
             _bytesTransfered = bytesTransferred;
-            
+
             if (action == null)
             {
                 Helpers.Incr(Counter.SocketAwaitableCallbackNone);
@@ -111,6 +115,7 @@ namespace Pipelines.Sockets.Unofficial
             }
             return true;
         }
+
         private static void InvokeStateAsActionImpl(object state) => ((Action)state).Invoke();
         internal static readonly Action<object> InvokeStateAsAction = InvokeStateAsActionImpl;
     }

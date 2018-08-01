@@ -13,21 +13,24 @@ namespace Pipelines.Sockets.Unofficial.Tests
 {
     public class ConnectTests
     {
-        ITestOutputHelper Output { get; }
-        TestTextWriter Log { get; }
+        private ITestOutputHelper Output { get; }
+        private TestTextWriter Log { get; }
+
         public ConnectTests(ITestOutputHelper output)
         {
             Output = output;
             Log = TestTextWriter.Create(output);
         }
+
         [Fact]
         public async Task Connect()
         {
             var timeout = Task.Delay(5000);
             var code = ConnectImpl();
-            var first = await Task.WhenAny(timeout, code);
+            var first = await Task.WhenAny(timeout, code).ConfigureAwait(false);
             if (first == timeout) throw new TimeoutException();
         }
+
         private async Task ConnectImpl()
         {
             var endpoint = new IPEndPoint(IPAddress.Loopback, 9080);
@@ -43,11 +46,11 @@ namespace Pipelines.Sockets.Unofficial.Tests
             string actual;
             Log?.DebugLog("connecting...");
             using (var conn = await SocketConnection.ConnectAsync(endpoint,
-                connectionOptions: SocketConnectionOptions.ZeroLengthReads))
+                connectionOptions: SocketConnectionOptions.ZeroLengthReads).ConfigureAwait(false))
             {
                 var data = Encoding.ASCII.GetBytes("Hello, world!");
                 Log?.DebugLog("sending message...");
-                await conn.Output.WriteAsync(data);
+                await conn.Output.WriteAsync(data).ConfigureAwait(false);
                 Log?.DebugLog("completing output");
                 conn.Output.Complete();
 
@@ -60,19 +63,18 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 Log?.DebugLog("buffering response...");
                 while (true)
                 {
-                    var result = await conn.Input.ReadAsync();
+                    var result = await conn.Input.ReadAsync().ConfigureAwait(false);
 
                     var buffer = result.Buffer;
                     Log?.DebugLog($"received {buffer.Length} bytes");
                     if (result.IsCompleted)
                     {
-                        
                         returned = Encoding.ASCII.GetString(result.Buffer.ToArray());
                         Log?.DebugLog($"received: '{returned}'");
                         break;
                     }
 
-                    Log?.DebugLog("advancing");                    
+                    Log?.DebugLog("advancing");
                     conn.Input.AdvanceTo(buffer.Start, buffer.End);
                 }
 
@@ -80,10 +82,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
                 Log?.DebugLog("disposing");
             }
-            
         }
 
-        Task<string> SyncEchoServer(object ready, IPEndPoint endpoint)
+        private Task<string> SyncEchoServer(object ready, IPEndPoint endpoint)
         {
             var listener = new TcpListener(endpoint);
             Log?.DebugLog($"[Server] starting on {endpoint}...");
@@ -112,7 +113,6 @@ namespace Pipelines.Sockets.Unofficial.Tests
                     socket.Shutdown(SocketShutdown.Both);
                     socket.Close();
                 }
-                
             }
             Output.WriteLine($"[Server] shutting down");
             listener.Stop();

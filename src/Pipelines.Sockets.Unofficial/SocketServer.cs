@@ -12,6 +12,7 @@ namespace Pipelines.Sockets.Unofficial
     public abstract class SocketServer : IDisposable
     {
         private Socket _listener;
+
         /// <summary>
         /// Start listening as a server
         /// </summary>
@@ -33,6 +34,7 @@ namespace Pipelines.Sockets.Unofficial
 
             OnStarted(endPoint);
         }
+
         /// <summary>
         /// Stop listening as a server
         /// </summary>
@@ -45,6 +47,7 @@ namespace Pipelines.Sockets.Unofficial
                 try { socket.Dispose(); } catch { }
             }
         }
+
         /// <summary>
         /// Release any resources associated with this instance
         /// </summary>
@@ -53,11 +56,13 @@ namespace Pipelines.Sockets.Unofficial
             Stop();
             Dispose(true);
         }
+
         /// <summary>
         /// Release any resources associated with this instance
         /// </summary>
         protected virtual void Dispose(bool disposing) { }
-        static void FireAndForget(Task task)
+
+        private static void FireAndForget(Task task)
         {
             // make sure that any exception is observed
             if (task == null) return;
@@ -79,7 +84,7 @@ namespace Pipelines.Sockets.Unofficial
                 var client = (ClientConnection)boxed;
                 try
                 {
-                    await OnClientConnectedAsync(client);
+                    await OnClientConnectedAsync(client).ConfigureAwait(false);
                     try { client.Transport.Input.Complete(); } catch { }
                     try { client.Transport.Output.Complete(); } catch { }
                 }
@@ -98,6 +103,7 @@ namespace Pipelines.Sockets.Unofficial
                 }
             };
         }
+
         private readonly Action<object> RunClientAsync;
 
         private static void StartOnScheduler(PipeScheduler scheduler, Action<object> callback, object state)
@@ -105,13 +111,14 @@ namespace Pipelines.Sockets.Unofficial
             if (scheduler == PipeScheduler.Inline) scheduler = null;
             (scheduler ?? PipeScheduler.ThreadPool).Schedule(callback, state);
         }
+
         private async Task ListenForConnectionsAsync(PipeOptions sendOptions, PipeOptions receiveOptions)
         {
             try
             {
                 while (true)
                 {
-                    var clientSocket = await _listener.AcceptAsync();
+                    var clientSocket = await _listener.AcceptAsync().ConfigureAwait(false);
                     SocketConnection.SetRecommendedServerOptions(clientSocket);
                     var pipe = SocketConnection.Create(clientSocket, sendOptions, receiveOptions);
 
@@ -123,18 +130,22 @@ namespace Pipelines.Sockets.Unofficial
             catch (ObjectDisposedException) { }
             catch (Exception ex) { OnServerFaulted(ex); }
         }
+
         /// <summary>
         /// Invoked when the server has faulted
         /// </summary>
         protected virtual void OnServerFaulted(Exception exception) { }
+
         /// <summary>
         /// Invoked when a client has faulted
         /// </summary>
         protected virtual void OnClientFaulted(in ClientConnection client, Exception exception) { }
+
         /// <summary>
         /// Invoked when the server starts
         /// </summary>
         protected virtual void OnStarted(EndPoint endPoint) { }
+
         /// <summary>
         /// Invoked when a new client connects
         /// </summary>
@@ -150,10 +161,12 @@ namespace Pipelines.Sockets.Unofficial
                 Transport = transport;
                 RemoteEndPoint = remoteEndPoint;
             }
+
             /// <summary>
             /// The transport to use for this connection
             /// </summary>
             public IDuplexPipe Transport { get; }
+
             /// <summary>
             /// The remote endpoint that the client connected from
             /// </summary>

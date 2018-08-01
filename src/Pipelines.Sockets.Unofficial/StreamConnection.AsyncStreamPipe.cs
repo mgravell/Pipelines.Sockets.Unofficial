@@ -8,12 +8,10 @@ using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
 {
-    partial class StreamConnection
+    public static partial class StreamConnection
     {
         private sealed class AsyncStreamPipe : IDuplexPipe
         {
-
-
             [Conditional("VERBOSE")]
             private void DebugLog(string message = null, [CallerMemberName] string caller = null) => Helpers.DebugLog(Name, message, caller);
 
@@ -22,7 +20,6 @@ namespace Pipelines.Sockets.Unofficial
             private string Name { get; }
 
             public override string ToString() => Name;
-
 
             public AsyncStreamPipe(Stream stream, PipeOptions sendPipeOptions, PipeOptions receivePipeOptions, bool read, bool write, string name)
             {
@@ -49,6 +46,7 @@ namespace Pipelines.Sockets.Unofficial
 
             public PipeWriter Output => _writePipe?.Writer ?? throw new InvalidOperationException("Cannot write to this pipe");
             public PipeReader Input => _readPipe?.Reader ?? throw new InvalidOperationException("Cannot read from this pipe");
+
             private async void CopyFromStreamToReadPipe()
             {
                 Exception err = null;
@@ -59,15 +57,15 @@ namespace Pipelines.Sockets.Unofficial
                     {
                         var memory = writer.GetMemory(1);
 #if SOCKET_STREAM_BUFFERS
-                        int read = await _inner.ReadAsync(memory);
+                        int read = await _inner.ReadAsync(memory).ConfigureAwait(false);
 #else
                         var arr = memory.GetArray();
-                        int read = await _inner.ReadAsync(arr.Array, arr.Offset, arr.Count);
+                        int read = await _inner.ReadAsync(arr.Array, arr.Offset, arr.Count).ConfigureAwait(false);
 #endif
                         if (read <= 0) break;
                         writer.Advance(read);
                         // need to flush regularly, a: to respect backoffs, and b: to awaken the reader
-                        var flush = await writer.FlushAsync();
+                        var flush = await writer.FlushAsync().ConfigureAwait(false);
                         if (flush.IsCompleted || flush.IsCanceled) break;
                     }
                 }
@@ -77,6 +75,7 @@ namespace Pipelines.Sockets.Unofficial
                 }
                 writer.Complete(err);
             }
+
             private async void CopyFromWritePipeToStream()
             {
                 var reader = _writePipe.Reader;
@@ -92,7 +91,7 @@ namespace Pipelines.Sockets.Unofficial
                         // result in over-flushing if reader and writer
                         // are *just about* in sync, but... it'll do
                         DebugLog($"flushing stream...");
-                        await _inner.FlushAsync();
+                        await _inner.FlushAsync().ConfigureAwait(false);
                         DebugLog($"flushed");
                     }
                     var result = await pending;
@@ -103,7 +102,7 @@ namespace Pipelines.Sockets.Unofficial
                         DebugLog($"complete: {result.IsCompleted}; canceled: {result.IsCanceled}; bytes: {buffer.Length}");
                         if (!buffer.IsEmpty)
                         {
-                            await WriteBuffer(_inner, buffer, Name);
+                            await WriteBuffer(_inner, buffer, Name).ConfigureAwait(false);
                             DebugLog($"bytes written; marking consumed");
                             reader.AdvanceTo(buffer.End);
                         }
@@ -114,26 +113,25 @@ namespace Pipelines.Sockets.Unofficial
                     if (buffer.IsEmpty && result.IsCompleted) break; // that's all, folks
                 }
             }
-            static Task WriteBuffer(Stream target, ReadOnlySequence<byte> data, string name)
+
+            private static Task WriteBuffer(Stream target, ReadOnlySequence<byte> data, string name)
             {
                 async Task WriteBufferAwaited(Stream ttarget, ReadOnlySequence<byte> ddata, string nname)
                 {
                     foreach (var segment in ddata)
                     {
-                        Helpers.DebugLog(name, $"writing {segment.Length} bytes to '{target}'...");
+                        Helpers.DebugLog(nname, $"writing {segment.Length} bytes to '{ttarget}'...");
 #if SOCKET_STREAM_BUFFERS
                         await ttarget.WriteAsync(segment);
 #else
                         var arr = segment.GetArray();
-                        await ttarget.WriteAsync(arr.Array, arr.Offset, arr.Count);
+                        await ttarget.WriteAsync(arr.Array, arr.Offset, arr.Count).ConfigureAwait(false);
 #endif
-                        Helpers.DebugLog(name, $"write complete");
-
+                        Helpers.DebugLog(nname, $"write complete");
                     }
                 }
                 if (data.IsSingleSegment)
                 {
-                    
                     Helpers.DebugLog(name, $"writing {data.Length} bytes to '{target}'...");
 #if SOCKET_STREAM_BUFFERS
                     var vt = target.WriteAsync(data.First);
@@ -149,6 +147,5 @@ namespace Pipelines.Sockets.Unofficial
                 }
             }
         }
-
     }
 }

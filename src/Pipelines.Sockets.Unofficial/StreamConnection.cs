@@ -47,12 +47,16 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Create a write-only stream that feeds the provided PipeReader
         /// </summary>
+        /// <param name="reader">The reader to wrap</param>
+        /// <param name="name">The logical name of the reader</param>
         public static Stream GetWriter(PipeWriter writer, string name = null)
             => new AsyncPipeStream(null, writer, name);
 
         /// <summary>
         /// Create a read-only stream that consumes the provided PipeReader
         /// </summary>
+        /// <param name="reader">The reader to wrap</param>
+        /// <param name="name">The logical name of the reader</param>
         public static Stream GetReader(PipeReader reader, string name = null)
             => new AsyncPipeStream(reader, null, name);
     }

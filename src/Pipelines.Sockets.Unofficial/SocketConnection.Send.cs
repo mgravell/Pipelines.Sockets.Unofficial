@@ -8,9 +8,10 @@ using System.Runtime.InteropServices;
 
 namespace Pipelines.Sockets.Unofficial
 {
-    partial class SocketConnection
+    public partial class SocketConnection
     {
-        SocketAwaitable _writerAwaitable;
+        private SocketAwaitable _writerAwaitable;
+
         private async void DoSendAsync()
         {
             Exception error = null;
@@ -21,14 +22,14 @@ namespace Pipelines.Sockets.Unofficial
                 while (true)
                 {
                     DebugLog("awaiting data from pipe...");
-                    if(_send.Reader.TryRead(out var result))
+                    if(_sendToSocket.Reader.TryRead(out var result))
                     {
                         Helpers.Incr(Counter.SocketPipeReadReadSync);
                     }
                     else
                     {
                         Helpers.Incr(Counter.OpenSendReadAsync);
-                        var read = _send.Reader.ReadAsync();
+                        var read = _sendToSocket.Reader.ReadAsync();
                         Helpers.Incr(read.IsCompleted ? Counter.SocketPipeReadReadSync : Counter.SocketPipeReadReadAsync);
                         result = await read;
                         Helpers.Decr(Counter.OpenSendReadAsync);
@@ -48,7 +49,7 @@ namespace Pipelines.Sockets.Unofficial
                             if (args == null) args = CreateArgs(_sendOptions.WriterScheduler, out _writerAwaitable);
                             DebugLog($"sending {buffer.Length} bytes over socket...");
                             Helpers.Incr(Counter.OpenSendWriteAsync);
-                            var send = SendAsync(Socket, args, buffer, Name);
+                            var send = DoSendAsync(Socket, args, buffer, Name);
                             Helpers.Incr(send.IsCompleted ? Counter.SocketSendAsyncSync : Counter.SocketSendAsyncAsync);
                             await send;
                             Helpers.Decr(Counter.OpenSendWriteAsync);
@@ -62,7 +63,7 @@ namespace Pipelines.Sockets.Unofficial
                     finally
                     {
                         DebugLog("advancing");
-                        _send.Reader.AdvanceTo(buffer.End);
+                        _sendToSocket.Reader.AdvanceTo(buffer.End);
                     }
                 }
                 TrySetShutdown(PipeShutdownKind.WriteEndOfStream);
@@ -113,8 +114,8 @@ namespace Pipelines.Sockets.Unofficial
                 // close *both halves* of the send pipe; we're not
                 // listening *and* we don't want anyone trying to write
                 DebugLog($"marking {nameof(Output)} as complete");
-                try { _send.Writer.Complete(error); } catch { }
-                try { _send.Reader.Complete(error); } catch { }
+                try { _sendToSocket.Writer.Complete(error); } catch { }
+                try { _sendToSocket.Reader.Complete(error); } catch { }
 
                 if (args != null) try { args.Dispose(); } catch { }
             }
@@ -122,11 +123,11 @@ namespace Pipelines.Sockets.Unofficial
             //return error;
         }
 
-        static SocketAwaitable SendAsync(Socket socket, SocketAsyncEventArgs args, ReadOnlySequence<byte> buffer, string name)
+        private static SocketAwaitable DoSendAsync(Socket socket, SocketAsyncEventArgs args, ReadOnlySequence<byte> buffer, string name)
         {
             if (buffer.IsSingleSegment)
             {
-                return SendAsync(socket, args, buffer.First, name);
+                return DoSendAsync(socket, args, buffer.First, name);
             }
 
 #if SOCKET_STREAM_BUFFERS
@@ -154,7 +155,7 @@ namespace Pipelines.Sockets.Unofficial
             return GetAwaitable(args);
         }
 
-        static SocketAwaitable SendAsync(Socket socket, SocketAsyncEventArgs args, ReadOnlyMemory<byte> memory, string name)
+        private static SocketAwaitable DoSendAsync(Socket socket, SocketAsyncEventArgs args, ReadOnlyMemory<byte> memory, string name)
         {
             // The BufferList getter is much less expensive then the setter.
             if (args.BufferList != null)

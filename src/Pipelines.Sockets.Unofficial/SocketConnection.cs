@@ -11,21 +11,31 @@ namespace Pipelines.Sockets.Unofficial
 {
     public enum PipeShutdownKind
     {
+        // 0**: things to do with the pipe
         None = 0, // important this stays zero for default value, etc
         PipeDisposed = 1,
 
-        ReadEndOfStream = 2,
-        ReadDisposed = 4,
-        ReadIOException = 5,
-        ReadException = 6,
-        ReadSocketError = 7,
+        // 1**: things to do with the read loop
+        ReadEndOfStream = 100,
+        ReadDisposed = 101,
+        ReadIOException = 102,
+        ReadException = 103,
+        ReadSocketError = 104,
 
-        WriteEndOfStream = 8,
-        WriteDisposed = 9,
-        WriteIOException = 10,
-        WriteException = 11,
-        WriteSocketError = 12,        
+        // 2**: things to do with the write loop
+        WriteEndOfStream = 200,
+        WriteDisposed = 201,
+        WriteIOException = 203,
+        WriteException = 204,
+        WriteSocketError = 205,
+
+        // 2**: things to do with the reader/writer themselves
+        InputReaderCompleted = 300,
+        InputWriterCompleted = 301,
+        OutputReaderCompleted = 302,
+        OutputWriterCompleted = 303,
     }
+
     /// <summary>
     /// Reperesents a duplex pipe over managed sockets
     /// </summary>
@@ -39,8 +49,8 @@ namespace Pipelines.Sockets.Unofficial
         public PipeShutdownKind ShutdownKind => (PipeShutdownKind)Thread.VolatileRead(ref _socketShutdownKind);
         public SocketError SocketError {get; private set;}
 
-        private bool TrySetShutdown(PipeShutdownKind kind) => kind != PipeShutdownKind.None &&
-            Interlocked.CompareExchange(ref _socketShutdownKind, (int)kind, 0) == 0;
+        private bool TrySetShutdown(PipeShutdownKind kind) => kind != PipeShutdownKind.None
+            && Interlocked.CompareExchange(ref _socketShutdownKind, (int)kind, 0) == 0;
 
         private bool TrySetShutdown(PipeShutdownKind kind, SocketError socketError)
         {
@@ -52,6 +62,7 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Set recommended socket options for client sockets
         /// </summary>
+        /// <param name="socket">The socket to set options against</param>
         public static void SetRecommendedClientOptions(Socket socket)
         {
             if (socket.AddressFamily == AddressFamily.Unix) return;
@@ -64,6 +75,7 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Set recommended socket options for server sockets
         /// </summary>
+        /// <param name="socket">The socket to set options against</param>
         public static void SetRecommendedServerOptions(Socket socket)
         {
             if (socket.AddressFamily == AddressFamily.Unix) return;
@@ -96,48 +108,30 @@ namespace Pipelines.Sockets.Unofficial
             try { Socket?.Dispose(); } catch { }
             // Socket = null;
         }
+
         /// <summary>
         /// Connection for receiving data
         /// </summary>
-        public PipeReader Input => _receive.Reader;
+        public PipeReader Input => _receiveFromSocket.Reader;
 
         /// <summary>
         /// Connection for sending data
         /// </summary>
-        public PipeWriter Output => _send.Writer;
+        public PipeWriter Output => _sendToSocket.Writer;
         private string Name { get; }
+
         /// <summary>
         /// Gets a string representation of this object
         /// </summary>
         public override string ToString() => Name;
-        void RunThreadAsTask(object state, Action<object> callback, string name)
-        {
-            if (!string.IsNullOrWhiteSpace(Name)) name = Name + ":" + name;
-#pragma warning disable IDE0017
-            var thread = new Thread(tuple =>
-            {
-                var t = (Tuple<object, Action<object>, TaskCompletionSource<Exception>>)tuple;
-                //try { t.Item3?.TrySetResult(t.Item2(t.Item1)); }
-                //catch (Exception ex) { t.Item3.TrySetException(ex); }
-
-                t.Item2(t.Item1);
-            });
-            thread.IsBackground = true;
-#pragma warning restore IDE0017
-            if (string.IsNullOrWhiteSpace(name)) name = callback.Method.Name;
-            if (!string.IsNullOrWhiteSpace(name)) thread.Name = name;
-
-            TaskCompletionSource<Exception> tcs = null; // new TaskCompletionSource<Exception>();
-            thread.Start(Tuple.Create(state, callback, tcs));
-            //return tcs.Task;
-        }
 
         /// <summary>
         /// The underlying socket for this connection
         /// </summary>
         public Socket Socket { get; }
+        public static List<ArraySegment<byte>> SpareBuffer { get => _spareBuffer; set => _spareBuffer = value; }
 
-        private Pipe _send, _receive;
+        private readonly Pipe _sendToSocket, _receiveFromSocket;
         // TODO: flagify
 #pragma warning disable CS0414, CS0649
         private volatile bool _sendAborted, _receiveAborted;
@@ -170,10 +164,8 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public static SocketConnection Create(Socket socket, PipeOptions sendPipeOptions, PipeOptions receivePipeOptions,
             SocketConnectionOptions socketConnectionOptions = SocketConnectionOptions.None, string name = null)
-        {
-            var conn = new SocketConnection(socket, sendPipeOptions, receivePipeOptions, socketConnectionOptions, name);
-            return conn;
-        }
+            => new SocketConnection(socket, sendPipeOptions, receivePipeOptions, socketConnectionOptions, name);
+
         private SocketConnection(Socket socket, PipeOptions sendPipeOptions, PipeOptions receivePipeOptions, SocketConnectionOptions socketConnectionOptions, string name = null)
         {
             if (string.IsNullOrWhiteSpace(name)) name = GetType().Name;
@@ -183,14 +175,37 @@ namespace Pipelines.Sockets.Unofficial
 
             Socket = socket;
             SocketConnectionOptions = socketConnectionOptions;
-            _send = new Pipe(sendPipeOptions);
-            _receive = new Pipe(receivePipeOptions);
-
+            _sendToSocket = new Pipe(sendPipeOptions);
+            _receiveFromSocket = new Pipe(receivePipeOptions);
             _receiveOptions = receivePipeOptions;
             _sendOptions = sendPipeOptions;
 
+            _sendToSocket.Writer.OnReaderCompleted((ex, state) => TrySetShutdown(ex, state, PipeShutdownKind.OutputReaderCompleted), this);
+            _sendToSocket.Reader.OnWriterCompleted((ex, state) => TrySetShutdown(ex, state, PipeShutdownKind.OutputWriterCompleted), this);
+
+            _receiveFromSocket.Reader.OnWriterCompleted((ex, state) => TrySetShutdown(ex, state, PipeShutdownKind.InputWriterCompleted), this);
+            _receiveFromSocket.Writer.OnReaderCompleted((ex, state) =>
+            {
+                TrySetShutdown(ex, state, PipeShutdownKind.InputReaderCompleted);
+                try { ((SocketConnection)state).Socket.Shutdown(SocketShutdown.Receive); }
+                catch { }
+            }, this);
+
             sendPipeOptions.ReaderScheduler.Schedule(s_DoSendAsync, this);
             receivePipeOptions.ReaderScheduler.Schedule(s_DoReceiveAsync, this);
+        }
+
+        private static bool TrySetShutdown(Exception ex, object state, PipeShutdownKind kind)
+        {
+            try
+            {
+                var sc = (SocketConnection)state;
+                return ex is SocketException se ? sc.TrySetShutdown(kind, se.SocketErrorCode)
+                    : sc.TrySetShutdown(kind);
+            }
+            catch {
+                return false;
+            }
         }
 
         private static void DoReceiveAsync(object s) => ((SocketConnection)s).DoReceiveAsync();
@@ -198,19 +213,20 @@ namespace Pipelines.Sockets.Unofficial
         private static void DoSendAsync(object s) => ((SocketConnection)s).DoSendAsync();
         private static readonly Action<object> s_DoSendAsync = DoSendAsync;
 
-        private PipeOptions _receiveOptions, _sendOptions;
+        private readonly PipeOptions _receiveOptions, _sendOptions;
 
-        static List<ArraySegment<byte>> _spareBuffer;
+        private static List<ArraySegment<byte>> _spareBuffer;
+
         private static List<ArraySegment<byte>> GetSpareBuffer()
         {
             var existing = Interlocked.Exchange(ref _spareBuffer, null);
             existing?.Clear();
             return existing;
         }
+
         private static void RecycleSpareBuffer(List<ArraySegment<byte>> value)
         {
             if (value != null) Interlocked.Exchange(ref _spareBuffer, value);
         }
-
     }
 }
