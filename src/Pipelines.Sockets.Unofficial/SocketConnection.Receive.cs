@@ -9,6 +9,11 @@ namespace Pipelines.Sockets.Unofficial
     {
         private SocketAwaitable _readerAwaitable;
 
+        /// <summary>
+        /// The total number of bytes read from the socket
+        /// </summary>
+        public long BytesRead { get; private set; }
+
         private async void DoReceiveAsync()
         {
             Exception error = null;
@@ -50,10 +55,11 @@ namespace Pipelines.Sockets.Unofficial
 
                         _receiveFromSocket.Writer.Advance(bytesReceived);
 
-                        if (bytesReceived == 0)
+                        if (bytesReceived <= 0)
                         {
                             break;
                         }
+                        BytesRead += bytesReceived;
                     }
                     finally
                     {

@@ -12,6 +12,11 @@ namespace Pipelines.Sockets.Unofficial
     {
         private SocketAwaitable _writerAwaitable;
 
+        /// <summary>
+        /// The total number of bytes sent to the socket
+        /// </summary>
+        public long BytesSent { get; private set; }
+
         private async void DoSendAsync()
         {
             Exception error = null;
@@ -51,7 +56,7 @@ namespace Pipelines.Sockets.Unofficial
                             Helpers.Incr(Counter.OpenSendWriteAsync);
                             var send = DoSendAsync(Socket, args, buffer, Name);
                             Helpers.Incr(send.IsCompleted ? Counter.SocketSendAsyncSync : Counter.SocketSendAsyncAsync);
-                            await send;
+                            BytesSent += await send;
                             Helpers.Decr(Counter.OpenSendWriteAsync);
                         }
                         else if (result.IsCompleted)

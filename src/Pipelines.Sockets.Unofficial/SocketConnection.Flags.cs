@@ -18,17 +18,16 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         ZeroLengthReads = 1 << 0,
     }
-    partial class SocketConnection
+    public partial class SocketConnection
     {
         private SocketConnectionOptions SocketConnectionOptions { get; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool HasFlag(SocketConnectionOptions option) => (option & SocketConnectionOptions) != 0;
-        
+
         private bool ZeroLengthReads
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => HasFlag(SocketConnectionOptions.ZeroLengthReads);
         }
-        
     }
 }
