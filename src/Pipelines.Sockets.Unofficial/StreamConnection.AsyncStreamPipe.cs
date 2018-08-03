@@ -26,10 +26,25 @@ namespace Pipelines.Sockets.Unofficial
                 if (sendPipeOptions == null) sendPipeOptions = PipeOptions.Default;
                 if (receivePipeOptions == null) receivePipeOptions = PipeOptions.Default;
                 _inner = stream ?? throw new ArgumentNullException(nameof(stream));
+                if (!(read || write)) throw new ArgumentException("At least one of read/write must be set");
+                if (read && write)
+                {
+                    string preamble = "";
+                    switch(stream)
+                    {
+                        case MemoryStream ms: // extra guidance in this case; there's a reaily available alternative
+                            preamble = "You probably want `new Pipe()` instead - a `Pipe` is broadly comparable to a duplex MemoryStream. ";
+                            goto ThrowNonDuplexStream;
+                        case FileStream fs:
+                            // others here?
+                            ThrowNonDuplexStream:
+                            throw new ArgumentException(preamble + $"`{stream.GetType().Name}` is not a duplex stream and cannot be used in this context (you can still create a reader/writer).", nameof(stream));
+                    }
+                }
+
+
                 if (string.IsNullOrWhiteSpace(name)) name = GetType().Name;
                 Name = name ?? GetType().Name;
-
-                if (!(read || write)) throw new ArgumentException("At least one of read/write must be set");
                 if (read)
                 {
                     if (!stream.CanRead) throw new InvalidOperationException("Cannot create a read pipe over a non-readable stream");
