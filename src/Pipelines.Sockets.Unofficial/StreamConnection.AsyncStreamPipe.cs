@@ -33,7 +33,7 @@ namespace Pipelines.Sockets.Unofficial
                     switch(stream)
                     {
                         case MemoryStream ms: // extra guidance in this case; there's a reaily available alternative
-                            preamble = "You probably want `new Pipe()` instead - a `Pipe` is broadly comparable to a duplex MemoryStream. ";
+                            preamble = "You probably want `new Pipe()` instead - a `Pipe` is broadly comparable to a MemoryStream with separate read/write heads. ";
                             goto ThrowNonDuplexStream;
                         case FileStream fs:
                             // others here?
