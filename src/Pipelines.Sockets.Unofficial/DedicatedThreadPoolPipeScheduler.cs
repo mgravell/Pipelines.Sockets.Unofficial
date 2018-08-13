@@ -27,6 +27,7 @@ namespace Pipelines.Sockets.Unofficial
         private ThreadPriority Priority { get; }
 
         private string Name { get; }
+
         /// <summary>
         /// Create a new dedicated thread-pool
         /// </summary>
@@ -44,6 +45,18 @@ namespace Pipelines.Sockets.Unofficial
                 StartWorker();
             }
         }
+
+        private long _totalServicedByQueue, _totalServicedByPool;
+
+        /// <summary>
+        /// The total number of operations serviced by the queue
+        /// </summary>
+        public long TotalServicedByQueue => Volatile.Read(ref _totalServicedByQueue);
+
+        /// <summary>
+        /// The total number of operations that could not be serviced by the queue, but which were sent to the thread-pool instead
+        /// </summary>
+        public long TotalServicedByPool => Volatile.Read(ref _totalServicedByPool);
 
         private readonly struct WorkItem
         {
@@ -162,6 +175,7 @@ namespace Pipelines.Sockets.Unofficial
                 if (_queue.Count == 0) return;
                 next = _queue.Dequeue();
             }
+            Interlocked.Increment(ref _totalServicedByPool);
             Execute(next.Action, next.State);
         }
         private void RunWorkLoop()
@@ -189,6 +203,7 @@ namespace Pipelines.Sockets.Unofficial
                     }
                     next = _queue.Dequeue();
                 }
+                Interlocked.Increment(ref _totalServicedByQueue);
                 Execute(next.Action, next.State);
             }
             lock (ThreadCountSyncLock)
