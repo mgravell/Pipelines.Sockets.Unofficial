@@ -14,6 +14,11 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public long BytesRead { get; private set; }
 
+        /// <summary>
+        /// The number of bytes received in the last read
+        /// </summary>
+        public int LastReceived { get; private set; }
+
         private async void DoReceiveAsync()
         {
             Exception error = null;
@@ -50,15 +55,17 @@ namespace Pipelines.Sockets.Unofficial
                         Helpers.Incr(receive.IsCompleted ? Counter.SocketReceiveSync : Counter.SocketReceiveAsync);
                         DebugLog(receive.IsCompleted ? "receive is sync" : "receive is async");
                         var bytesReceived = await receive;
+                        LastReceived = bytesReceived;
                         Helpers.Decr(Counter.OpenReceiveReadAsync);
                         DebugLog($"received {bytesReceived} bytes ({args.BytesTransferred}, {args.SocketError})");
 
-                        _receiveFromSocket.Writer.Advance(bytesReceived);
-
                         if (bytesReceived <= 0)
                         {
+                            _receiveFromSocket.Writer.Advance(0);
+                            TrySetShutdown(PipeShutdownKind.ReadEndOfStream);
                             break;
                         }
+                        _receiveFromSocket.Writer.Advance(bytesReceived);
                         BytesRead += bytesReceived;
                     }
                     finally
@@ -84,14 +91,17 @@ namespace Pipelines.Sockets.Unofficial
                     }
                     Helpers.Decr(Counter.OpenReceiveFlushAsync);
 
-                    if (result.IsCanceled || result.IsCompleted)
+                    if (result.IsCompleted)
                     {
-                        // Pipe consumer is shut down, do we stop writing
-                        DebugLog(result.IsCanceled ? "canceled" : "complete");
+                        TrySetShutdown(PipeShutdownKind.ReadFlushCompleted);
+                        break;
+                    }
+                    if (result.IsCanceled)
+                    {
+                        TrySetShutdown(PipeShutdownKind.ReadFlushCanceled);
                         break;
                     }
                 }
-                TrySetShutdown(PipeShutdownKind.ReadEndOfStream);
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset)
             {

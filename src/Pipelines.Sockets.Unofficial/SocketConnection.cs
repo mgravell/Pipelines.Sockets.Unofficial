@@ -44,6 +44,14 @@ namespace Pipelines.Sockets.Unofficial
         /// The socket-reader encountered a socket failure - the SocketError may be populated
         /// </summary>
         ReadSocketError = 104,
+        /// <summary>
+        /// When attempting to flush incoming data, the pipe indicated that it was complete
+        /// </summary>
+        ReadFlushCompleted = 105,
+        /// <summary>
+        /// When attempting to flush incoming data, the pipe indicated cancelation
+        /// </summary>
+        ReadFlushCanceled = 106,
 
         // 2**: things to do with the write loop
         /// <summary>
@@ -91,7 +99,7 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// An application defined exit was triggered by the server
         /// </summary>
-        ProtocolExitServer = 401
+        ProtocolExitServer = 401,
     }
 
     /// <summary>
