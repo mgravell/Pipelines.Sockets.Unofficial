@@ -147,6 +147,7 @@ namespace Pipelines.Sockets.Unofficial
             args.BufferList = GetBufferList(args, buffer);
 
             Helpers.DebugLog(name, $"## {nameof(socket.SendAsync)} {buffer.Length}");
+            SocketAwaitable.Reset(args);
             if (socket.SendAsync(args))
             {
                 Helpers.Incr(Counter.SocketSendAsyncMultiAsync);
@@ -176,6 +177,7 @@ namespace Pipelines.Sockets.Unofficial
             args.SetBuffer(segment.Array, segment.Offset, segment.Count);
 #endif
             Helpers.DebugLog(name, $"## {nameof(socket.SendAsync)} {memory.Length}");
+            SocketAwaitable.Reset(args);
             if (socket.SendAsync(args))
             {
                 Helpers.Incr(Counter.SocketSendAsyncSingleAsync);

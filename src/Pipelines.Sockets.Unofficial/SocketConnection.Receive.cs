@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
 using System.Net.Sockets;
@@ -51,12 +52,15 @@ namespace Pipelines.Sockets.Unofficial
                     {
                         DebugLog($"initiating socket receive...");
                         Helpers.Incr(Counter.OpenReceiveReadAsync);
+
                         var receive = ReceiveAsync(Socket, args, buffer, Name);
                         Helpers.Incr(receive.IsCompleted ? Counter.SocketReceiveSync : Counter.SocketReceiveAsync);
                         DebugLog(receive.IsCompleted ? "receive is sync" : "receive is async");
                         var bytesReceived = await receive;
                         LastReceived = bytesReceived;
                         Helpers.Decr(Counter.OpenReceiveReadAsync);
+
+                        Debug.Assert(bytesReceived == args.BytesTransferred);
                         DebugLog($"received {bytesReceived} bytes ({args.BytesTransferred}, {args.SocketError})");
 
                         if (bytesReceived <= 0)
@@ -65,6 +69,7 @@ namespace Pipelines.Sockets.Unofficial
                             TrySetShutdown(PipeShutdownKind.ReadEndOfStream);
                             break;
                         }
+
                         _receiveFromSocket.Writer.Advance(bytesReceived);
                         BytesRead += bytesReceived;
                     }
@@ -201,6 +206,7 @@ namespace Pipelines.Sockets.Unofficial
             }
 #endif
             Helpers.DebugLog(name, $"## {nameof(socket.ReceiveAsync)} <={buffer.Length}");
+            SocketAwaitable.Reset(args);
             if (!socket.ReceiveAsync(args)) SocketAwaitable.OnCompleted(args);
 
             return GetAwaitable(args);

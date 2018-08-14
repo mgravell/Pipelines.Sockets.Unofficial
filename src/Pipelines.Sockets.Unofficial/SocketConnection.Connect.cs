@@ -78,6 +78,7 @@ namespace Pipelines.Sockets.Unofficial
         private static SocketAwaitable ConnectAsync(Socket socket, SocketAsyncEventArgs args, EndPoint endpoint)
         {
             args.RemoteEndPoint = endpoint;
+            SocketAwaitable.Reset(args);
             if (!socket.ConnectAsync(args)) SocketAwaitable.OnCompleted(args);
             return GetAwaitable(args);
         }
