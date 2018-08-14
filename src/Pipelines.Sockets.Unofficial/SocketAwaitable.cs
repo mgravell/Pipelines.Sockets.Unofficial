@@ -13,19 +13,19 @@ namespace Pipelines.Sockets.Unofficial
     public sealed class SocketAwaitable : ICriticalNotifyCompletion
     {
         private static void NoOp() { }
-        private static readonly Action _callbackCompleted = NoOp; // get better debug info by avoiding inline delegate here
+        private static readonly Action s_callbackCompleted = NoOp; // get better debug info by avoiding inline delegate here
 
-        private Action _callback;
-        private int _bytesTransfered;
-        private SocketError _error;
+        private Action _callback; // null if not started, _callbackCompleted if complete, otherwise: pending
+        private volatile int _bytesTransfered;
+        private volatile SocketError _error;
         private readonly PipeScheduler _scheduler;
 
         /// <summary>
         /// Create a new SocketAwaitable instance, optionally providing a callback scheduler
         /// </summary>
         /// <param name="scheduler"></param>
-        public SocketAwaitable(PipeScheduler scheduler = null) => _scheduler =
-            ReferenceEquals(scheduler, PipeScheduler.Inline) ? null : scheduler;
+        public SocketAwaitable(PipeScheduler scheduler = null)
+            => _scheduler = ReferenceEquals(scheduler, PipeScheduler.Inline) ? null : scheduler;
 
         /// <summary>
         /// Gets an awaiter that represents the pending operation
@@ -35,21 +35,18 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Indicates whether the pending operation is complete
         /// </summary>
-        public bool IsCompleted => ReferenceEquals(_callback, _callbackCompleted);
+        public bool IsCompleted => ReferenceEquals(Volatile.Read(ref _callback), s_callbackCompleted);
 
         /// <summary>
         /// Gets the result of the pending operation
         /// </summary>
         public int GetResult()
         {
-            Debug.Assert(ReferenceEquals(_callback, _callbackCompleted));
+            if (Interlocked.CompareExchange(ref _callback, null, s_callbackCompleted) != s_callbackCompleted)
+                ThrowIncomplete();
 
-            _callback = null;
-
-            if (_error != SocketError.Success)
-            {
-                throw new SocketException((int)_error);
-            }
+            var tmp = _error;
+            if (tmp != SocketError.Success) ThrowSocketError(tmp);
 
             return _bytesTransfered;
         }
@@ -59,12 +56,26 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public void OnCompleted(Action continuation)
         {
-            if (ReferenceEquals(_callback, _callbackCompleted)
-                || ReferenceEquals(Interlocked.CompareExchange(ref _callback, continuation, null), _callbackCompleted))
+            if (continuation == null) ThrowNullContinuation();
+            var was = Interlocked.CompareExchange(ref _callback, continuation, null);
+            if ((object)was == null)
             {
-                continuation(); // sync completion; don't use scheduler
+                // was incomplete, now pending
+            }
+            else if ((object)was == (object)s_callbackCompleted)
+            {
+                // was already complete - invoke
+                continuation();
+            }
+            else
+            {
+                ThrowMultipleContinuations();
             }
         }
+        static void ThrowNullContinuation() => throw new ArgumentNullException("continuation");
+        static void ThrowMultipleContinuations() => throw new NotSupportedException("Multiple continuations are not supported");
+        static void ThrowIncomplete() => throw new InvalidOperationException("Async operation is incomplete");
+        static void ThrowSocketError(SocketError error) => throw new SocketException((int)error);
 
         /// <summary>
         /// Schedule a callback to be invoked when the operation completes
@@ -74,7 +85,7 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Provides a callback suitable for use with SocketAsyncEventArgs where the UserToken is a SocketAwaitable
         /// </summary>
-        public static EventHandler<SocketAsyncEventArgs> Callback = (sender,args) => ((SocketAwaitable)args.UserToken).TryComplete(args.BytesTransferred, args.SocketError);
+        public static EventHandler<SocketAsyncEventArgs> Callback = (sender, args) => ((SocketAwaitable)args.UserToken).TryComplete(args.BytesTransferred, args.SocketError);
 
         /// <summary>
         /// Mark the pending operation as complete by reading the state of a SocketAsyncEventArgs instance where the UserToken is a SocketAwaitable
@@ -88,16 +99,16 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public bool TryComplete(int bytesTransferred, SocketError socketError)
         {
-            var action = Interlocked.Exchange(ref _callback, _callbackCompleted);
-            if ((object)action == (object)_callbackCompleted)
+            var scheduled = Interlocked.Exchange(ref _callback, s_callbackCompleted);
+            if ((object)scheduled == (object)s_callbackCompleted)
             {
                 return false;
             }
             _error = socketError;
             _bytesTransfered = bytesTransferred;
 
-            if (action == null)
-            {
+            if (scheduled == null)
+            {   // not yet scheduled
                 Helpers.Incr(Counter.SocketAwaitableCallbackNone);
             }
             else
@@ -105,12 +116,12 @@ namespace Pipelines.Sockets.Unofficial
                 if (_scheduler == null)
                 {
                     Helpers.Incr(Counter.SocketAwaitableCallbackDirect);
-                    action();
+                    scheduled();
                 }
                 else
                 {
                     Helpers.Incr(Counter.SocketAwaitableCallbackSchedule);
-                    _scheduler.Schedule(InvokeStateAsAction, action);
+                    _scheduler.Schedule(InvokeStateAsAction, scheduled);
                 }
             }
             return true;
