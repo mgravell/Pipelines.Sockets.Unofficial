@@ -51,7 +51,7 @@ namespace Pipelines.Sockets.Unofficial
 
 
         ThreadPoolWorkerStarted,
-        ThreadPoolPushedToMainThreadPoop,
+        ThreadPoolPushedToMainThreadPool,
         ThreadPoolScheduled,
         ThreadPoolExecuted,
 

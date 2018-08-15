@@ -20,6 +20,9 @@ namespace Pipelines.Sockets.Unofficial
         private readonly PipeScheduler _scheduler;
 
         private object SyncLock => this;
+        /// <summary>
+        /// Reset the awaitable to a pending state
+        /// </summary>
         public void Reset()
         {
             lock (SyncLock)
@@ -108,6 +111,9 @@ namespace Pipelines.Sockets.Unofficial
         public static void OnCompleted(SocketAsyncEventArgs args)
             => ((SocketAwaitable)args.UserToken).TryComplete(args.BytesTransferred, args.SocketError);
 
+        /// <summary>
+        /// Reset the awaitable to a pending state
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Reset(SocketAsyncEventArgs args) => ((SocketAwaitable)args.UserToken).Reset();
 

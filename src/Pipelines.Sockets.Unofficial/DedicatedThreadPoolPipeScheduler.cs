@@ -18,9 +18,9 @@ namespace Pipelines.Sockets.Unofficial
         public override string ToString() => Name;
 
         /// <summary>
-        /// The maximum number of workers associated with this pool
+        /// The number of workers associated with this pool
         /// </summary>
-        public int MaxWorkerCount { get; }
+        public int WorkerCount { get; }
 
         private int UseThreadPoolQueueLength { get; }
        
@@ -31,18 +31,18 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Create a new dedicated thread-pool
         /// </summary>
-        public DedicatedThreadPoolPipeScheduler(string name = null, int minWorkers = 1, int maxWorkers = 5, int useThreadPoolQueueLength = 10,
+        public DedicatedThreadPoolPipeScheduler(string name = null, int workerCount = 5, int useThreadPoolQueueLength = 10,
             ThreadPriority priority = ThreadPriority.Normal)
         {
-            if (minWorkers < 0) throw new ArgumentNullException(nameof(minWorkers));
-            if (minWorkers > maxWorkers) minWorkers = maxWorkers;
-            MaxWorkerCount = maxWorkers;
+            if (workerCount < 0) throw new ArgumentNullException(nameof(workerCount));
+
+            WorkerCount = workerCount;
             UseThreadPoolQueueLength = useThreadPoolQueueLength;
             if (string.IsNullOrWhiteSpace(name)) name = GetType().Name;
             Name = name.Trim();
-            for (int i = 0; i < minWorkers; i++)
+            for (int i = 0; i < workerCount; i++)
             {
-                StartWorker();
+                StartWorker(i);
             }
         }
 
@@ -70,38 +70,21 @@ namespace Pipelines.Sockets.Unofficial
         }
 
         private volatile bool _disposed;
-        private readonly object ThreadCountSyncLock = new object();
-        private int _threadCount;
-        readonly Queue<WorkItem> _queue = new Queue<WorkItem>();
-        private bool StartWorker()
-        {
-            bool create = false;
-            int newNumber = 0;
-            if (_threadCount < MaxWorkerCount)
-            {
-                lock (ThreadCountSyncLock)
-                {
-                    if (_threadCount < MaxWorkerCount) // double-check
-                    {
-                        create = true;
-                        newNumber = _threadCount++;
-                    }
-                }
-            }
 
-            if (create)
+        readonly Queue<WorkItem> _queue = new Queue<WorkItem>();
+        private void StartWorker(int id)
+        {
+            
+            var thread = new Thread(ThreadRunWorkLoop)
             {
-                var thread = new Thread(ThreadRunWorkLoop)
-                {
-                    Name = $"{Name}:{newNumber}",
-                    Priority = Priority,
-                    IsBackground = true
-                };
-                thread.Start(this);
-                Helpers.Incr(Counter.ThreadPoolWorkerStarted);
-            }
-            return create;
+                Name = $"{Name}:{id}",
+                Priority = Priority,
+                IsBackground = true
+            };
+            thread.Start(this);
+            Helpers.Incr(Counter.ThreadPoolWorkerStarted);
         }
+
         /// <summary>
         /// Requests <paramref name="action"/> to be run on scheduler with <paramref name="state"/> being passed in
         /// </summary>
@@ -112,45 +95,34 @@ namespace Pipelines.Sockets.Unofficial
             lock (_queue)
             {
                 _queue.Enqueue(new WorkItem(action, state));
-                if(_queue.Count == 1)
+                if (_availableCount != 0)
                 {
-                    Monitor.Pulse(_queue); // just the one? pulse a single worker
-                }
-                else
-                {
-                    Monitor.PulseAll(_queue); // wakey wakey!
+                    Monitor.Pulse(_queue); // wake up someone
                 }
                 queueLength = _queue.Count;
             }
-            if (queueLength == 0) // was it swallowed in the pulse?
+
+            if (_disposed || queueLength > UseThreadPoolQueueLength)
             {
-                Helpers.Incr(Counter.ThreadPoolScheduled);
+                Helpers.Incr(Counter.ThreadPoolPushedToMainThreadPool);
+                System.Threading.ThreadPool.QueueUserWorkItem(ThreadPoolRunSingleItem, this);
             }
             else
             {
-                // if disposed: always ask the thread pool
-                // otherwise; 
-                if (_disposed || (!StartWorker() && queueLength >= UseThreadPoolQueueLength))
-                {
-                    Helpers.Incr(Counter.ThreadPoolPushedToMainThreadPoop);
-                    Helpers.DebugLog(Name, $"requesting help form thread-pool; queue length: {queueLength}");
-                    System.Threading.ThreadPool.QueueUserWorkItem(ThreadPoolRunSingleItem, this);
-                }
+                Helpers.Incr(Counter.ThreadPoolScheduled);
             }
         }
+
+        
+
         static readonly ParameterizedThreadStart ThreadRunWorkLoop = state => ((DedicatedThreadPoolPipeScheduler)state).RunWorkLoop();
         static readonly WaitCallback ThreadPoolRunSingleItem = state => ((DedicatedThreadPoolPipeScheduler)state).RunSingleItem();
 
-        private int _busyCount;
+        private int _availableCount;
         /// <summary>
         /// The number of workers currently actively engaged in work
         /// </summary>
-        public int BusyCount => Thread.VolatileRead(ref _busyCount);
-
-        /// <summary>
-        /// The number of workers currently instantiated
-        /// </summary>
-        public int WorkerCount => Thread.VolatileRead(ref _threadCount);
+        public int AvailableCount => Thread.VolatileRead(ref _availableCount);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void Execute(Action<object> action, object state)
@@ -180,7 +152,6 @@ namespace Pipelines.Sockets.Unofficial
         }
         private void RunWorkLoop()
         {
-            Interlocked.Increment(ref _busyCount);
             while (true)
             {
                 WorkItem next;
@@ -188,13 +159,13 @@ namespace Pipelines.Sockets.Unofficial
                 {
                     if (_queue.Count == 0)
                     {
-                        Interlocked.Decrement(ref _busyCount);
                         do
                         {
                             if (_disposed) break;
+                            _availableCount++;
                             Monitor.Wait(_queue);
+                            _availableCount--;
                         } while (_queue.Count == 0);
-                        Interlocked.Increment(ref _busyCount);
                     }
                     if(_queue.Count == 0)
                     {
@@ -205,10 +176,6 @@ namespace Pipelines.Sockets.Unofficial
                 }
                 Interlocked.Increment(ref _totalServicedByQueue);
                 Execute(next.Action, next.State);
-            }
-            lock (ThreadCountSyncLock)
-            {
-                _threadCount--;
             }
         }
         /// <summary>
