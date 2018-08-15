@@ -17,6 +17,16 @@ namespace Pipelines.Sockets.Unofficial
         /// When no data is currently available, perform a zero-length read as a buffer-free wait mechanism
         /// </summary>
         ZeroLengthReads = 1 << 0,
+
+        /// <summary>
+        /// During async reads, the awaiter should continue on the IO thread
+        /// </summary>
+        InlineReads = 1 << 1,
+
+        /// <summary>
+        /// During async writes, the awaiter should continue on the IO thread
+        /// </summary>
+        InlineWrites = 1 << 2,
     }
     public partial class SocketConnection
     {
@@ -28,6 +38,18 @@ namespace Pipelines.Sockets.Unofficial
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => HasFlag(SocketConnectionOptions.ZeroLengthReads);
+        }
+
+        private bool InlineReads
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => HasFlag(SocketConnectionOptions.InlineReads);
+        }
+
+        private bool InlineWrites
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => HasFlag(SocketConnectionOptions.InlineWrites);
         }
     }
 }
