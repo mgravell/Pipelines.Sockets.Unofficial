@@ -139,12 +139,12 @@ namespace Pipelines.Sockets.Unofficial
                 if (_scheduler == null)
                 {
                     Helpers.Incr(Counter.SocketAwaitableCallbackDirect);
-                    _scheduledCallback();
+                    callbackToInvoke();
                 }
                 else
                 {
                     Helpers.Incr(Counter.SocketAwaitableCallbackSchedule);
-                    _scheduler.Schedule(InvokeStateAsAction, _scheduledCallback);
+                    _scheduler.Schedule(InvokeStateAsAction, callbackToInvoke);
                 }
             }
             return true;
