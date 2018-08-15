@@ -39,7 +39,7 @@ namespace Pipelines.Sockets.Unofficial
 
             SetRecommendedClientOptions(socket);
 
-            using (var args = CreateArgs(receivePipeOptions.ReaderScheduler, out _))
+            using (var args = CreateArgs(null, out _))
             {
                 Helpers.DebugLog(name, $"connecting to {endpoint}...");
 

@@ -51,7 +51,7 @@ namespace Pipelines.Sockets.Unofficial
                     {
                         if (!buffer.IsEmpty)
                         {
-                            if (args == null) args = CreateArgs(_sendOptions.WriterScheduler, out _writerAwaitable);
+                            if (args == null) args = CreateArgs(null, out _writerAwaitable);
                             DebugLog($"sending {buffer.Length} bytes over socket...");
                             Helpers.Incr(Counter.OpenSendWriteAsync);
                             var send = DoSendAsync(Socket, args, buffer, Name);

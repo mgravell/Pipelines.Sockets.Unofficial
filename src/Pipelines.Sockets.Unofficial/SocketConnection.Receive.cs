@@ -27,7 +27,7 @@ namespace Pipelines.Sockets.Unofficial
             SocketAsyncEventArgs args = null;
             try
             {
-                args = CreateArgs(_receiveOptions.ReaderScheduler, out _readerAwaitable);
+                args = CreateArgs(null, out _readerAwaitable);
                 while (true)
                 {
                     if (ZeroLengthReads && Socket.Available == 0)
