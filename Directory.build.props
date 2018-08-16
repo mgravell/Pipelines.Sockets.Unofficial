@@ -12,6 +12,7 @@
     <LibVer>4.5.0</LibVer>
     <MSBuildWarningsAsMessages>NETSDK1069</MSBuildWarningsAsMessages>
     <CodeAnalysisRuleset>$(MSBuildThisFileDirectory)Shared.ruleset</CodeAnalysisRuleset>
+    <NoWarn>NU5105</NoWarn>
   </PropertyGroup>
   
   <ItemGroup>
