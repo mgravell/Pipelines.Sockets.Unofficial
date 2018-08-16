@@ -131,7 +131,7 @@ namespace Pipelines.Sockets.Unofficial
             {
                 action(state);
                 Helpers.Incr(Counter.ThreadPoolExecuted);
-                Helpers.Incr(action == SocketAwaitable.InvokeStateAsAction ? ((Action)state).Method : action.Method);
+                Helpers.Incr(action == SocketAwaitableEventArgs.InvokeStateAsAction ? ((Action)state).Method : action.Method);
             }
             catch (Exception ex)
             {

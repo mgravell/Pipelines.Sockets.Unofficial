@@ -10,18 +10,17 @@ namespace Pipelines.Sockets.Unofficial
 {
     public partial class SocketConnection
     {
-        private SocketAwaitable _writerAwaitable;
-
         /// <summary>
         /// The total number of bytes sent to the socket
         /// </summary>
         public long BytesSent { get; private set; }
 
+        private SocketAwaitableEventArgs _writerArgs;
+
         private async void DoSendAsync()
         {
             Exception error = null;
             DebugLog("starting send loop");
-            SocketAsyncEventArgs args = null;
             try
             {
                 while (true)
@@ -51,12 +50,12 @@ namespace Pipelines.Sockets.Unofficial
                     {
                         if (!buffer.IsEmpty)
                         {
-                            if (args == null) args = CreateArgs(InlineWrites ? null : _sendOptions.ReaderScheduler, out _writerAwaitable);
+                            if (_writerArgs == null) _writerArgs = new SocketAwaitableEventArgs(InlineWrites ? null : _sendOptions.ReaderScheduler);
                             DebugLog($"sending {buffer.Length} bytes over socket...");
                             Helpers.Incr(Counter.OpenSendWriteAsync);
-                            var send = DoSendAsync(Socket, args, buffer, Name);
-                            Helpers.Incr(send.IsCompleted ? Counter.SocketSendAsyncSync : Counter.SocketSendAsyncAsync);
-                            BytesSent += await send;
+                            DoSend(Socket, _writerArgs, buffer, Name);
+                            Helpers.Incr(_writerArgs.IsCompleted ? Counter.SocketSendAsyncSync : Counter.SocketSendAsyncAsync);
+                            BytesSent += await _writerArgs;
                             Helpers.Decr(Counter.OpenSendWriteAsync);
                         }
                         else if (result.IsCompleted)
@@ -122,17 +121,20 @@ namespace Pipelines.Sockets.Unofficial
                 try { _sendToSocket.Writer.Complete(error); } catch { }
                 try { _sendToSocket.Reader.Complete(error); } catch { }
 
+                var args = _writerArgs;
+                _writerArgs = null;
                 if (args != null) try { args.Dispose(); } catch { }
             }
             DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
             //return error;
         }
 
-        private static SocketAwaitable DoSendAsync(Socket socket, SocketAsyncEventArgs args, ReadOnlySequence<byte> buffer, string name)
+        private static void DoSend(Socket socket, SocketAwaitableEventArgs args, ReadOnlySequence<byte> buffer, string name)
         {
             if (buffer.IsSingleSegment)
             {
-                return DoSendAsync(socket, args, buffer.First, name);
+                DoSend(socket, args, buffer.First, name);
+                return;
             }
 
 #if SOCKET_STREAM_BUFFERS
@@ -147,7 +149,6 @@ namespace Pipelines.Sockets.Unofficial
             args.BufferList = GetBufferList(args, buffer);
 
             Helpers.DebugLog(name, $"## {nameof(socket.SendAsync)} {buffer.Length}");
-            SocketAwaitable.Reset(args);
             if (socket.SendAsync(args))
             {
                 Helpers.Incr(Counter.SocketSendAsyncMultiAsync);
@@ -155,13 +156,11 @@ namespace Pipelines.Sockets.Unofficial
             else
             {
                 Helpers.Incr(Counter.SocketSendAsyncMultiSync);
-                SocketAwaitable.OnCompleted(args);
+                args.Complete();
             }
-
-            return GetAwaitable(args);
         }
 
-        private static SocketAwaitable DoSendAsync(Socket socket, SocketAsyncEventArgs args, ReadOnlyMemory<byte> memory, string name)
+        private static void DoSend(Socket socket, SocketAwaitableEventArgs args, ReadOnlyMemory<byte> memory, string name)
         {
             // The BufferList getter is much less expensive then the setter.
             if (args.BufferList != null)
@@ -177,7 +176,6 @@ namespace Pipelines.Sockets.Unofficial
             args.SetBuffer(segment.Array, segment.Offset, segment.Count);
 #endif
             Helpers.DebugLog(name, $"## {nameof(socket.SendAsync)} {memory.Length}");
-            SocketAwaitable.Reset(args);
             if (socket.SendAsync(args))
             {
                 Helpers.Incr(Counter.SocketSendAsyncSingleAsync);
@@ -185,10 +183,8 @@ namespace Pipelines.Sockets.Unofficial
             else
             {
                 Helpers.Incr(Counter.SocketSendAsyncSingleSync);
-                SocketAwaitable.OnCompleted(args);
+                args.Complete();
             }
-
-            return GetAwaitable(args);
         }
 
         private static List<ArraySegment<byte>> GetBufferList(SocketAsyncEventArgs args, ReadOnlySequence<byte> buffer)

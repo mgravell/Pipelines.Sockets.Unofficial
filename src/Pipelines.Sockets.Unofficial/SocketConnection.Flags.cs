@@ -27,6 +27,11 @@ namespace Pipelines.Sockets.Unofficial
         /// During async writes, the awaiter should continue on the IO thread
         /// </summary>
         InlineWrites = 1 << 2,
+
+        /// <summary>
+        /// During async connects, the awaiter should continue on the IO thread
+        /// </summary>
+        InlineConnect = 1 << 3,
     }
     public partial class SocketConnection
     {

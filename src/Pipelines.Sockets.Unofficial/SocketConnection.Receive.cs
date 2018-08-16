@@ -8,7 +8,7 @@ namespace Pipelines.Sockets.Unofficial
 {
     public partial class SocketConnection
     {
-        private SocketAwaitable _readerAwaitable;
+        private SocketAwaitableEventArgs _readerArgs;
 
         /// <summary>
         /// The total number of bytes read from the socket
@@ -24,10 +24,9 @@ namespace Pipelines.Sockets.Unofficial
         {
             Exception error = null;
             DebugLog("starting receive loop");
-            SocketAsyncEventArgs args = null;
             try
             {
-                args = CreateArgs(InlineReads ? null : _receiveOptions.WriterScheduler, out _readerAwaitable);
+                _readerArgs = new SocketAwaitableEventArgs(InlineReads ? null : _receiveOptions.WriterScheduler);
                 while (true)
                 {
                     if (ZeroLengthReads && Socket.Available == 0)
@@ -35,9 +34,9 @@ namespace Pipelines.Sockets.Unofficial
                         DebugLog($"awaiting zero-length receive...");
 
                         Helpers.Incr(Counter.OpenReceiveReadAsync);
-                        var receive = ReceiveAsync(Socket, args, default, Name);
-                        Helpers.Incr(receive.IsCompleted ? Counter.SocketZeroLengthReceiveSync : Counter.SocketZeroLengthReceiveAsync);
-                        await receive;
+                        DoReceive(Socket, _readerArgs, default, Name);
+                        Helpers.Incr(_readerArgs.IsCompleted ? Counter.SocketZeroLengthReceiveSync : Counter.SocketZeroLengthReceiveAsync);
+                        await _readerArgs;
                         Helpers.Decr(Counter.OpenReceiveReadAsync);
                         DebugLog($"zero-length receive complete; now {Socket.Available} bytes available");
 
@@ -53,15 +52,15 @@ namespace Pipelines.Sockets.Unofficial
                         DebugLog($"initiating socket receive...");
                         Helpers.Incr(Counter.OpenReceiveReadAsync);
 
-                        var receive = ReceiveAsync(Socket, args, buffer, Name);
-                        Helpers.Incr(receive.IsCompleted ? Counter.SocketReceiveSync : Counter.SocketReceiveAsync);
-                        DebugLog(receive.IsCompleted ? "receive is sync" : "receive is async");
-                        var bytesReceived = await receive;
+                        DoReceive(Socket, _readerArgs, buffer, Name);
+                        Helpers.Incr(_readerArgs.IsCompleted ? Counter.SocketReceiveSync : Counter.SocketReceiveAsync);
+                        DebugLog(_readerArgs.IsCompleted ? "receive is sync" : "receive is async");
+                        var bytesReceived = await _readerArgs;
                         LastReceived = bytesReceived;
                         Helpers.Decr(Counter.OpenReceiveReadAsync);
 
-                        Debug.Assert(bytesReceived == args.BytesTransferred);
-                        DebugLog($"received {bytesReceived} bytes ({args.BytesTransferred}, {args.SocketError})");
+                        Debug.Assert(bytesReceived == _readerArgs.BytesTransferred);
+                        DebugLog($"received {bytesReceived} bytes ({_readerArgs.BytesTransferred}, {_readerArgs.SocketError})");
 
                         if (bytesReceived <= 0)
                         {
@@ -173,6 +172,8 @@ namespace Pipelines.Sockets.Unofficial
                 DebugLog($"marking {nameof(Input)} as complete");
                 try { _receiveFromSocket.Writer.Complete(error); } catch { }
 
+                var args = _readerArgs;
+                _readerArgs = null;
                 if (args != null) try { args.Dispose(); } catch { }
             }
 
@@ -180,7 +181,7 @@ namespace Pipelines.Sockets.Unofficial
             //return error;
         }
 
-        private static SocketAwaitable ReceiveAsync(Socket socket, SocketAsyncEventArgs args, Memory<byte> buffer, string name)
+        private static void DoReceive(Socket socket, SocketAwaitableEventArgs args, Memory<byte> buffer, string name)
         {
 #if SOCKET_STREAM_BUFFERS
             args.SetBuffer(buffer);
@@ -206,10 +207,8 @@ namespace Pipelines.Sockets.Unofficial
             }
 #endif
             Helpers.DebugLog(name, $"## {nameof(socket.ReceiveAsync)} <={buffer.Length}");
-            SocketAwaitable.Reset(args);
-            if (!socket.ReceiveAsync(args)) SocketAwaitable.OnCompleted(args);
 
-            return GetAwaitable(args);
+            if (!socket.ReceiveAsync(args)) args.Complete();
         }
     }
 }

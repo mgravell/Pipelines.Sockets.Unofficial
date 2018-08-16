@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
 {
-    partial class SocketConnection
+    public partial class SocketConnection
     {
         /// <summary>
         /// Open a new or existing socket as a client
@@ -18,6 +18,7 @@ namespace Pipelines.Sockets.Unofficial
             Func<SocketConnection, Task> onConnected = null,
             Socket socket = null, string name = null)
             => ConnectAsync(endpoint, pipeOptions, pipeOptions, connectionOptions, onConnected, socket, name);
+
         /// <summary>
         /// Open a new or existing socket as a client
         /// </summary>
@@ -39,18 +40,19 @@ namespace Pipelines.Sockets.Unofficial
 
             SetRecommendedClientOptions(socket);
 
-            using (var args = CreateArgs(null, out _))
+            using (var args = new SocketAwaitableEventArgs((connectionOptions & SocketConnectionOptions.InlineConnect) == 0 ? PipeScheduler.ThreadPool : null))
             {
                 Helpers.DebugLog(name, $"connecting to {endpoint}...");
 
-                await ConnectAsync(socket, args, endpoint);
+                if (!socket.ConnectAsync(args)) args.Complete();
+                await args;
             }
 
             Helpers.DebugLog(name, "connected");
 
             var connection = Create(socket, sendPipeOptions, receivePipeOptions, connectionOptions, name);
 
-            if (onConnected != null) await onConnected(connection);
+            if (onConnected != null) await onConnected(connection).ConfigureAwait(false);
 
             return connection;
         }
@@ -74,14 +76,5 @@ namespace Pipelines.Sockets.Unofficial
                 }
             }
         }
-
-        private static SocketAwaitable ConnectAsync(Socket socket, SocketAsyncEventArgs args, EndPoint endpoint)
-        {
-            args.RemoteEndPoint = endpoint;
-            SocketAwaitable.Reset(args);
-            if (!socket.ConnectAsync(args)) SocketAwaitable.OnCompleted(args);
-            return GetAwaitable(args);
-        }
-
     }
 }

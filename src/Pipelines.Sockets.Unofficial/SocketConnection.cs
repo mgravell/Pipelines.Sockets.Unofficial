@@ -189,12 +189,14 @@ namespace Pipelines.Sockets.Unofficial
 #if DEBUG
             GC.SuppressFinalize(this);
 #endif
-            try { Socket?.Close(); } catch { }
-            try { _readerAwaitable?.TryComplete(0, SocketError.Shutdown); } catch { }
-            try { _writerAwaitable?.TryComplete(0, SocketError.Shutdown); } catch { }
+            try { Socket.Shutdown(SocketShutdown.Receive); } catch { }
+            try { Socket.Shutdown(SocketShutdown.Send); } catch { }
+            try { Socket.Close(); } catch { }
+            try { Socket.Dispose(); } catch { }
 
-            try { Socket?.Dispose(); } catch { }
-            // Socket = null;
+            // make sure that the async operations end ... can be twitchy!
+            try { _readerArgs?.Abort(); } catch { }
+            try { _writerArgs?.Abort(); } catch { }
         }
 
         /// <summary>
@@ -224,18 +226,6 @@ namespace Pipelines.Sockets.Unofficial
         private volatile bool _sendAborted, _receiveAborted;
 #pragma warning restore CS0414, CS0649
 
-        private static SocketAsyncEventArgs CreateArgs(PipeScheduler scheduler, out SocketAwaitable awaitable)
-        {
-            awaitable = new SocketAwaitable(scheduler);
-            var args = new SocketAsyncEventArgs { UserToken = awaitable };
-            args.Completed += SocketAwaitable.Callback;
-            return args;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static SocketAwaitable GetAwaitable(SocketAsyncEventArgs args)
-            => (SocketAwaitable)args.UserToken;
-
         /// <summary>
         /// Create a SocketConnection instance over an existing socket
         /// </summary>
@@ -260,7 +250,7 @@ namespace Pipelines.Sockets.Unofficial
             if (sendPipeOptions == null) sendPipeOptions = PipeOptions.Default;
             if (receivePipeOptions == null) receivePipeOptions = PipeOptions.Default;
 
-            Socket = socket;
+            Socket = socket ?? throw new ArgumentNullException(nameof(socket));
             SocketConnectionOptions = socketConnectionOptions;
             _sendToSocket = new Pipe(sendPipeOptions);
             _receiveFromSocket = new Pipe(receivePipeOptions);
