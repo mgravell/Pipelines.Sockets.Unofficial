@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
 {
@@ -17,7 +18,7 @@ namespace Pipelines.Sockets.Unofficial
 
         private SocketAwaitableEventArgs _writerArgs;
 
-        private async void DoSendAsync()
+        private async Task DoSendAsync()
         {
             Exception error = null;
             DebugLog("starting send loop");

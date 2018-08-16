@@ -49,20 +49,20 @@ namespace Pipelines.Sockets.Unofficial
                 {
                     if (!stream.CanRead) throw new InvalidOperationException("Cannot create a read pipe over a non-readable stream");
                     _readPipe = new Pipe(receivePipeOptions);
-                    receivePipeOptions.ReaderScheduler.Schedule(obj => ((AsyncStreamPipe)obj).CopyFromStreamToReadPipe(), this);
+                    receivePipeOptions.ReaderScheduler.Schedule(obj => ((AsyncStreamPipe)obj).CopyFromStreamToReadPipe().PipelinesFireAndForget(), this);
                 }
                 if (write)
                 {
                     if (!stream.CanWrite) throw new InvalidOperationException("Cannot create a write pipe over a non-writable stream");
                     _writePipe = new Pipe(sendPipeOptions);
-                    sendPipeOptions.WriterScheduler.Schedule(obj => ((AsyncStreamPipe)obj).CopyFromWritePipeToStream(), this);
+                    sendPipeOptions.WriterScheduler.Schedule(obj => ((AsyncStreamPipe)obj).CopyFromWritePipeToStream().PipelinesFireAndForget(), this);
                 }
             }
 
             public PipeWriter Output => _writePipe?.Writer ?? throw new InvalidOperationException("Cannot write to this pipe");
             public PipeReader Input => _readPipe?.Reader ?? throw new InvalidOperationException("Cannot read from this pipe");
 
-            private async void CopyFromStreamToReadPipe()
+            private async Task CopyFromStreamToReadPipe()
             {
                 Exception err = null;
                 var writer = _readPipe.Writer;
@@ -91,7 +91,7 @@ namespace Pipelines.Sockets.Unofficial
                 writer.Complete(err);
             }
 
-            private async void CopyFromWritePipeToStream()
+            private async Task CopyFromWritePipeToStream()
             {
                 var reader = _writePipe.Reader;
                 while (true)

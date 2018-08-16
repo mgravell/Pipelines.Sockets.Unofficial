@@ -285,9 +285,9 @@ namespace Pipelines.Sockets.Unofficial
             }
         }
 
-        private static void DoReceiveAsync(object s) => ((SocketConnection)s).DoReceiveAsync();
+        private static void DoReceiveAsync(object s) => ((SocketConnection)s).DoReceiveAsync().PipelinesFireAndForget();
         private static readonly Action<object> s_DoReceiveAsync = DoReceiveAsync;
-        private static void DoSendAsync(object s) => ((SocketConnection)s).DoSendAsync();
+        private static void DoSendAsync(object s) => ((SocketConnection)s).DoSendAsync().PipelinesFireAndForget();
         private static readonly Action<object> s_DoSendAsync = DoSendAsync;
 
         private readonly PipeOptions _receiveOptions, _sendOptions;

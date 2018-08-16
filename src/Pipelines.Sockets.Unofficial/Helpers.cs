@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
 {
@@ -30,12 +31,10 @@ namespace Pipelines.Sockets.Unofficial
         SocketSendAsyncMultiSync,
         SocketSendAsyncMultiAsync,
 
-
         SocketPipeReadReadSync,
         SocketPipeReadReadAsync,
         SocketPipeFlushSync,
         SocketPipeFlushAsync,
-
 
         SocketReceiveSync,
         SocketReceiveAsync,
@@ -44,17 +43,14 @@ namespace Pipelines.Sockets.Unofficial
         SocketSendAsyncSync,
         SocketSendAsyncAsync,
 
-
         SocketAwaitableCallbackNone,
         SocketAwaitableCallbackDirect,
         SocketAwaitableCallbackSchedule,
-
 
         ThreadPoolWorkerStarted,
         ThreadPoolPushedToMainThreadPool,
         ThreadPoolScheduled,
         ThreadPoolExecuted,
-
 
         PipeStreamWrite,
         PipeStreamWriteAsync,
@@ -169,5 +165,7 @@ namespace Pipelines.Sockets.Unofficial
 #endif
         }
 
+        internal static void PipelinesFireAndForget(this Task task)
+            => task?.ContinueWith(t => GC.KeepAlive(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
     }
 }

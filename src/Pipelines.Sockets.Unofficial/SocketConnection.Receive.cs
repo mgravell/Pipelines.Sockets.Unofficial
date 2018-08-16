@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
 using System.Net.Sockets;
+using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
 {
@@ -20,7 +21,7 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public int LastReceived { get; private set; }
 
-        private async void DoReceiveAsync()
+        private async Task DoReceiveAsync()
         {
             Exception error = null;
             DebugLog("starting receive loop");
