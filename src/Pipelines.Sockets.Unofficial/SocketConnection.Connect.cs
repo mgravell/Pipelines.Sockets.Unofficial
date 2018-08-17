@@ -42,6 +42,7 @@ namespace Pipelines.Sockets.Unofficial
 
             using (var args = new SocketAwaitableEventArgs((connectionOptions & SocketConnectionOptions.InlineConnect) == 0 ? PipeScheduler.ThreadPool : null))
             {
+                args.RemoteEndPoint = endpoint;
                 Helpers.DebugLog(name, $"connecting to {endpoint}...");
 
                 if (!socket.ConnectAsync(args)) args.Complete();
