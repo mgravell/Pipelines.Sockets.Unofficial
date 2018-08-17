@@ -23,7 +23,7 @@ namespace Pipelines.Sockets.Unofficial
         public int WorkerCount { get; }
 
         private int UseThreadPoolQueueLength { get; }
-       
+
         private ThreadPriority Priority { get; }
 
         private string Name { get; }
@@ -40,6 +40,7 @@ namespace Pipelines.Sockets.Unofficial
             UseThreadPoolQueueLength = useThreadPoolQueueLength;
             if (string.IsNullOrWhiteSpace(name)) name = GetType().Name;
             Name = name.Trim();
+            Priority = priority;
             for (int i = 0; i < workerCount; i++)
             {
                 StartWorker(i);
@@ -71,10 +72,9 @@ namespace Pipelines.Sockets.Unofficial
 
         private volatile bool _disposed;
 
-        readonly Queue<WorkItem> _queue = new Queue<WorkItem>();
+        private readonly Queue<WorkItem> _queue = new Queue<WorkItem>();
         private void StartWorker(int id)
         {
-            
             var thread = new Thread(ThreadRunWorkLoop)
             {
                 Name = $"{Name}:{id}",
@@ -113,10 +113,8 @@ namespace Pipelines.Sockets.Unofficial
             }
         }
 
-        
-
-        static readonly ParameterizedThreadStart ThreadRunWorkLoop = state => ((DedicatedThreadPoolPipeScheduler)state).RunWorkLoop();
-        static readonly WaitCallback ThreadPoolRunSingleItem = state => ((DedicatedThreadPoolPipeScheduler)state).RunSingleItem();
+        private static readonly ParameterizedThreadStart ThreadRunWorkLoop = state => ((DedicatedThreadPoolPipeScheduler)state).RunWorkLoop();
+        private static readonly WaitCallback ThreadPoolRunSingleItem = state => ((DedicatedThreadPoolPipeScheduler)state).RunSingleItem();
 
         private int _availableCount;
         /// <summary>

@@ -42,7 +42,6 @@ namespace Pipelines.Sockets.Unofficial
                     }
                 }
 
-
                 if (string.IsNullOrWhiteSpace(name)) name = GetType().Name;
                 Name = name ?? GetType().Name;
                 if (read)

@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
 {
-
 #if DEBUG
 #pragma warning disable CS1591
     public static class DebugCounters
@@ -105,21 +104,27 @@ namespace Pipelines.Sockets.Unofficial
         static readonly Dictionary<string, int> _execCount = new Dictionary<string, int>();
 #endif
         [Conditional("DEBUG")]
+#pragma warning disable RCS1163 // Unused parameter.
         internal static void Incr(Counter counter)
+#pragma warning restore RCS1163 // Unused parameter.
         {
 #if DEBUG
             Interlocked.Increment(ref _counters[(int)counter]);
 #endif
         }
         [Conditional("DEBUG")]
+#pragma warning disable RCS1163 // Unused parameter.
         internal static void Decr(Counter counter)
+#pragma warning restore RCS1163 // Unused parameter.
         {
 #if DEBUG
             Interlocked.Decrement(ref _counters[(int)counter]);
 #endif
         }
         [Conditional("DEBUG")]
+#pragma warning disable RCS1163 // Unused parameter.
         internal static void Incr(MethodInfo method)
+#pragma warning restore RCS1163 // Unused parameter.
         {
 #if DEBUG
             lock(_execCount)
@@ -130,7 +135,6 @@ namespace Pipelines.Sockets.Unofficial
             }
 #endif
         }
-
 
         internal static ArraySegment<byte> GetArray(this Memory<byte> buffer) => GetArray((ReadOnlyMemory<byte>)buffer);
         internal static ArraySegment<byte> GetArray(this ReadOnlyMemory<byte> buffer)
@@ -144,7 +148,9 @@ namespace Pipelines.Sockets.Unofficial
 #endif
 
         [Conditional("VERBOSE")]
+#pragma warning disable RCS1163 // Unused parameter.
         internal static void DebugLog(string name, string message, [CallerMemberName] string caller = null)
+#pragma warning restore RCS1163 // Unused parameter.
         {
 #if VERBOSE
             
