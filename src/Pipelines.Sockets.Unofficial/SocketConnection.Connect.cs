@@ -29,6 +29,7 @@ namespace Pipelines.Sockets.Unofficial
             Func<SocketConnection, Task> onConnected = null,
             Socket socket = null, string name = null)
         {
+            AssertDependencies();
             var addressFamily = endpoint.AddressFamily == AddressFamily.Unspecified ? AddressFamily.InterNetwork : endpoint.AddressFamily;
             var protocolType = addressFamily == AddressFamily.Unix ? ProtocolType.Unspecified : ProtocolType.Tcp;
             if (socket == null)

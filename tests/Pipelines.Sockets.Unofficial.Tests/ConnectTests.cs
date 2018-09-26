@@ -13,6 +13,12 @@ namespace Pipelines.Sockets.Unofficial.Tests
 {
     public class ConnectTests
     {
+        [Fact]
+        public void CanCheckDependencies()
+        {
+            SocketConnection.AssertDependencies();
+        }
+
         private ITestOutputHelper Output { get; }
         private TestTextWriter Log { get; }
 

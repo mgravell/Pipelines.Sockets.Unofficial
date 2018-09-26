@@ -136,6 +136,36 @@ namespace Pipelines.Sockets.Unofficial
 #endif
         }
 
+        private static string s_assemblyFailureMessssage = null;
+        private static string GetAssemblyFailureMessage()
+        {
+            string ComputeAssemblyFailureMessage()
+            {
+                bool havePipe = false, haveBuffers = false;
+                try { CheckPipe(); havePipe = true; } catch { }
+                try { CheckBuffers(); haveBuffers = true; } catch { }
+
+                if (havePipe && haveBuffers) return "";
+
+                var missing = havePipe ? "System.Buffers" : (haveBuffers ? "System.IO.Pipelines" : "System.Buffers and System.IO.Pipelines");
+                return "The assembly for " + missing + " could not be loaded; this usually means a missing assembly binding redirect - try checking this, and adding any that are missing;"
+                    + " note that it is not always possible to add this redirects - for example 'azure functions v1'; it looks like you may need to use 'azure functions v2' for that - sorry, but that's out of our control";
+        }
+            return s_assemblyFailureMessssage ?? (s_assemblyFailureMessssage = ComputeAssemblyFailureMessage());
+        }
+        internal static void AssertDependencies()
+        {
+            void Throw(string msg) => throw new InvalidOperationException(msg);
+            string err = GetAssemblyFailureMessage();
+            if (!string.IsNullOrEmpty(err)) Throw(err);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void CheckPipe() => GC.KeepAlive(typeof(System.IO.Pipelines.Pipe));
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void CheckBuffers() => GC.KeepAlive(typeof(System.Buffers.ArrayPool<byte>));
+
         internal static ArraySegment<byte> GetArray(this Memory<byte> buffer) => GetArray((ReadOnlyMemory<byte>)buffer);
         internal static ArraySegment<byte> GetArray(this ReadOnlyMemory<byte> buffer)
         {

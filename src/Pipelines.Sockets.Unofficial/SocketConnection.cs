@@ -111,6 +111,11 @@ namespace Pipelines.Sockets.Unofficial
         ~SocketConnection() => Helpers.Incr(Counter.SocketConnectionCollectedWithoutDispose);
 #endif
 
+        /// <summary>
+        /// Check that all dependencies are available
+        /// </summary>
+        public static void AssertDependencies() => Helpers.AssertDependencies();
+
         private int _socketShutdownKind;
         /// <summary>
         /// When possible, determines how the pipe first reached a close state
@@ -232,8 +237,8 @@ namespace Pipelines.Sockets.Unofficial
         public static SocketConnection Create(Socket socket, PipeOptions pipeOptions = null,
             SocketConnectionOptions socketConnectionOptions = SocketConnectionOptions.None, string name = null)
         {
-            var conn = new SocketConnection(socket, pipeOptions, pipeOptions, socketConnectionOptions, name);
-            return conn;
+            AssertDependencies();
+            return new SocketConnection(socket, pipeOptions, pipeOptions, socketConnectionOptions, name);
         }
 
         /// <summary>
@@ -241,7 +246,10 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public static SocketConnection Create(Socket socket, PipeOptions sendPipeOptions, PipeOptions receivePipeOptions,
             SocketConnectionOptions socketConnectionOptions = SocketConnectionOptions.None, string name = null)
-            => new SocketConnection(socket, sendPipeOptions, receivePipeOptions, socketConnectionOptions, name);
+        {
+            AssertDependencies();
+            return new SocketConnection(socket, sendPipeOptions, receivePipeOptions, socketConnectionOptions, name);
+        }
 
         private SocketConnection(Socket socket, PipeOptions sendPipeOptions, PipeOptions receivePipeOptions, SocketConnectionOptions socketConnectionOptions, string name = null)
         {
