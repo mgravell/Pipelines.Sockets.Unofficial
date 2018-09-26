@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <!-- note: net46 causes binding redirect problems on System.Buffers; see conversation https://github.com/mgravell/Pipelines.Sockets.Unofficial/pull/4 -->
-    <TargetFrameworks>netstandard2.0;netcoreapp2.1</TargetFrameworks>
+    <TargetFrameworks>net461;net472;netstandard2.0;netcoreapp2.1</TargetFrameworks>
     <SignAssembly>true</SignAssembly>
     <DelaySign>false</DelaySign>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
