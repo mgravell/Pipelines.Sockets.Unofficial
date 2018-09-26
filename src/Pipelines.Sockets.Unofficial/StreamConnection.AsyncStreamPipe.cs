@@ -128,11 +128,11 @@ namespace Pipelines.Sockets.Unofficial
                         if (result.IsCanceled) break;
                         if (buffer.IsEmpty && result.IsCompleted) break; // that's all, folks
                     }
-                    reader.Complete(null);
+                    try { reader.Complete(null); } catch { }
                 }
                 catch (Exception ex)
                 {
-                    reader.Complete(ex);
+                    try { reader.Complete(ex); } catch { }
                 }
             }
 
