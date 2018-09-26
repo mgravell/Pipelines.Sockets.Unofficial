@@ -93,38 +93,46 @@ namespace Pipelines.Sockets.Unofficial
             private async Task CopyFromWritePipeToStream()
             {
                 var reader = _writePipe.Reader;
-                while (true)
+                try
                 {
-                    DebugLog(nameof(reader.ReadAsync));
-                    // ask to be awakened by work
-                    var pending = reader.ReadAsync();
-                    if (!pending.IsCompleted)
+                    while (true)
                     {
-                        // then: not currently anything to do synchronously; this
-                        // would be a great time to flush! this *could*
-                        // result in over-flushing if reader and writer
-                        // are *just about* in sync, but... it'll do
-                        DebugLog($"flushing stream...");
-                        await _inner.FlushAsync().ConfigureAwait(false);
-                        DebugLog($"flushed");
-                    }
-                    var result = await pending;
-                    ReadOnlySequence<byte> buffer;
-                    do
-                    {
-                        buffer = result.Buffer;
-                        DebugLog($"complete: {result.IsCompleted}; canceled: {result.IsCanceled}; bytes: {buffer.Length}");
-                        if (!buffer.IsEmpty)
+                        DebugLog(nameof(reader.ReadAsync));
+                        // ask to be awakened by work
+                        var pending = reader.ReadAsync();
+                        if (!pending.IsCompleted)
                         {
-                            await WriteBuffer(_inner, buffer, Name).ConfigureAwait(false);
-                            DebugLog($"bytes written; marking consumed");
-                            reader.AdvanceTo(buffer.End);
+                            // then: not currently anything to do synchronously; this
+                            // would be a great time to flush! this *could*
+                            // result in over-flushing if reader and writer
+                            // are *just about* in sync, but... it'll do
+                            DebugLog($"flushing stream...");
+                            await _inner.FlushAsync().ConfigureAwait(false);
+                            DebugLog($"flushed");
                         }
-                    } while (!(buffer.IsEmpty && result.IsCompleted)
-                        && reader.TryRead(out result));
+                        var result = await pending;
+                        ReadOnlySequence<byte> buffer;
+                        do
+                        {
+                            buffer = result.Buffer;
+                            DebugLog($"complete: {result.IsCompleted}; canceled: {result.IsCanceled}; bytes: {buffer.Length}");
+                            if (!buffer.IsEmpty)
+                            {
+                                await WriteBuffer(_inner, buffer, Name).ConfigureAwait(false);
+                                DebugLog($"bytes written; marking consumed");
+                                reader.AdvanceTo(buffer.End);
+                            }
+                        } while (!(buffer.IsEmpty && result.IsCompleted)
+                            && reader.TryRead(out result));
 
-                    if (result.IsCanceled) break;
-                    if (buffer.IsEmpty && result.IsCompleted) break; // that's all, folks
+                        if (result.IsCanceled) break;
+                        if (buffer.IsEmpty && result.IsCompleted) break; // that's all, folks
+                    }
+                    reader.Complete(null);
+                }
+                catch (Exception ex)
+                {
+                    reader.Complete(ex);
                 }
             }
 
