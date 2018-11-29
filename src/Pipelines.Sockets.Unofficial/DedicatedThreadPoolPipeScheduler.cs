@@ -13,6 +13,16 @@ namespace Pipelines.Sockets.Unofficial
     public sealed class DedicatedThreadPoolPipeScheduler : PipeScheduler, IDisposable
     {
         /// <summary>
+        /// Reusable shared scheduler instance
+        /// </summary>
+        public static DedicatedThreadPoolPipeScheduler Default => StaticContext.Instance;
+
+        private static class StaticContext
+        {   // locating here rather than as a static field on DedicatedThreadPoolPipeScheduler so that it isn't instantiated too eagerly
+            internal static readonly DedicatedThreadPoolPipeScheduler Instance = new DedicatedThreadPoolPipeScheduler(nameof(Default));
+        }
+
+        /// <summary>
         /// The name of the pool
         /// </summary>
         public override string ToString() => Name;
