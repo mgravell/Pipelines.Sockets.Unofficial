@@ -4,13 +4,14 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
 {
     public static partial class StreamConnection
     {
-        private sealed class AsyncStreamPipe : IDuplexPipe
+        private sealed class AsyncStreamPipe : IMeasuredDuplexPipe
         {
             [Conditional("VERBOSE")]
             private void DebugLog(string message = null, [CallerMemberName] string caller = null) => Helpers.DebugLog(Name, message, caller);
@@ -78,6 +79,8 @@ namespace Pipelines.Sockets.Unofficial
 #endif
                         if (read <= 0) break;
                         writer.Advance(read);
+                        Interlocked.Add(ref _totalBytesSent, read);
+
                         // need to flush regularly, a: to respect backoffs, and b: to awaken the reader
                         var flush = await writer.FlushAsync().ConfigureAwait(false);
                         if (flush.IsCompleted || flush.IsCanceled) break;
@@ -89,6 +92,11 @@ namespace Pipelines.Sockets.Unofficial
                 }
                 writer.Complete(err);
             }
+
+            private long _totalBytesSent, _totalBytesReceived;
+
+            long IMeasuredDuplexPipe.TotalBytesSent => Interlocked.Read(ref _totalBytesSent);
+            long IMeasuredDuplexPipe.TotalBytesReceived => Interlocked.Read(ref _totalBytesReceived);
 
             private async Task CopyFromWritePipeToStream()
             {
@@ -119,9 +127,10 @@ namespace Pipelines.Sockets.Unofficial
                             if (!buffer.IsEmpty)
                             {
                                 await WriteBuffer(_inner, buffer, Name).ConfigureAwait(false);
+                                Interlocked.Add(ref _totalBytesReceived, buffer.Length);
                                 DebugLog($"bytes written; marking consumed");
-                                reader.AdvanceTo(buffer.End);
                             }
+                            reader.AdvanceTo(buffer.End);
                         } while (!(buffer.IsEmpty && result.IsCompleted)
                             && reader.TryRead(out result));
 

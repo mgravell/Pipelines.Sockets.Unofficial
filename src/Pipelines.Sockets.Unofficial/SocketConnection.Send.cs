@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
@@ -14,7 +15,11 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// The total number of bytes sent to the socket
         /// </summary>
-        public long BytesSent { get; private set; }
+        public long BytesSent => Interlocked.Read(ref _totalBytesSent);
+
+        long IMeasuredDuplexPipe.TotalBytesSent => BytesSent;
+
+        private long _totalBytesSent;
 
         private SocketAwaitableEventArgs _writerArgs;
 
@@ -56,7 +61,7 @@ namespace Pipelines.Sockets.Unofficial
                             Helpers.Incr(Counter.OpenSendWriteAsync);
                             DoSend(Socket, _writerArgs, buffer, Name);
                             Helpers.Incr(_writerArgs.IsCompleted ? Counter.SocketSendAsyncSync : Counter.SocketSendAsyncAsync);
-                            BytesSent += await _writerArgs;
+                            Interlocked.Add(ref _totalBytesSent, await _writerArgs);
                             Helpers.Decr(Counter.OpenSendWriteAsync);
                         }
                         else if (result.IsCompleted)

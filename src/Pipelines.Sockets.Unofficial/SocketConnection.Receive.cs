@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
@@ -14,12 +15,16 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// The total number of bytes read from the socket
         /// </summary>
-        public long BytesRead { get; private set; }
+        public long BytesRead => Interlocked.Read(ref _totalBytesReceived);
 
         /// <summary>
         /// The number of bytes received in the last read
         /// </summary>
         public int LastReceived { get; private set; }
+
+        private long _totalBytesReceived;
+
+        long IMeasuredDuplexPipe.TotalBytesReceived => BytesRead;
 
         private async Task DoReceiveAsync()
         {
@@ -71,7 +76,7 @@ namespace Pipelines.Sockets.Unofficial
                         }
 
                         _receiveFromSocket.Writer.Advance(bytesReceived);
-                        BytesRead += bytesReceived;
+                        Interlocked.Add(ref _totalBytesReceived, bytesReceived);
                     }
                     finally
                     {

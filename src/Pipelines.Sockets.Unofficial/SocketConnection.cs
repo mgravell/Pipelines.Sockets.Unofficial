@@ -105,7 +105,7 @@ namespace Pipelines.Sockets.Unofficial
     /// <summary>
     /// Reperesents a duplex pipe over managed sockets
     /// </summary>
-    public sealed partial class SocketConnection : IDuplexPipe, IDisposable
+    public sealed partial class SocketConnection : IMeasuredDuplexPipe, IDisposable
     {
 #if DEBUG
         ~SocketConnection() => Helpers.Incr(Counter.SocketConnectionCollectedWithoutDispose);
