@@ -161,13 +161,13 @@ namespace Pipelines.Sockets.Unofficial
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static void CheckPipe() => GC.KeepAlive(typeof(System.IO.Pipelines.Pipe));
+        private static void CheckPipe() => GC.KeepAlive(typeof(System.IO.Pipelines.Pipe));
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static void CheckBuffers() => GC.KeepAlive(typeof(System.Buffers.ArrayPool<byte>));
+        private static void CheckBuffers() => GC.KeepAlive(typeof(System.Buffers.ArrayPool<byte>));
 
-        internal static ArraySegment<byte> GetArray(this Memory<byte> buffer) => GetArray((ReadOnlyMemory<byte>)buffer);
-        internal static ArraySegment<byte> GetArray(this ReadOnlyMemory<byte> buffer)
+        internal static ArraySegment<byte> GetArray(this in Memory<byte> buffer) => GetArray((ReadOnlyMemory<byte>)buffer);
+        internal static ArraySegment<byte> GetArray(this in ReadOnlyMemory<byte> buffer)
         {
             if (!MemoryMarshal.TryGetArray<byte>(buffer, out var segment)) throw new InvalidOperationException("MemoryMarshal.TryGetArray<byte> could not provide an array");
             return segment;

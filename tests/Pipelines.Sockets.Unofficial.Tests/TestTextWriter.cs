@@ -47,7 +47,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 {
                     tmp2.WriteLine(value);
                 }
-            }            
+            }
         }
 
         [Conditional("DEBUG")]
@@ -56,7 +56,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             var thread = Thread.CurrentThread;
             var name = thread.Name;
             if (string.IsNullOrWhiteSpace(name)) name = thread.ManagedThreadId.ToString();
-            
+
             WriteLine($"[{name}:{caller}] {message}");
         }
 

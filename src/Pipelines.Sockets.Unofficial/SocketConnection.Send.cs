@@ -135,7 +135,7 @@ namespace Pipelines.Sockets.Unofficial
             //return error;
         }
 
-        private static void DoSend(Socket socket, SocketAwaitableEventArgs args, ReadOnlySequence<byte> buffer, string name)
+        private static void DoSend(Socket socket, SocketAwaitableEventArgs args, in ReadOnlySequence<byte> buffer, string name)
         {
             if (buffer.IsSingleSegment)
             {
@@ -166,7 +166,7 @@ namespace Pipelines.Sockets.Unofficial
             }
         }
 
-        private static void DoSend(Socket socket, SocketAwaitableEventArgs args, ReadOnlyMemory<byte> memory, string name)
+        private static void DoSend(Socket socket, SocketAwaitableEventArgs args, in ReadOnlyMemory<byte> memory, string name)
         {
             // The BufferList getter is much less expensive then the setter.
             if (args.BufferList != null)
@@ -193,7 +193,7 @@ namespace Pipelines.Sockets.Unofficial
             }
         }
 
-        private static List<ArraySegment<byte>> GetBufferList(SocketAsyncEventArgs args, ReadOnlySequence<byte> buffer)
+        private static List<ArraySegment<byte>> GetBufferList(SocketAsyncEventArgs args, in ReadOnlySequence<byte> buffer)
         {
             Helpers.Incr(Counter.SocketGetBufferList);
             Debug.Assert(!buffer.IsEmpty);

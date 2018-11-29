@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
 {
-    partial class StreamConnection
+    public static partial class StreamConnection
     {
         /// <summary>
         /// Exposes a Stream as a duplex pipe
@@ -31,7 +31,6 @@ namespace Pipelines.Sockets.Unofficial
 
             private Action _processDataFromAwaiter;
             private Action ProcessDataFromAwaiter => _processDataFromAwaiter ?? (_processDataFromAwaiter = ProcessDataFromAwaiterImpl);
-
 
             private readonly PipeReader _reader;
             private readonly PipeWriter _writer;
@@ -99,14 +98,14 @@ namespace Pipelines.Sockets.Unofficial
                 Helpers.Incr(Counter.PipeStreamRead);
                 return Read(new Memory<byte>(buffer, offset, count));
             }
-            private int Read(Memory<byte> memory)
+            private int Read(in Memory<byte> memory)
             {
                 var pendingRead = PendingRead;
                 lock (pendingRead.SyncLock)
                 {
                     pendingRead.AssertAvailable();
                     if (memory.IsEmpty) return 0;
-                    
+
                     if (_reader.TryRead(out var result))
                     {
                         return ConsumeBytes(result, memory.Span);
@@ -161,7 +160,7 @@ namespace Pipelines.Sockets.Unofficial
                 FlushImpl();
             }
 
-            private void WriteImpl(ReadOnlySpan<byte> from)
+            private void WriteImpl(in ReadOnlySpan<byte> from)
             {
                 AssertCanWrite();
                 int offset = 0;
@@ -237,6 +236,7 @@ namespace Pipelines.Sockets.Unofficial
                         Monitor.PulseAll(this);
                     }
                 };
+
                 public void Wait()
                 {
                     lock (this)
@@ -244,7 +244,6 @@ namespace Pipelines.Sockets.Unofficial
                         while (!isSet) Monitor.Wait(this);
                     }
                 }
-
             }
             /// <summary>
             /// Signal that the written data should be read; this may awaken the reader if inactive,
@@ -281,13 +280,13 @@ namespace Pipelines.Sockets.Unofficial
                 Helpers.Incr(Counter.PipeStreamFlushAsync);
                 return FlushAsyncImpl(cancellationToken);
             }
-            private Task FlushAsyncImpl(CancellationToken cancellationToken)
+            private Task FlushAsyncImpl(in CancellationToken cancellationToken)
             {
                 var flush = _writer.FlushAsync(cancellationToken);
                 return flush.IsCompletedSuccessfully ? Task.CompletedTask : flush.AsTask();
             }
 
-            class AsyncWriteResult : IAsyncResult
+            private class AsyncWriteResult : IAsyncResult
             {
                 private static readonly ManualResetEvent _alwaysSet = new ManualResetEvent(true);
                 public bool IsCompleted => true;
@@ -377,7 +376,7 @@ namespace Pipelines.Sockets.Unofficial
                     return pendingRead.ConsumeBytesReadAndReset();
                 }
             }
-            int ConsumeBytes(ReadResult from, Span<byte> to)
+            private int ConsumeBytes(ReadResult from, Span<byte> to)
             {
                 int bytesRead = 0;
                 if (!from.IsCanceled)
@@ -422,17 +421,17 @@ namespace Pipelines.Sockets.Unofficial
                 Helpers.Incr(Counter.PipeStreamReadAsync);
                 return ReadAsyncImpl(new Memory<byte>(buffer, offset, count), cancellationToken).AsTask();
             }
-            private ValueTask<int> ReadAsyncImpl(Memory<byte> memory, CancellationToken cancellationToken)
+            private ValueTask<int> ReadAsyncImpl(in Memory<byte> memory, in CancellationToken cancellationToken)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                AssertCanRead();                
+                AssertCanRead();
                 var pendingRead = PendingRead;
                 lock (pendingRead.SyncLock)
                 {
                     pendingRead.AssertAvailable();
 
                     if (memory.IsEmpty) return new ValueTask<int>(0);
-                    
+
                     DebugLog(nameof(_reader.TryRead));
                     if (_reader.TryRead(out ReadResult result))
                     {
@@ -475,11 +474,10 @@ namespace Pipelines.Sockets.Unofficial
                     var result = pendingRead.ReadAwaiter.GetResult();
                     pendingRead.ReadAwaiter = default;
                     ConsumeBytesAndExecuteContiuations(result);
-                }                
+                }
             }
             private void ConsumeBytesAndExecuteContiuations(ReadResult result)
             {
-                
                 var pendingRead = PendingRead;
                 DebugLog($"complete: {result.IsCompleted}; canceled: {result.IsCanceled}; bytes: {result.Buffer.Length}");
                 int bytes = ConsumeBytes(result, pendingRead.Memory.Span);
@@ -513,7 +511,7 @@ namespace Pipelines.Sockets.Unofficial
                                 wasSet = task.TrySetResult(bytes);
                             }
                             DebugLog(wasSet ? "task outcome set" : "unable to set task outcome");
-                        }                        
+                        }
                         break;
                     case PendingAsyncMode.Synchronous:
                         Monitor.PulseAll(pendingRead.SyncLock);
@@ -527,7 +525,7 @@ namespace Pipelines.Sockets.Unofficial
                 private int BytesRead { get; set; }
 
                 internal object SyncLock => this;
-                internal void Init(AsyncCallback callback, object asyncState, Memory<byte> memory,
+                internal void Init(AsyncCallback callback, object asyncState, in Memory<byte> memory,
                     TaskCompletionSource<int> tcs, PendingAsyncMode asyncMode)
                 {
                     AssertAvailable();
@@ -574,7 +572,7 @@ namespace Pipelines.Sockets.Unofficial
                 internal TaskCompletionSource<int> TaskSource { get; set; }
                 public bool IsCompleted { get; internal set; }
 
-                ManualResetEvent _waitHandle;
+                private ManualResetEvent _waitHandle;
                 public WaitHandle AsyncWaitHandle => _waitHandle ?? (_waitHandle = new ManualResetEvent(IsCompleted));
                 public object AsyncState { get; private set; }
                 public bool CompletedSynchronously { get; internal set; }

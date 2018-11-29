@@ -187,7 +187,7 @@ namespace Pipelines.Sockets.Unofficial
             //return error;
         }
 
-        private static void DoReceive(Socket socket, SocketAwaitableEventArgs args, Memory<byte> buffer, string name)
+        private static void DoReceive(Socket socket, SocketAwaitableEventArgs args, in Memory<byte> buffer, string name)
         {
 #if SOCKET_STREAM_BUFFERS
             args.SetBuffer(buffer);

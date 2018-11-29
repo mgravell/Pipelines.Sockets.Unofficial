@@ -145,7 +145,7 @@ namespace Pipelines.Sockets.Unofficial
                 }
             }
 
-            private static Task WriteBuffer(Stream target, ReadOnlySequence<byte> data, string name)
+            private static Task WriteBuffer(Stream target, in ReadOnlySequence<byte> data, string name)
             {
                 async Task WriteBufferAwaited(Stream ttarget, ReadOnlySequence<byte> ddata, string nname)
                 {
