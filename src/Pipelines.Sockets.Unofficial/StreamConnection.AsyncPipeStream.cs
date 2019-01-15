@@ -98,7 +98,9 @@ namespace Pipelines.Sockets.Unofficial
                 Helpers.Incr(Counter.PipeStreamRead);
                 return Read(new Memory<byte>(buffer, offset, count));
             }
-            private int Read(in Memory<byte> memory)
+#pragma warning disable RCS1231 // Make parameter ref read-only.
+            private int Read(Memory<byte> memory)
+#pragma warning restore RCS1231 // Make parameter ref read-only.
             {
                 var pendingRead = PendingRead;
                 lock (pendingRead.SyncLock)
@@ -160,7 +162,9 @@ namespace Pipelines.Sockets.Unofficial
                 FlushImpl();
             }
 
-            private void WriteImpl(in ReadOnlySpan<byte> from)
+#pragma warning disable RCS1231 // Make parameter ref read-only.
+            private void WriteImpl(ReadOnlySpan<byte> from)
+#pragma warning restore RCS1231 // Make parameter ref read-only.
             {
                 AssertCanWrite();
                 int offset = 0;
@@ -421,7 +425,10 @@ namespace Pipelines.Sockets.Unofficial
                 Helpers.Incr(Counter.PipeStreamReadAsync);
                 return ReadAsyncImpl(new Memory<byte>(buffer, offset, count), cancellationToken).AsTask();
             }
-            private ValueTask<int> ReadAsyncImpl(in Memory<byte> memory, in CancellationToken cancellationToken)
+
+#pragma warning disable RCS1231 // Make parameter ref read-only.
+            private ValueTask<int> ReadAsyncImpl(Memory<byte> memory, in CancellationToken cancellationToken)
+#pragma warning restore RCS1231 // Make parameter ref read-only.
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 AssertCanRead();
@@ -525,7 +532,9 @@ namespace Pipelines.Sockets.Unofficial
                 private int BytesRead { get; set; }
 
                 internal object SyncLock => this;
-                internal void Init(AsyncCallback callback, object asyncState, in Memory<byte> memory,
+#pragma warning disable RCS1231 // Make parameter ref read-only.
+                internal void Init(AsyncCallback callback, object asyncState, Memory<byte> memory,
+#pragma warning restore RCS1231 // Make parameter ref read-only.
                     TaskCompletionSource<int> tcs, PendingAsyncMode asyncMode)
                 {
                     AssertAvailable();

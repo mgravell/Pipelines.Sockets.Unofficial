@@ -187,7 +187,9 @@ namespace Pipelines.Sockets.Unofficial
             //return error;
         }
 
-        private static void DoReceive(Socket socket, SocketAwaitableEventArgs args, in Memory<byte> buffer, string name)
+#pragma warning disable RCS1231 // Make parameter ref read-only.
+        private static void DoReceive(Socket socket, SocketAwaitableEventArgs args, Memory<byte> buffer, string name)
+#pragma warning restore RCS1231 // Make parameter ref read-only.
         {
 #if SOCKET_STREAM_BUFFERS
             args.SetBuffer(buffer);

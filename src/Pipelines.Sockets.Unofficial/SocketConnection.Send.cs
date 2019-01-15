@@ -166,7 +166,9 @@ namespace Pipelines.Sockets.Unofficial
             }
         }
 
-        private static void DoSend(Socket socket, SocketAwaitableEventArgs args, in ReadOnlyMemory<byte> memory, string name)
+#pragma warning disable RCS1231 // Make parameter ref read-only.
+        private static void DoSend(Socket socket, SocketAwaitableEventArgs args, ReadOnlyMemory<byte> memory, string name)
+#pragma warning restore RCS1231 // Make parameter ref read-only.
         {
             // The BufferList getter is much less expensive then the setter.
             if (args.BufferList != null)

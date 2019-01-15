@@ -166,8 +166,10 @@ namespace Pipelines.Sockets.Unofficial
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static void CheckBuffers() => GC.KeepAlive(typeof(System.Buffers.ArrayPool<byte>));
 
-        internal static ArraySegment<byte> GetArray(this in Memory<byte> buffer) => GetArray((ReadOnlyMemory<byte>)buffer);
-        internal static ArraySegment<byte> GetArray(this in ReadOnlyMemory<byte> buffer)
+#pragma warning disable RCS1231 // Make parameter ref read-only.
+        internal static ArraySegment<byte> GetArray(this Memory<byte> buffer) => GetArray((ReadOnlyMemory<byte>)buffer);
+        internal static ArraySegment<byte> GetArray(this ReadOnlyMemory<byte> buffer)
+#pragma warning restore RCS1231 // Make parameter ref read-only.
         {
             if (!MemoryMarshal.TryGetArray<byte>(buffer, out var segment)) throw new InvalidOperationException("MemoryMarshal.TryGetArray<byte> could not provide an array");
             return segment;

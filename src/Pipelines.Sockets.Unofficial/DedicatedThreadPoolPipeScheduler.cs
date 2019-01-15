@@ -165,17 +165,14 @@ namespace Pipelines.Sockets.Unofficial
                 WorkItem next;
                 lock (_queue)
                 {
-                    if (_queue.Count == 0)
+                    while (_queue.Count == 0)
                     {
-                        do
-                        {
-                            if (_disposed) break;
-                            _availableCount++;
-                            Monitor.Wait(_queue);
-                            _availableCount--;
-                        } while (_queue.Count == 0);
+                        if (_disposed) break;
+                        _availableCount++;
+                        Monitor.Wait(_queue);
+                        _availableCount--;
                     }
-                    if(_queue.Count == 0)
+                    if (_queue.Count == 0)
                     {
                         if (_disposed) break;
                         else continue;
