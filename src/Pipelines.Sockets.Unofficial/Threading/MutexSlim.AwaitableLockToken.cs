@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial.Threading
 {
@@ -80,6 +81,25 @@ namespace Pipelines.Sockets.Unofficial.Threading
             /// Indicates whether this awaitable result completed without an asynchronous step
             /// </summary>
             public bool CompletedSynchronously => _pending == null;
+
+            /// <summary>
+            /// Exposes the async operation as a ValueTask - note that this requires AsTask to be supported for full support
+            /// </summary>
+            internal ValueTask<LockToken> AsTask()
+            {
+                if (_pending != null) return new ValueTask<LockToken>(_pending.AsTask());
+                if (_token.IsCanceled) return GetCanceled();
+                return new ValueTask<LockToken>(_token);
+            }
+
+            static Task<LockToken> s_canceledTask;
+            internal static ValueTask<LockToken> GetCanceled() => new ValueTask<LockToken>(s_canceledTask ?? (s_canceledTask = CreateCanceledLockTokenTask()));
+            private static Task<LockToken> CreateCanceledLockTokenTask()
+            {
+                var tcs = new TaskCompletionSource<LockToken>();
+                tcs.SetCanceled();
+                return tcs.Task;
+            }
         }
     }
 }

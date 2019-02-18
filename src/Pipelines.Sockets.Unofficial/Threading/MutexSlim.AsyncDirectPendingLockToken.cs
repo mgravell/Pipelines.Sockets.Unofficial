@@ -1,30 +1,27 @@
 ﻿using System;
 using System.IO.Pipelines;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial.Threading
 {
     public partial class MutexSlim
     {
-        internal sealed class AsyncPendingLockToken : PendingLockToken
+        private sealed class AsyncDirectPendingLockToken : AsyncPendingLockToken
         {
             private Action _continuation;
-            private readonly MutexSlim _mutex;
 
-            public AsyncPendingLockToken(MutexSlim mutex, uint start) : base(start)
-                => _mutex = mutex;
+            public AsyncDirectPendingLockToken(MutexSlim mutex, uint start) : base(mutex, start) { }
 
             protected override void OnAssigned()
             {
                 var callback = Interlocked.Exchange(ref _continuation, null);
-                if (callback != null)
-                {
-                    var scheduler = _mutex?._scheduler ?? PipeScheduler.ThreadPool;
-                    scheduler.Schedule(s => ((Action)s).Invoke(), callback);
-                }
+                if (callback != null) Schedule(s => ((Action)s).Invoke(), callback);
             }
 
-            internal void OnCompleted(Action continuation)
+            public override Task<LockToken> AsTask() => throw new NotSupportedException(nameof(AsTask));
+
+            public override void OnCompleted(Action continuation)
             {
                 if (IsCompleted)
                 {
@@ -38,8 +35,6 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
                 void ThrowNotSupported() => throw new NotSupportedException($"Only one pending continuation is permitted");
             }
-
-            internal LockToken GetResultAsToken() => new LockToken(_mutex, GetResult()).AssertNotCanceled();
         }
     }
 }

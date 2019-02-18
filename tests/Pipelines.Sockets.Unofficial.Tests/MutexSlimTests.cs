@@ -1,4 +1,5 @@
 ﻿using Pipelines.Sockets.Unofficial.Threading;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -8,7 +9,137 @@ namespace Pipelines.Sockets.Unofficial.Tests
 {
     public class MutexSlimTests
     {
-        private readonly MutexSlim _noTimeoutMux = new MutexSlim(0), _timeoutMux = new MutexSlim(1000);
+        private readonly MutexSlim _zeroTimeoutMux = new MutexSlim(0), _timeoutMux = new MutexSlim(1000, DedicatedThreadPoolPipeScheduler.Default);
+
+        class DummySyncContext : SynchronizationContext
+        {
+            public Guid Id { get; }
+            public DummySyncContext(Guid guid) => Id = guid;
+
+            public static bool Is(Guid id) => Current is DummySyncContext dsc && dsc.Id == id;
+
+            public override void Post(SendOrPostCallback d, object state)
+                => ThreadPool.QueueUserWorkItem(_ => Send(d, state), null);
+
+            public override void Send(SendOrPostCallback d, object state)
+            {
+                var original = Current;
+                try
+                {
+                    SetSynchronizationContext(this);
+                    d.Invoke(state);
+                }
+                finally
+                {
+                    SetSynchronizationContext(original);
+                }
+            }
+        }
+
+        [Fact]
+        public async Task SyncContextNotPreservedByTryWaitAsync()
+        {
+            var taken = _timeoutMux.TryWait();
+            Assert.True(taken.Success, "obtained original lock");
+
+            var id = Guid.NewGuid();
+            var orig = SynchronizationContext.Current;
+            try
+            {
+                SynchronizationContext.SetSynchronizationContext(new DummySyncContext(id));
+                Assert.True(DummySyncContext.Is(id));
+
+                var pending = _timeoutMux.TryWaitAsync();
+                Assert.False(pending.IsCompleted);
+
+                ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(100); taken.Dispose(); }, null);
+                // note that _timeoutMux uses DedicatedThreadPoolPipeScheduler to
+                // force us to be on a different thread here (since [Fact] won't be using that thread)
+                int originalThread = Environment.CurrentManagedThreadId;
+                using (var token2 = await pending)
+                {
+                    int awaitedThread = Environment.CurrentManagedThreadId;
+                    Assert.True(token2.Success, "obtained lock after dispose");
+
+                    Assert.NotEqual(originalThread, awaitedThread);
+                    Assert.False(DummySyncContext.Is(id));
+                }
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(orig);
+            }
+        }
+
+        [Fact]
+        public async Task SyncContextPreservedByTryWaitValueTaskAsync()
+        {
+            var taken = _timeoutMux.TryWait();
+            Assert.True(taken.Success, "obtained original lock");
+
+            var id = Guid.NewGuid();
+            var orig = SynchronizationContext.Current;
+            try
+            {
+                SynchronizationContext.SetSynchronizationContext(new DummySyncContext(id));
+                Assert.True(DummySyncContext.Is(id));
+
+                var pending = _timeoutMux.TryWaitAsValueTaskAsync();
+                Assert.False(pending.IsCompleted);
+
+                ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(100); taken.Dispose(); }, null);
+                // note that _timeoutMux uses DedicatedThreadPoolPipeScheduler to
+                // force us to be on a different thread here (since [Fact] won't be using that thread)
+                int originalThread = Environment.CurrentManagedThreadId;
+                using (var token2 = await pending)
+                {
+                    int awaitedThread = Environment.CurrentManagedThreadId;
+                    Assert.True(token2.Success, "obtained lock after dispose");
+
+                    Assert.NotEqual(originalThread, awaitedThread);
+                    Assert.True(DummySyncContext.Is(id));
+                }
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(orig);
+            }
+        }
+
+        [Fact]
+        public async Task SyncContextNotPreservedByTryWaitValueTaskWithConfigureAwaitAsync()
+        {
+            var taken = _timeoutMux.TryWait();
+            Assert.True(taken.Success, "obtained original lock");
+
+            var id = Guid.NewGuid();
+            var orig = SynchronizationContext.Current;
+            try
+            {
+                SynchronizationContext.SetSynchronizationContext(new DummySyncContext(id));
+                Assert.True(DummySyncContext.Is(id));
+
+                var pending = _timeoutMux.TryWaitAsValueTaskAsync();
+                Assert.False(pending.IsCompleted);
+
+                ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(100); taken.Dispose(); }, null);
+                // note that _timeoutMux uses DedicatedThreadPoolPipeScheduler to
+                // force us to be on a different thread here (since [Fact] won't be using that thread)
+                int originalThread = Environment.CurrentManagedThreadId;
+                using (var token2 = await pending.ConfigureAwait(false))
+                {
+                    int awaitedThread = Environment.CurrentManagedThreadId;
+                    Assert.True(token2.Success, "obtained lock after dispose");
+
+                    Assert.NotEqual(originalThread, awaitedThread);
+                    Assert.False(DummySyncContext.Is(id));
+                }
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(orig);
+            }
+        }
 
         [Fact]
         public void CanObtain()
@@ -19,10 +150,10 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
             for (int i = 0; i < 2; i++)
             {
-                using (var outer = _noTimeoutMux.TryWait())
+                using (var outer = _zeroTimeoutMux.TryWait())
                 {
                     Assert.True(outer.Success);
-                    using (var inner = _noTimeoutMux.TryWait())
+                    using (var inner = _zeroTimeoutMux.TryWait())
                     {
                         Assert.False(inner.Success);
                     }
@@ -79,14 +210,14 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
             for (int i = 0; i < 2; i++)
             {
-                var awaitable = _noTimeoutMux.TryWaitAsync();
+                var awaitable = _zeroTimeoutMux.TryWaitAsync();
                 Assert.True(awaitable.IsCompleted, nameof(awaitable.IsCompleted));
                 Assert.True(awaitable.CompletedSynchronously, nameof(awaitable.CompletedSynchronously));
                 using (var outer = await awaitable)
                 {
                     Assert.True(outer.Success, nameof(outer.Success));
 
-                    awaitable = _noTimeoutMux.TryWaitAsync();
+                    awaitable = _zeroTimeoutMux.TryWaitAsync();
                     Assert.True(awaitable.IsCompleted, nameof(awaitable.IsCompleted) + " inner");
                     Assert.True(awaitable.CompletedSynchronously, nameof(awaitable.CompletedSynchronously) + " inner");
                     using (var inner = await awaitable)

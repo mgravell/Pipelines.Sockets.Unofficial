@@ -1,11 +1,26 @@
-﻿using System.IO.Pipelines;
+﻿using System;
+using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial.Threading
 {
     public partial class MutexSlim
     {
+        internal abstract class AsyncPendingLockToken : PendingLockToken
+        {
+            protected MutexSlim Mutex { get; }
+            protected AsyncPendingLockToken(MutexSlim mutex, uint start) : base(start) => Mutex = mutex;
+            public LockToken GetResultAsToken() => new LockToken(Mutex, GetResult()).AssertNotCanceled();
+            public abstract void OnCompleted(Action continuation);
+
+            protected void Schedule(Action<object> action, object state)
+                => (Mutex?._scheduler ?? PipeScheduler.ThreadPool).Schedule(action, state);
+
+            public abstract Task<LockToken> AsTask();
+        }
+
         internal abstract class PendingLockToken
         {
             private int _token = LockState.Pending; // combined state and counter
@@ -73,6 +88,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
                     // if something changed while we were thinking, redo from start
                 } while (Interlocked.CompareExchange(ref _token, newValue, oldValue) != oldValue);
+                OnAssigned();
                 return newValue;
             }
 

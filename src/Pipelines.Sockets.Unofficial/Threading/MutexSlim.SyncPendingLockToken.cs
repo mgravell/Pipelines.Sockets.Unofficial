@@ -6,7 +6,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
 {
     public partial class MutexSlim
     {
-        internal sealed class SyncPendingLockToken : PendingLockToken
+        private sealed class SyncPendingLockToken : PendingLockToken
         {
             [ThreadStatic]
             private static SyncPendingLockToken s_perThreadLockObject;
