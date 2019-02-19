@@ -14,30 +14,36 @@ namespace Pipelines.Sockets.Unofficial.Threading
             /// <summary>
             /// Compare two LockToken instances for equality
             /// </summary>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static bool operator ==(LockToken x, LockToken y) => x.Equals(y);
             /// <summary>
             /// Compare two LockToken instances for equality
             /// </summary>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static bool operator !=(LockToken x, LockToken y) => !x.Equals(y);
 
             /// <summary>
             /// Compare two LockToken instances for equality
             /// </summary>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public override bool Equals(object obj) => obj is LockToken other && Equals(other);
 
             /// <summary>
             /// See Object.GetHashCode
             /// </summary>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public override int GetHashCode() => (_parent?.GetHashCode() ?? 0) ^ _token;
 
             /// <summary>
             /// See Object.ToString()
             /// </summary>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public override string ToString() => nameof(LockToken);
 
             /// <summary>
             /// Compare two LockToken instances for equality
             /// </summary>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool Equals(LockToken other)
             {
                 if (_parent != null) return ReferenceEquals(_parent, other._parent);
@@ -55,9 +61,9 @@ namespace Pipelines.Sockets.Unofficial.Threading
 #pragma warning disable RCS1231 // Make parameter ref read-only.
             public static bool operator true(LockToken token) => LockState.GetState(token._token) == LockState.Success;
 #pragma warning restore RCS1231 // Make parameter ref read-only.
-                               /// <summary>
-                               /// Indicates whether the mutex was successfully taken
-                               /// </summary>
+            /// <summary>
+            /// Indicates whether the mutex was successfully taken
+            /// </summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
 #pragma warning disable RCS1231 // Make parameter ref read-only.
             public static bool operator false(LockToken token) => LockState.GetState(token._token) != LockState.Success;
@@ -66,14 +72,31 @@ namespace Pipelines.Sockets.Unofficial.Threading
             /// <summary>
             /// Indicates whether the mutex was successfully taken
             /// </summary>
-            public bool Success => LockState.GetState(_token) == LockState.Success;
+            public bool Success
+            {
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                get { return LockState.GetState(_token) == LockState.Success; }
+            }
 
-            internal bool IsCompleted => LockState.IsCompleted(_token);
+            internal bool IsCompleted
+            {
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                get { return LockState.IsCompleted(_token); }
+            }
 
-            internal bool IsCompletedSuccessfully => LockState.IsCompletedSuccessfully(_token);
+            internal bool IsCompletedSuccessfully
+            {
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                get { return LockState.IsCompletedSuccessfully(_token); }
+            }
 
-            internal bool IsCanceled => LockState.IsCanceled(_token);
+            internal bool IsCanceled
+            {
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                get { return LockState.IsCanceled(_token); }
+            }
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             internal LockToken(MutexSlim parent, int token)
             {
                 _parent = parent;
@@ -86,7 +109,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public void Dispose()
             {
-                if (Success) _parent.Release(_token, demandMatch: true);
+                if (LockState.GetState(_token) == LockState.Success) _parent.Release(_token, demandMatch: true);
             }
 
             internal LockToken AssertNotCanceled()

@@ -12,9 +12,11 @@ namespace Pipelines.Sockets.Unofficial.Threading
         {
             protected MutexSlim Mutex { get; }
             protected AsyncPendingLockToken(MutexSlim mutex, uint start) : base(start) => Mutex = mutex;
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public LockToken GetResultAsToken() => new LockToken(Mutex, GetResult()).AssertNotCanceled();
             public abstract void OnCompleted(Action continuation);
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             protected void Schedule(Action<object> action, object state)
                 => Mutex._scheduler.Schedule(action, state);
 
@@ -95,11 +97,23 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 return newValue;
             }
 
-            public bool IsCompleted => LockState.IsCompleted(Volatile.Read(ref _token));
+            public bool IsCompleted
+            {
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                get { return LockState.IsCompleted(Volatile.Read(ref _token)); }
+            }
 
-            public bool IsCompletedSuccessfully => LockState.IsCompletedSuccessfully(Volatile.Read(ref _token));
+            public bool IsCompletedSuccessfully
+            {
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                get { return LockState.IsCompletedSuccessfully(Volatile.Read(ref _token)); }
+            }
 
-            public bool IsCanceled => LockState.IsCanceled(Volatile.Read(ref _token));
+            public bool IsCanceled
+            {
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                get { return LockState.IsCanceled(Volatile.Read(ref _token)); }
+            }
 
             protected abstract void OnAssigned();
         }
