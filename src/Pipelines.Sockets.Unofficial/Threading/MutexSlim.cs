@@ -18,7 +18,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
          * - must be waitable (sync)
          * - must be awaitable (async)
          * - async context does not flow by default
-         *   (can use TryWaitAsValueTaskAsync to get full Task handling)
+         *   (can use WaitOptions.CaptureContext to get full Task handling)
          * - must allow fully async consumer
          *   ("wait" and "release" can be from different threads)
          * - must not suck when using both sync+async callers
@@ -249,14 +249,17 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
         private void FixMayHavePendingItemsInsideLock() => _mayHavePendingItems = _queue.Count != 0;
 
-        private int TakeWithTimeout()
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static bool HasFlag(WaitOptions options, WaitOptions flag) => (options & flag) != 0;
+
+        private int TakeWithTimeout(WaitOptions options)
         {
             // try and spin
             var token = TryTakeBySpinning();
             if (token != 0) return token;
 
             // if "now or never", bail
-            if (TimeoutMilliseconds == 0) return default;
+            if (TimeoutMilliseconds == 0 || HasFlag(options, WaitOptions.NoDelay)) return default;
 
             bool itemLockTaken = false, queueLockTaken = false;
             var start = GetTime();
@@ -348,7 +351,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
         }
 
 #pragma warning disable RCS1231 // Make parameter ref read-only.
-        private AwaitableLockToken TakeWithTimeoutAsync(CancellationToken cancellationToken, bool taskBacked)
+        private AwaitableLockToken TakeWithTimeoutAsync(CancellationToken cancellationToken, WaitOptions options)
 #pragma warning restore RCS1231 // Make parameter ref read-only.
         {
             // try and spin
@@ -356,7 +359,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
             if (token != 0) return new AwaitableLockToken(new LockToken(this, token));
 
             // if "now or never", bail
-            if (TimeoutMilliseconds == 0) return default;
+            if (TimeoutMilliseconds == 0 || HasFlag(options, WaitOptions.NoDelay)) return default;
 
             var start = GetTime();
 
@@ -378,7 +381,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
                 // otherwise enqueue the pending item, and release
                 // the global queue
-                var asyncItem = taskBacked
+                var asyncItem = HasFlag(options, WaitOptions.CaptureContext)
                     ? (AsyncPendingLockToken)new AsyncTaskPendingLockToken(this, start) // let the TPL deal with capturing async context
                     : new AsyncDirectPendingLockToken(this, start);
 
@@ -404,7 +407,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
 #pragma warning disable RCS1231 // Make parameter ref read-only.
-        public AwaitableLockToken TryWaitAsync(CancellationToken cancellationToken = default)
+        public AwaitableLockToken TryWaitAsync(CancellationToken cancellationToken = default, WaitOptions options = WaitOptions.None)
 #pragma warning restore RCS1231 // Make parameter ref read-only.
         {
             if (cancellationToken.IsCancellationRequested) return AwaitableLockToken.Canceled();
@@ -412,33 +415,37 @@ namespace Pipelines.Sockets.Unofficial.Threading
             if (token != 0) return new AwaitableLockToken(new LockToken(this, token));
 
             // otherwise, do things the hard way
-            return TakeWithTimeoutAsync(cancellationToken, false);
-        }
-
-        /// <summary>
-        /// Attempt to take the lock as a ValueTask (Success should be checked by the caller)
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#pragma warning disable RCS1231 // Make parameter ref read-only.
-        public ValueTask<LockToken> TryWaitAsValueTaskAsync(CancellationToken cancellationToken = default)
-#pragma warning restore RCS1231 // Make parameter ref read-only.
-        {
-            if (cancellationToken.IsCancellationRequested) return AwaitableLockToken.GetCanceled();
-            int token = TryTake();
-            if (token != 0) return new ValueTask<LockToken>(new LockToken(this, token));
-
-            // otherwise, do things the hard way
-            return TakeWithTimeoutAsync(cancellationToken, true).AsTask();
+            return TakeWithTimeoutAsync(cancellationToken, options);
         }
 
         /// <summary>
         /// Attempt to take the lock (Success should be checked by the caller)
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public LockToken TryWait()
+        public LockToken TryWait(WaitOptions options = WaitOptions.None)
         {
             var token = TryTake();
-            return new LockToken(this, token != 0 ? token : TakeWithTimeout());
+            return new LockToken(this, token != 0 ? token : TakeWithTimeout(options));
+        }
+
+        /// <summary>
+        /// Additional options that influence how TryWait/TryWaitAsync operate
+        /// </summary>
+        [Flags]
+        public enum WaitOptions
+        {
+            /// <summary>
+            /// Default options
+            /// </summary>
+            None = 0,
+            /// <summary>
+            /// If the mutex cannot be acquired immediately, it is failed
+            /// </summary>
+            NoDelay = 1,
+            /// <summary>
+            /// Enable full TPL flow capture
+            /// </summary>
+            CaptureContext = 2,
         }
     }
 }

@@ -25,7 +25,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 else _source.TrySetResult(new LockToken(Mutex, GetResult()));
             }
 
-            public override Task<LockToken> AsTask() => _source.Task;
+            public override ValueTask<LockToken> AsTask() => new ValueTask<LockToken>(_source.Task);
         }
     }
 }

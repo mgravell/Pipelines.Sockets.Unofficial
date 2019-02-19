@@ -72,7 +72,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         }
 
         [Fact]
-        public async Task SyncContextPreservedByTryWaitValueTaskAsync()
+        public async Task SyncContextNotPreservedByTryWaitAsync_AsValueTask()
         {
             var taken = _timeoutMux.TryWait();
             Assert.True(taken.Success, "obtained original lock");
@@ -84,7 +84,42 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 SynchronizationContext.SetSynchronizationContext(new DummySyncContext(id));
                 Assert.True(DummySyncContext.Is(id));
 
-                var pending = _timeoutMux.TryWaitAsValueTaskAsync();
+                ValueTask<LockToken> pending = _timeoutMux.TryWaitAsync();
+                Assert.False(pending.IsCompleted);
+
+                ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(100); taken.Dispose(); }, null);
+                // note that _timeoutMux uses DedicatedThreadPoolPipeScheduler to
+                // force us to be on a different thread here (since [Fact] won't be using that thread)
+                int originalThread = Environment.CurrentManagedThreadId;
+                using (var token2 = await pending)
+                {
+                    int awaitedThread = Environment.CurrentManagedThreadId;
+                    Assert.True(token2.Success, "obtained lock after dispose");
+
+                    Assert.NotEqual(originalThread, awaitedThread);
+                    Assert.False(DummySyncContext.Is(id));
+                }
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(orig);
+            }
+        }
+
+        [Fact]
+        public async Task SyncContextPreservedByTryWaitAsync_WithCapture()
+        {
+            var taken = _timeoutMux.TryWait();
+            Assert.True(taken.Success, "obtained original lock");
+
+            var id = Guid.NewGuid();
+            var orig = SynchronizationContext.Current;
+            try
+            {
+                SynchronizationContext.SetSynchronizationContext(new DummySyncContext(id));
+                Assert.True(DummySyncContext.Is(id));
+
+                ValueTask<LockToken> pending = _timeoutMux.TryWaitAsync(options: WaitOptions.CaptureContext);
                 Assert.False(pending.IsCompleted);
 
                 ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(100); taken.Dispose(); }, null);
@@ -107,7 +142,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         }
 
         [Fact]
-        public async Task SyncContextNotPreservedByTryWaitValueTaskWithConfigureAwaitAsync()
+        public async Task SyncContextNotPreservedByTryWaitAsync_WithCaptureAndConfigureAwait()
         {
             var taken = _timeoutMux.TryWait();
             Assert.True(taken.Success, "obtained original lock");
@@ -119,7 +154,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 SynchronizationContext.SetSynchronizationContext(new DummySyncContext(id));
                 Assert.True(DummySyncContext.Is(id));
 
-                var pending = _timeoutMux.TryWaitAsValueTaskAsync();
+                ValueTask<LockToken> pending = _timeoutMux.TryWaitAsync(options: WaitOptions.CaptureContext);
                 Assert.False(pending.IsCompleted);
 
                 ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(100); taken.Dispose(); }, null);

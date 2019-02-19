@@ -85,12 +85,18 @@ namespace Pipelines.Sockets.Unofficial.Threading
             /// <summary>
             /// Exposes the async operation as a ValueTask - note that this requires AsTask to be supported for full support
             /// </summary>
-            internal ValueTask<LockToken> AsTask()
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public ValueTask<LockToken> AsTask()
             {
-                if (_pending != null) return new ValueTask<LockToken>(_pending.AsTask());
+                if (_pending != null) return _pending.AsTask();
                 if (_token.IsCanceled) return GetCanceled();
                 return new ValueTask<LockToken>(_token);
             }
+
+            /// <summary>
+            /// Convert an AwaitableLockToken to a ValueTask
+            /// </summary>
+            public static implicit operator ValueTask<LockToken>(AwaitableLockToken token) => token.AsTask();
 
             static Task<LockToken> s_canceledTask;
             internal static ValueTask<LockToken> GetCanceled() => new ValueTask<LockToken>(s_canceledTask ?? (s_canceledTask = CreateCanceledLockTokenTask()));

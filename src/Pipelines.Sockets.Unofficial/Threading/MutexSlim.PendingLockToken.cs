@@ -18,7 +18,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
             protected void Schedule(Action<object> action, object state)
                 => (Mutex?._scheduler ?? PipeScheduler.ThreadPool).Schedule(action, state);
 
-            public abstract Task<LockToken> AsTask();
+            public abstract ValueTask<LockToken> AsTask();
         }
 
         internal abstract class PendingLockToken
@@ -33,6 +33,9 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 Start = start;
                 Volatile.Write(ref _token, LockState.Pending);
             }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            protected int VolatileStatus() => LockState.GetState(Volatile.Read(ref _token));
 
             protected PendingLockToken() { }
             protected PendingLockToken(uint start) => Start = start;
