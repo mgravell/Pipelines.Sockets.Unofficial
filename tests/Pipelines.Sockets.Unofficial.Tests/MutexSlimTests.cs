@@ -51,7 +51,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 SynchronizationContext.SetSynchronizationContext(new DummySyncContext(id));
                 Assert.True(DummySyncContext.Is(id));
 
-                var pending = _timeoutMuxCustomScheduler.TryWaitAsync();
+                var pending = _timeoutMuxCustomScheduler.TryWaitAsync(options: WaitOptions.DisableAsyncContext);
                 Assert.False(pending.IsCompleted);
 
                 ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(100); taken.Dispose(); }, null);
@@ -86,7 +86,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 SynchronizationContext.SetSynchronizationContext(new DummySyncContext(id));
                 Assert.True(DummySyncContext.Is(id));
 
-                ValueTask<LockToken> pending = _timeoutMuxCustomScheduler.TryWaitAsync();
+                ValueTask<LockToken> pending = _timeoutMuxCustomScheduler.TryWaitAsync(options: WaitOptions.DisableAsyncContext);
                 Assert.False(pending.IsCompleted);
 
                 ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(100); taken.Dispose(); }, null);
@@ -121,7 +121,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 SynchronizationContext.SetSynchronizationContext(new DummySyncContext(id));
                 Assert.True(DummySyncContext.Is(id));
 
-                ValueTask<LockToken> pending = _timeoutMuxCustomScheduler.TryWaitAsync(options: WaitOptions.CaptureContext);
+                ValueTask<LockToken> pending = _timeoutMuxCustomScheduler.TryWaitAsync();
                 Assert.False(pending.IsCompleted);
 
                 ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(100); taken.Dispose(); }, null);
@@ -156,7 +156,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 SynchronizationContext.SetSynchronizationContext(new DummySyncContext(id));
                 Assert.True(DummySyncContext.Is(id));
 
-                ValueTask<LockToken> pending = _timeoutMuxCustomScheduler.TryWaitAsync(options: WaitOptions.CaptureContext);
+                ValueTask<LockToken> pending = _timeoutMuxCustomScheduler.TryWaitAsync(options: WaitOptions.None);
                 Assert.False(pending.IsCompleted);
 
                 ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(100); taken.Dispose(); }, null);

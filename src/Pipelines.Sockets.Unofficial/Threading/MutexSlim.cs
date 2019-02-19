@@ -384,9 +384,9 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
                 // otherwise enqueue the pending item, and release
                 // the global queue
-                var asyncItem = HasFlag(options, WaitOptions.CaptureContext)
-                    ? (AsyncPendingLockToken)new AsyncTaskPendingLockToken(this, start) // let the TPL deal with capturing async context
-                    : new AsyncDirectPendingLockToken(this, start);
+                var asyncItem = HasFlag(options, WaitOptions.DisableAsyncContext)
+                    ? (AsyncPendingLockToken)new AsyncDirectPendingLockToken(this, start) // bypass TPL - no context flow
+                    : new AsyncTaskPendingLockToken(this, start); // let the TPL deal with capturing async context
 
                 if (cancellationToken.CanBeCanceled)
                 {
@@ -446,9 +446,9 @@ namespace Pipelines.Sockets.Unofficial.Threading
             /// </summary>
             NoDelay = 1,
             /// <summary>
-            /// Enable full TPL flow capture
+            /// Disable full TPL flow; more efficient, but no sync-context or execution-context guarantees
             /// </summary>
-            CaptureContext = 2,
+            DisableAsyncContext = 2,
         }
     }
 }
