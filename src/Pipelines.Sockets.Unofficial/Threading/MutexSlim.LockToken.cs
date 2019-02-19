@@ -9,8 +9,42 @@ namespace Pipelines.Sockets.Unofficial.Threading
         /// <summary>
         /// The result of a Wait/WaitAsync operation on MutexSlim; the caller *must* check Success to see whether the mutex was obtained
         /// </summary>
-        public readonly struct LockToken : IDisposable
+        public readonly struct LockToken : IDisposable, IEquatable<LockToken>
         {
+            /// <summary>
+            /// Compare two LockToken instances for equality
+            /// </summary>
+            public static bool operator ==(LockToken x, LockToken y) => x.Equals(y);
+            /// <summary>
+            /// Compare two LockToken instances for equality
+            /// </summary>
+            public static bool operator !=(LockToken x, LockToken y) => !x.Equals(y);
+
+            /// <summary>
+            /// Compare two LockToken instances for equality
+            /// </summary>
+            public override bool Equals(object obj) => obj is LockToken other && Equals(other);
+
+            /// <summary>
+            /// See Object.GetHashCode
+            /// </summary>
+            public override int GetHashCode() => (_parent?.GetHashCode() ?? 0) ^ _token;
+
+            /// <summary>
+            /// See Object.ToString()
+            /// </summary>
+            public override string ToString() => nameof(LockToken);
+
+            /// <summary>
+            /// Compare two LockToken instances for equality
+            /// </summary>
+            public bool Equals(LockToken other)
+            {
+                if (_parent != null) return ReferenceEquals(_parent, other._parent);
+                if (other._parent != null) return false;
+                return _token == other._token;
+            }
+
             private readonly MutexSlim _parent;
             private readonly int _token;
 

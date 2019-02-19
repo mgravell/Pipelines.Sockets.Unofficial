@@ -9,8 +9,42 @@ namespace Pipelines.Sockets.Unofficial.Threading
         /// <summary>
         /// Custom awaitable result from WaitAsync on MutexSlim
         /// </summary>
-        public readonly struct AwaitableLockToken : INotifyCompletion, ICriticalNotifyCompletion
+        public readonly struct AwaitableLockToken : INotifyCompletion, ICriticalNotifyCompletion, IEquatable<AwaitableLockToken>
         {
+            /// <summary>
+            /// Compare two AwaitableLockToken instances for equality
+            /// </summary>
+            public override bool Equals(object obj) => obj is AwaitableLockToken other && Equals(other);
+
+            /// <summary>
+            /// See Object.GetHashCode
+            /// </summary>
+            public override int GetHashCode() => _pending == null ? _token.GetHashCode() : _pending.GetHashCode();
+
+            /// <summary>
+            /// Compare two AwaitableLockToken instances for equality
+            /// </summary>
+            public bool Equals(AwaitableLockToken other)
+            {
+                if (_pending != null) return ReferenceEquals(_pending, other._pending);
+                if (other._pending != null) return false;
+                return _token.Equals(other._token);
+            }
+
+            /// <summary>
+            /// See Object.ToString()
+            /// </summary>
+            public override string ToString() => nameof(AwaitableLockToken);
+
+            /// <summary>
+            /// Compare two AwaitableLockToken instances for equality
+            /// </summary>
+            public static bool operator ==(AwaitableLockToken x, AwaitableLockToken y) => x.Equals(y);
+            /// <summary>
+            /// Compare two AwaitableLockToken instances for equality
+            /// </summary>
+            public static bool operator !=(AwaitableLockToken x, AwaitableLockToken y) => !x.Equals(y);
+
             private readonly AsyncPendingLockToken _pending;
             private readonly LockToken _token;
 
