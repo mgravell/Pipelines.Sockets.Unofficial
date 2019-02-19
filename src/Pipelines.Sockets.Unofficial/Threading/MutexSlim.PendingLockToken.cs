@@ -16,7 +16,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
             public abstract void OnCompleted(Action continuation);
 
             protected void Schedule(Action<object> action, object state)
-                => (Mutex?._scheduler ?? PipeScheduler.ThreadPool).Schedule(action, state);
+                => Mutex._scheduler.Schedule(action, state);
 
             public abstract ValueTask<LockToken> AsTask();
         }

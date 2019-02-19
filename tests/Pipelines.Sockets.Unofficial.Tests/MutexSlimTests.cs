@@ -9,7 +9,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
 {
     public class MutexSlimTests
     {
-        private readonly MutexSlim _zeroTimeoutMux = new MutexSlim(0), _timeoutMux = new MutexSlim(1000, DedicatedThreadPoolPipeScheduler.Default);
+        private readonly MutexSlim _zeroTimeoutMux = new MutexSlim(0),
+            _timeoutMuxCustomScheduler = new MutexSlim(1000, DedicatedThreadPoolPipeScheduler.Default),
+            _timeoutMux = new MutexSlim(1000);
 
         class DummySyncContext : SynchronizationContext
         {
@@ -39,7 +41,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public async Task SyncContextNotPreservedByTryWaitAsync()
         {
-            var taken = _timeoutMux.TryWait();
+            var taken = _timeoutMuxCustomScheduler.TryWait();
             Assert.True(taken.Success, "obtained original lock");
 
             var id = Guid.NewGuid();
@@ -49,11 +51,11 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 SynchronizationContext.SetSynchronizationContext(new DummySyncContext(id));
                 Assert.True(DummySyncContext.Is(id));
 
-                var pending = _timeoutMux.TryWaitAsync();
+                var pending = _timeoutMuxCustomScheduler.TryWaitAsync();
                 Assert.False(pending.IsCompleted);
 
                 ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(100); taken.Dispose(); }, null);
-                // note that _timeoutMux uses DedicatedThreadPoolPipeScheduler to
+                // note that _timeoutMuxCustomScheduler uses DedicatedThreadPoolPipeScheduler to
                 // force us to be on a different thread here (since [Fact] won't be using that thread)
                 int originalThread = Environment.CurrentManagedThreadId;
                 using (var token2 = await pending)
@@ -74,7 +76,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public async Task SyncContextNotPreservedByTryWaitAsync_AsValueTask()
         {
-            var taken = _timeoutMux.TryWait();
+            var taken = _timeoutMuxCustomScheduler.TryWait();
             Assert.True(taken.Success, "obtained original lock");
 
             var id = Guid.NewGuid();
@@ -84,11 +86,11 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 SynchronizationContext.SetSynchronizationContext(new DummySyncContext(id));
                 Assert.True(DummySyncContext.Is(id));
 
-                ValueTask<LockToken> pending = _timeoutMux.TryWaitAsync();
+                ValueTask<LockToken> pending = _timeoutMuxCustomScheduler.TryWaitAsync();
                 Assert.False(pending.IsCompleted);
 
                 ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(100); taken.Dispose(); }, null);
-                // note that _timeoutMux uses DedicatedThreadPoolPipeScheduler to
+                // note that _timeoutMuxCustomScheduler uses DedicatedThreadPoolPipeScheduler to
                 // force us to be on a different thread here (since [Fact] won't be using that thread)
                 int originalThread = Environment.CurrentManagedThreadId;
                 using (var token2 = await pending)
@@ -109,7 +111,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public async Task SyncContextPreservedByTryWaitAsync_WithCapture()
         {
-            var taken = _timeoutMux.TryWait();
+            var taken = _timeoutMuxCustomScheduler.TryWait();
             Assert.True(taken.Success, "obtained original lock");
 
             var id = Guid.NewGuid();
@@ -119,11 +121,11 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 SynchronizationContext.SetSynchronizationContext(new DummySyncContext(id));
                 Assert.True(DummySyncContext.Is(id));
 
-                ValueTask<LockToken> pending = _timeoutMux.TryWaitAsync(options: WaitOptions.CaptureContext);
+                ValueTask<LockToken> pending = _timeoutMuxCustomScheduler.TryWaitAsync(options: WaitOptions.CaptureContext);
                 Assert.False(pending.IsCompleted);
 
                 ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(100); taken.Dispose(); }, null);
-                // note that _timeoutMux uses DedicatedThreadPoolPipeScheduler to
+                // note that _timeoutMuxCustomScheduler uses DedicatedThreadPoolPipeScheduler to
                 // force us to be on a different thread here (since [Fact] won't be using that thread)
                 int originalThread = Environment.CurrentManagedThreadId;
                 using (var token2 = await pending)
@@ -144,7 +146,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public async Task SyncContextNotPreservedByTryWaitAsync_WithCaptureAndConfigureAwait()
         {
-            var taken = _timeoutMux.TryWait();
+            var taken = _timeoutMuxCustomScheduler.TryWait();
             Assert.True(taken.Success, "obtained original lock");
 
             var id = Guid.NewGuid();
@@ -154,11 +156,11 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 SynchronizationContext.SetSynchronizationContext(new DummySyncContext(id));
                 Assert.True(DummySyncContext.Is(id));
 
-                ValueTask<LockToken> pending = _timeoutMux.TryWaitAsync(options: WaitOptions.CaptureContext);
+                ValueTask<LockToken> pending = _timeoutMuxCustomScheduler.TryWaitAsync(options: WaitOptions.CaptureContext);
                 Assert.False(pending.IsCompleted);
 
                 ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(100); taken.Dispose(); }, null);
-                // note that _timeoutMux uses DedicatedThreadPoolPipeScheduler to
+                // note that _timeoutMuxCustomScheduler uses DedicatedThreadPoolPipeScheduler to
                 // force us to be on a different thread here (since [Fact] won't be using that thread)
                 int originalThread = Environment.CurrentManagedThreadId;
                 using (var token2 = await pending.ConfigureAwait(false))

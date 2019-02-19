@@ -66,6 +66,8 @@ namespace Pipelines.Sockets.Unofficial.Threading
         /// </summary>
         public int TimeoutMilliseconds { get; }
 
+        internal bool IsThreadPool { get; } // are we confident that the chosen scheduler is the thread-pool?
+
         /// <summary>
         /// Create a new MutexSlim instance
         /// </summary>
@@ -78,6 +80,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
             _scheduler = scheduler ?? PipeScheduler.ThreadPool;
             _token = LockState.ChangeState(0, LockState.Pending); // initialize as unowned
             void ThrowInvalidTimeout() => throw new ArgumentOutOfRangeException(nameof(timeoutMilliseconds));
+            IsThreadPool = (object)_scheduler == (object)PipeScheduler.ThreadPool;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
