@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.27421.1
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.28606.126
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Pipelines.Sockets.Unofficial", "src\Pipelines.Sockets.Unofficial\Pipelines.Sockets.Unofficial.csproj", "{E76D2F69-08D3-4CBB-9313-A04A84A2F0F0}"
 EndProject
@@ -21,6 +21,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Pipelines.Sockets.Unofficia
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Toys", "Toys\Toys.csproj", "{C0075241-906D-4159-B93A-84338C7E1463}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Benchmark", "tests\Benchmark\Benchmark.csproj", "{4D36C61E-8CBC-427F-AFEE-D810DCF81A90}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -39,6 +41,10 @@ Global
 		{C0075241-906D-4159-B93A-84338C7E1463}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C0075241-906D-4159-B93A-84338C7E1463}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C0075241-906D-4159-B93A-84338C7E1463}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4D36C61E-8CBC-427F-AFEE-D810DCF81A90}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4D36C61E-8CBC-427F-AFEE-D810DCF81A90}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4D36C61E-8CBC-427F-AFEE-D810DCF81A90}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4D36C61E-8CBC-427F-AFEE-D810DCF81A90}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
