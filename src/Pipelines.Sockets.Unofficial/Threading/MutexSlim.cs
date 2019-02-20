@@ -424,18 +424,13 @@ namespace Pipelines.Sockets.Unofficial.Threading
                     return new ValueTask<LockToken>(new LockToken(this, token));
                 }
 
-                // otherwise enqueue the pending item, and release
-                // the global queue
-                //var asyncItem = HasFlag(options, WaitOptions.DisableAsyncContext)
-                //    ? (AsyncPendingLockToken)new AsyncDirectPendingLockToken(this, start) // bypass TPL - no context flow
-                //    : new AsyncTaskPendingLockToken(this, start); // let the TPL deal with capturing async context
-
+                // otherwise we'll need an async pending lock token
                 IAsyncPendingLockToken asyncItem;
                 short key;
 
                 if (HasFlag(options, WaitOptions.DisableAsyncContext))
                 {
-                    asyncItem = GetSlabTokenInsideLock(out key);
+                    asyncItem = GetSlabTokenInsideLock(out key); // bypass TPL - no context flow
                 }
                 else
                 {
@@ -443,6 +438,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
                     key = 0;
                 }
 
+                // enqueue the pending item, and release the global queue
                 var queueItem = new PendingLockItem(start, key, asyncItem);
                 if (cancellationToken.CanBeCanceled)
                 {
