@@ -38,7 +38,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
             /// See Object.ToString()
             /// </summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public override string ToString() => nameof(LockToken);
+            public override string ToString() => LockState.ToString(_token);
 
             /// <summary>
             /// Compare two LockToken instances for equality
@@ -75,25 +75,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
             public bool Success
             {
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                get { return LockState.GetState(_token) == LockState.Success; }
-            }
-
-            internal bool IsCompleted
-            {
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                get { return LockState.IsCompleted(_token); }
-            }
-
-            internal bool IsCompletedSuccessfully
-            {
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                get { return LockState.IsCompletedSuccessfully(_token); }
-            }
-
-            internal bool IsCanceled
-            {
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                get { return LockState.IsCanceled(_token); }
+                get => LockState.GetState(_token) == LockState.Success;
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -112,9 +94,10 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 if (LockState.GetState(_token) == LockState.Success) _parent.Release(_token, demandMatch: true);
             }
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             internal LockToken AssertNotCanceled()
             {
-                if (IsCanceled) ThrowCanceled();
+                if (LockState.IsCanceled(_token)) ThrowCanceled();
                 return this;
                 void ThrowCanceled() => throw new TaskCanceledException();
             }

@@ -1,121 +1,59 @@
-﻿using System;
-using System.IO.Pipelines;
-using System.Runtime.CompilerServices;
-using System.Threading;
+﻿using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial.Threading
 {
     public partial class MutexSlim
     {
-        internal abstract class AsyncPendingLockToken : PendingLockToken
+        readonly struct PendingLockItem
         {
-            protected MutexSlim Mutex { get; }
-            protected AsyncPendingLockToken(MutexSlim mutex, uint start) : base(start) => Mutex = mutex;
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public LockToken GetResultAsToken() => new LockToken(Mutex, GetResult()).AssertNotCanceled();
-            public abstract void OnCompleted(Action continuation);
+            public uint Start { get; }
+            private readonly short _key;
+            public IPendingLockToken Pending { get; }
+            public bool IsAsync
+            {
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                get => Pending is IAsyncPendingLockToken;
+            }
+
+            public PendingLockItem(uint start, short key, IPendingLockToken pending)
+            {
+                pending.Reset(key);
+                Start = start;
+                _key = key;
+                Pending = pending;
+            }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            protected void Schedule(Action<object> action, object state)
-                => Mutex._scheduler.Schedule(action, state);
+            internal bool TrySetResult(int token) => Pending.TrySetResult(_key, token);
 
-            public abstract ValueTask<LockToken> AsTask();
+            // note: the ==/!= here don't short-circuit deliberately, to avoid branches
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static bool operator ==(PendingLockItem x, PendingLockItem y)
+                => x._key == y._key & (object)x.Pending == (object)y.Pending;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static bool operator !=(PendingLockItem x, PendingLockItem y)
+                => x._key != y._key | (object)x.Pending != (object)y.Pending;
+
+            public override bool Equals(object obj) => obj is PendingLockItem other && other == this;
+
+            public override int GetHashCode() => _key ^ (Pending?.GetHashCode() ?? 0);
+
+            public override string ToString() => $"[{Start}]: {Pending}#{_key}";
         }
 
-        internal abstract class PendingLockToken
+        internal interface IPendingLockToken
         {
-            private int _token = LockState.Pending; // combined state and counter
+            bool TrySetResult(short key, int token);
+            bool TryCancel(short key);
+            void Reset(short key);
+        }
 
-            public uint Start { get; private set; } // for timeout tracking
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            protected void Reset(uint start)
-            {
-                Start = start;
-                Volatile.Write(ref _token, LockState.Pending);
-            }
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            protected int VolatileStatus() => LockState.GetState(Volatile.Read(ref _token));
-
-            protected PendingLockToken() { }
-            protected PendingLockToken(uint start) => Start = start;
-
-            public bool TrySetResult(int token)
-            {
-                int oldValue = Volatile.Read(ref _token);
-                if (LockState.GetState(oldValue) == LockState.Pending
-                    && Interlocked.CompareExchange(ref _token, token, oldValue) == oldValue)
-                {
-                    OnAssigned();
-                    return true;
-                }
-                return false;
-            }
-
-            internal bool TryCancel()
-            {
-                int oldValue;
-                do
-                {
-                    // depends on the current state...
-                    oldValue = Volatile.Read(ref _token);
-                    switch (LockState.GetState(oldValue))
-                    {
-                        case LockState.Canceled:
-                            return true; // fine, already canceled
-                        case LockState.Timeout:
-                        case LockState.Success:
-                            return false; // nope, already reported
-                    }
-                    // otherwise, attempt to change the field; in case of conflict; re-do from start
-                } while (Interlocked.CompareExchange(ref _token, LockState.ChangeState(oldValue, LockState.Canceled), oldValue) != oldValue);
-                OnAssigned();
-                return true;
-            }
-
-            // if already complete: returns the token; otherwise, dooms the operation
-            public int GetResult()
-            {
-                int oldValue, newValue;
-                do
-                {
-                    oldValue = Volatile.Read(ref _token);
-                    if (LockState.GetState(oldValue) != LockState.Pending)
-                    {
-                        // value is already fixed; just return it
-                        return oldValue;
-                    }
-                    // we don't ever want to report different values from GetResult, so
-                    // if you called GetResult prematurely: you doomed it to failure
-                    newValue = LockState.ChangeState(oldValue, LockState.Timeout);
-
-                    // if something changed while we were thinking, redo from start
-                } while (Interlocked.CompareExchange(ref _token, newValue, oldValue) != oldValue);
-                OnAssigned();
-                return newValue;
-            }
-
-            public bool IsCompleted
-            {
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                get { return LockState.IsCompleted(Volatile.Read(ref _token)); }
-            }
-
-            public bool IsCompletedSuccessfully
-            {
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                get { return LockState.IsCompletedSuccessfully(Volatile.Read(ref _token)); }
-            }
-
-            public bool IsCanceled
-            {
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                get { return LockState.IsCanceled(Volatile.Read(ref _token)); }
-            }
-
-            protected abstract void OnAssigned();
+        internal interface IAsyncPendingLockToken : IPendingLockToken
+        {
+            ValueTask<LockToken> GetTask(short key);
+            bool IsCanceled(short key);
         }
     }
 }

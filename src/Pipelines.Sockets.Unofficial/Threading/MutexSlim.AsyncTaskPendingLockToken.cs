@@ -1,25 +1,42 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial.Threading
 {
     public partial class MutexSlim
     {
-        private sealed class AsyncTaskPendingLockToken : AsyncPendingLockToken
+        private sealed class AsyncTaskPendingLockToken : TaskCompletionSource<LockToken>, IAsyncPendingLockToken
         {
-            private readonly TaskCompletionSource<LockToken> _source;
-            public AsyncTaskPendingLockToken(MutexSlim mutex, uint start) : base(mutex, start)
+            private readonly MutexSlim _mutex;
+            private int _token;
+            public AsyncTaskPendingLockToken(MutexSlim mutex) : base(
+                mutex.IsThreadPool ? TaskCreationOptions.RunContinuationsAsynchronously : TaskCreationOptions.None)
+               => _mutex = mutex;
+
+            void IPendingLockToken.Reset(short key) => _token = LockState.Pending;
+
+            ValueTask<LockToken> IAsyncPendingLockToken.GetTask(short key) => new ValueTask<LockToken>(Task);
+
+            bool IPendingLockToken.TryCancel(short key)
             {
-                _source = new TaskCompletionSource<LockToken>(
-                    mutex.IsThreadPool ? TaskCreationOptions.RunContinuationsAsynchronously : TaskCreationOptions.None);
+                bool success = LockState.TryCancel(ref _token);
+                if (success) OnAssigned();
+                return success;
             }
 
-            public override void OnCompleted(Action continuation)
-                => _source.Task.GetAwaiter().OnCompleted(continuation);
-
-            protected override void OnAssigned()
+            bool IPendingLockToken.TrySetResult(short key, int token)
             {
-                if (Mutex.IsThreadPool)
+                bool success = LockState.TrySetResult(ref _token, token);
+                if (success) OnAssigned();
+                return success;
+            }
+
+            bool IAsyncPendingLockToken.IsCanceled(short key) => LockState.IsCanceled(_token);
+
+            private void OnAssigned()
+            {
+                if (_mutex.IsThreadPool)
                 {
                     // in this case, we already specified RunContinuationsAsynchronously, so we aren't
                     // thread-stealing; by setting directly, we avoid an extra QUWI in both the
@@ -30,17 +47,16 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 }
                 else
                 {
-                    Schedule(s => ((AsyncTaskPendingLockToken)s).OnAssignedImpl(), this);
+                    _mutex._scheduler.Schedule(s => ((AsyncTaskPendingLockToken)s).OnAssignedImpl(), this);
                 }
             }
 
             private void OnAssignedImpl() // make sure this happens on the
             { // scheduler's thread to avoid the release thread being stolen
-                if (IsCanceled) _source.TrySetCanceled();
-                else _source.TrySetResult(new LockToken(Mutex, GetResult()));
+                var token = LockState.GetResult(ref _token);
+                if (LockState.IsCanceled(token)) TrySetCanceled();
+                else TrySetResult(new LockToken(_mutex, token));
             }
-
-            public override ValueTask<LockToken> AsTask() => new ValueTask<LockToken>(_source.Task);
         }
     }
 }

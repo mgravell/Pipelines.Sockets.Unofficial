@@ -51,8 +51,19 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 }
         */
 
+        [Conditional("DEBUG")]
+        private void Log(string message)
+        {
+#if DEBUG
+            Logged?.Invoke(message);
+#endif
+        }
+#if DEBUG
+        public event Action<string> Logged;
+#endif
+
         private readonly PipeScheduler _scheduler;
-        private readonly Queue<PendingLockToken> _queue = new Queue<PendingLockToken>();
+        private readonly Queue<PendingLockItem> _queue = new Queue<PendingLockItem>();
         private volatile bool _mayHavePendingItems; // note: can false-positive; shouldn't false-negative
         private int _token; // the current status of the mutex - first 2 bits indicate if currently owned; rest is counter for conflict detection
         private int _pendingAsyncOperations; // the number of outstanding async ops; used to know whether we need to have an async timeout
@@ -84,10 +95,10 @@ namespace Pipelines.Sockets.Unofficial.Threading
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private PendingLockToken DequeueInsideLock()
+        private PendingLockItem DequeueInsideLock()
         {
             var item = _queue.Dequeue();
-            if (item is AsyncPendingLockToken) _pendingAsyncOperations--;
+            if (item.IsAsync) _pendingAsyncOperations--;
             return item;
         }
 
@@ -97,13 +108,17 @@ namespace Pipelines.Sockets.Unofficial.Threading
             void ThrowInvalidLockHolder() => throw new InvalidOperationException("Attempt to release a MutexSlim lock token that was not held");
 
             // release the token (we can check for wrongness without needing the lock, note)
+            Log($"attempting to release token {LockState.ToString(token)}");
             if (Interlocked.CompareExchange(ref _token, LockState.ChangeState(token, LockState.Pending), token) != token)
             {
+                Log($"token {LockState.ToString(token)} is invalid");
                 if (demandMatch) ThrowInvalidLockHolder();
                 return;
             }
 
+
             if (_mayHavePendingItems) ActivateNextQueueItem();
+            else Log($"no pending items to activate");
         }
 
         private void ActivateNextQueueItem()
@@ -114,15 +129,25 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 try
                 {
                     int token; // if work to do, try and get a new token
+                    Log($"pending items: {_queue.Count}");
                     if (_queue.Count == 0 || (token = TryTake()) == 0) return;
 
                     while (_queue.Count != 0)
                     {
                         var next = DequeueInsideLock();
-                        if (next.TrySetResult(token)) return; // so we don't release the token
+                        if (next.TrySetResult(token))
+                        {
+                            Log($"handed lock to {next}");
+                            return; // so we don't release the token
+                        }
+                        else
+                        {
+                            Log($"lock rejected by {next}");
+                        }
                     }
 
                     // nobody actually wanted it; return it
+                    Log("returning unwanted lock");
                     Volatile.Write(ref _token, LockState.ChangeState(token, LockState.Pending));
                 }
                 finally
@@ -146,6 +171,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
                         {
                             // tell them that they failed
                             next = DequeueInsideLock();
+                            Log($"timing out: {next}");
                             next.TrySetResult(default);
                         }
                         else
@@ -258,7 +284,11 @@ namespace Pipelines.Sockets.Unofficial.Threading
         private int TakeWithTimeout(WaitOptions options)
         {
             // try and spin
+#if DEBUG
+            var token = HasFlag(options, DisableFastPath) ? 0 : TryTakeBySpinning();
+#else
             var token = TryTakeBySpinning();
+#endif
             if (token != 0) return token;
 
             // if "now or never", bail
@@ -268,6 +298,8 @@ namespace Pipelines.Sockets.Unofficial.Threading
             var start = GetTime();
 
             var item = SyncPendingLockToken.GetPerThreadLockObject();
+            const short KEY = 0;
+            var queueItem = new PendingLockItem(start, KEY, item);
             try
             {
                 // we want to have the item-lock *before* we put anything in the queue
@@ -283,14 +315,16 @@ namespace Pipelines.Sockets.Unofficial.Threading
                     if (!itemLockTaken) return default; // just give up!
                 }
 
-                item.Reset(start);
-
                 // now lock the global queue, and then have a final stab at getting it cheaply
                 _mayHavePendingItems = true; // set this *before* getting the lock
                 Monitor.TryEnter(_queue, TimeoutMilliseconds, ref queueLockTaken);
                 if (!queueLockTaken) return default; // couldn't even get the lock, let alone the mutex
 
+#if DEBUG
+                token = HasFlag(options, DisableFastPath) ? 0 : TryTake();
+#else
                 token = TryTake();
+#endif
                 if (token != 0)
                 {
                     FixMayHavePendingItemsInsideLock();
@@ -299,7 +333,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
                 // otherwise enqueue the pending item, and release
                 // the global queue *before* we wait
-                _queue.Enqueue(item);
+                _queue.Enqueue(queueItem);
                 Monitor.Exit(_queue);
                 queueLockTaken = false;
 
@@ -326,7 +360,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
                     if (queueLockTaken)
                     {
                         if (_queue.Count == 0) { } // nothing to do; queue is empty
-                        else if (_queue.Peek() == item)
+                        else if (_queue.Peek() == queueItem)
                         {
                             _queue.Dequeue(); // we were next and we cleaned up; nice!
                             // (note: don't need to use DequeueInsideLock here; if it is "us", it isn't async)
@@ -354,12 +388,16 @@ namespace Pipelines.Sockets.Unofficial.Threading
         }
 
 #pragma warning disable RCS1231 // Make parameter ref read-only.
-        private AwaitableLockToken TakeWithTimeoutAsync(CancellationToken cancellationToken, WaitOptions options)
+        private ValueTask<LockToken> TakeWithTimeoutAsync(CancellationToken cancellationToken, WaitOptions options)
 #pragma warning restore RCS1231 // Make parameter ref read-only.
         {
             // try and spin
+#if DEBUG
+            var token = HasFlag(options, DisableFastPath) ? 0 : TryTakeBySpinning();
+#else
             var token = TryTakeBySpinning();
-            if (token != 0) return new AwaitableLockToken(new LockToken(this, token));
+#endif
+            if (token != 0) return new ValueTask<LockToken>(new LockToken(this, token));
 
             // if "now or never", bail
             if (TimeoutMilliseconds == 0 || HasFlag(options, WaitOptions.NoDelay)) return default;
@@ -373,31 +411,49 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 _mayHavePendingItems = true; // set this *before* getting the lock
                 Monitor.TryEnter(_queue, TimeoutMilliseconds, ref queueLockTaken);
                 if (!queueLockTaken) return default; // couldn't even get the lock, let alone the mutex
-                if (cancellationToken.IsCancellationRequested) return AwaitableLockToken.Canceled();
+                if (cancellationToken.IsCancellationRequested) return GetCanceled();
 
+#if DEBUG
+                token = HasFlag(options, DisableFastPath) ? 0 : TryTake();
+#else
                 token = TryTake();
+#endif
                 if (token != 0)
                 {
                     FixMayHavePendingItemsInsideLock();
-                    return new AwaitableLockToken(new LockToken(this, token));
+                    return new ValueTask<LockToken>(new LockToken(this, token));
                 }
 
                 // otherwise enqueue the pending item, and release
                 // the global queue
-                var asyncItem = HasFlag(options, WaitOptions.DisableAsyncContext)
-                    ? (AsyncPendingLockToken)new AsyncDirectPendingLockToken(this, start) // bypass TPL - no context flow
-                    : new AsyncTaskPendingLockToken(this, start); // let the TPL deal with capturing async context
+                //var asyncItem = HasFlag(options, WaitOptions.DisableAsyncContext)
+                //    ? (AsyncPendingLockToken)new AsyncDirectPendingLockToken(this, start) // bypass TPL - no context flow
+                //    : new AsyncTaskPendingLockToken(this, start); // let the TPL deal with capturing async context
 
+                IAsyncPendingLockToken asyncItem;
+                short key;
+
+                if (HasFlag(options, WaitOptions.DisableAsyncContext))
+                {
+                    asyncItem = GetSlabTokenInsideLock(out key);
+                }
+                else
+                {
+                    asyncItem = new AsyncTaskPendingLockToken(this); // let the TPL deal with capturing async context
+                    key = 0;
+                }
+
+                var queueItem = new PendingLockItem(start, key, asyncItem);
                 if (cancellationToken.CanBeCanceled)
                 {
-                    cancellationToken.Register(_ => ((AsyncPendingLockToken)_).TryCancel(), asyncItem);
+                    cancellationToken.Register(GetCancelationCallback(key), asyncItem);
                 }
-                if (!asyncItem.IsCanceled) // Register can invoke directly if it became canceled already
+                if (!asyncItem.IsCanceled(key)) // Register can invoke directly if it became canceled already
                 {
-                    _queue.Enqueue(asyncItem);
+                    _queue.Enqueue(queueItem);
                     if (_pendingAsyncOperations++ == 0) SetNextAsyncTimeoutInsideLock(); // first async op
                 }
-                return new AwaitableLockToken(asyncItem);
+                return asyncItem.GetTask(key);
             }
             finally
             {
@@ -405,20 +461,60 @@ namespace Pipelines.Sockets.Unofficial.Threading
             }
         }
 
+        private AsyncDirectPendingLockSlab _directSlab;
+        private short _nextSlabIndex;
+
+        static readonly Action<object>[] _slabCallbacks = new Action<object>[AsyncDirectPendingLockSlab.SlabSize - 1];
+        static Action<object> GetCancelationCallback(short key)
+        {
+            if (key == 0) return state => ((IPendingLockToken)state).TryCancel(0);
+            var index = key - 1; // don't need to worry about 0, so: offset by one
+            return _slabCallbacks[index] ?? (_slabCallbacks[index] = CreateCancelationCallback(key));
+
+            Action<object> CreateCancelationCallback(short lkey)
+            {   // this will involve a capture per SlabSize element; I'm OK with this!
+                // better than unbounded numbers of cancelation callbacks
+                return state => ((IPendingLockToken)state).TryCancel(lkey);
+            }
+        }
+        private IAsyncPendingLockToken GetSlabTokenInsideLock(out short key)
+        {
+            if (_directSlab == null || _nextSlabIndex == AsyncDirectPendingLockSlab.SlabSize)
+            {
+                _directSlab = new AsyncDirectPendingLockSlab(this);
+                _nextSlabIndex = 0;
+            }
+            key = _nextSlabIndex++;
+            return _directSlab;
+        }
+
         /// <summary>
         /// Attempt to take the lock (Success should be checked by the caller)
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
 #pragma warning disable RCS1231 // Make parameter ref read-only.
-        public AwaitableLockToken TryWaitAsync(CancellationToken cancellationToken = default, WaitOptions options = WaitOptions.None)
+        public ValueTask<LockToken> TryWaitAsync(CancellationToken cancellationToken = default, WaitOptions options = WaitOptions.None)
 #pragma warning restore RCS1231 // Make parameter ref read-only.
         {
-            if (cancellationToken.IsCancellationRequested) return AwaitableLockToken.Canceled();
-            int token = TryTake();
-            if (token != 0) return new AwaitableLockToken(new LockToken(this, token));
+            if (cancellationToken.IsCancellationRequested) return GetCanceled();
+#if DEBUG
+            var token = HasFlag(options, DisableFastPath) ? 0 : TryTake();
+#else
+            var token = TryTake();
+#endif
+            if (token != 0) return new ValueTask<LockToken>(new LockToken(this, token));
 
             // otherwise, do things the hard way
             return TakeWithTimeoutAsync(cancellationToken, options);
+        }
+
+        static Task<LockToken> s_canceledTask;
+        internal static ValueTask<LockToken> GetCanceled() => new ValueTask<LockToken>(s_canceledTask ?? (s_canceledTask = CreateCanceledLockTokenTask()));
+        private static Task<LockToken> CreateCanceledLockTokenTask()
+        {
+            var tcs = new TaskCompletionSource<LockToken>();
+            tcs.SetCanceled();
+            return tcs.Task;
         }
 
         /// <summary>
@@ -427,7 +523,11 @@ namespace Pipelines.Sockets.Unofficial.Threading
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public LockToken TryWait(WaitOptions options = WaitOptions.None)
         {
+#if DEBUG
+            var token = HasFlag(options, DisableFastPath) ? 0 : TryTake();
+#else
             var token = TryTake();
+#endif
             return new LockToken(this, token != 0 ? token : TakeWithTimeout(options));
         }
 
@@ -449,6 +549,10 @@ namespace Pipelines.Sockets.Unofficial.Threading
             /// Disable full TPL flow; more efficient, but no sync-context or execution-context guarantees
             /// </summary>
             DisableAsyncContext = 2,
+
+            // note: MSB is reserved for debugging
         }
+
+        internal const WaitOptions DisableFastPath = unchecked((WaitOptions)0x80000000); // MSB
     }
 }

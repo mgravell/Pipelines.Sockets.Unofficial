@@ -1,4 +1,6 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System;
+using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace Pipelines.Sockets.Unofficial.Threading
 {
@@ -13,10 +15,10 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 Success = 2, // note: careful choice of numbers here allows IsCompletedSuccessfully to check whether the LSB is set
                 Canceled = 3;
 
-                //Pending = 0,
-                //Canceled = 1,
-                //Success = 2, // note: we make use of the fact that Success/Timeout use the
-                //Timeout = 3; // 2nd bit for IsCompletedSuccessfully; don't change casually!
+            //Pending = 0,
+            //Canceled = 1,
+            //Success = 2, // note: we make use of the fact that Success/Timeout use the
+            //Timeout = 3; // 2nd bit for IsCompletedSuccessfully; don't change casually!
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static int GetNextToken(int token)
@@ -42,6 +44,72 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static bool IsCanceled(int token) => (token & 3) == Canceled;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static bool TrySetResult(ref int token, int value)
+            {
+                int oldValue = Volatile.Read(ref token);
+                if (LockState.GetState(oldValue) == LockState.Pending
+                    && Interlocked.CompareExchange(ref token, value, oldValue) == oldValue)
+                {
+                    return true;
+                }
+                return false;
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static bool TryCancel(ref int token)
+            {
+                int oldValue;
+                do
+                {
+                    // depends on the current state...
+                    oldValue = Volatile.Read(ref token);
+                    if (LockState.GetState(oldValue) != LockState.Pending)
+                    {
+                        // already fixed
+                        return false;
+                    }
+                    // otherwise, attempt to change the field; in case of conflict; re-do from start
+                } while (Interlocked.CompareExchange(ref token, LockState.ChangeState(oldValue, LockState.Canceled), oldValue) != oldValue);
+                return true;
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static int GetResult(ref int token)
+            {   // if already complete: returns the token; otherwise, dooms the operation
+                int oldValue, newValue;
+                do
+                {
+                    oldValue = Volatile.Read(ref token);
+                    if (LockState.GetState(oldValue) != LockState.Pending)
+                    {
+                        // value is already fixed; just return it
+                        return oldValue;
+                    }
+                    // we don't ever want to report different values from GetResult, so
+                    // if you called GetResult prematurely: you doomed it to failure
+                    newValue = LockState.ChangeState(oldValue, LockState.Timeout);
+
+                    // if something changed while we were thinking, redo from start
+                } while (Interlocked.CompareExchange(ref token, newValue, oldValue) != oldValue);
+                return newValue;
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static void Reset(ref int token) => Volatile.Write(ref token, LockState.Pending);
+
+            internal static string ToString(int token)
+            {
+                var id = ((uint)token) >> 2;
+                switch(GetState(token))
+                {
+                    case Timeout: return $"(#{id},timeout)";
+                    case Pending: return $"(#{id},pending)";
+                    case Success: return $"(#{id},success)";
+                    default: return $"(#{id},canceled)";
+                }
+            }
         }
     }
 }

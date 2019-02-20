@@ -135,45 +135,6 @@ namespace Benchmark
                 var awaitable = _mutexSlim.TryWaitAsync();
                 if (awaitable.IsCompletedSuccessfully)
                 {
-                    using (var token = awaitable.GetResult())
-                    {
-                        if (token) count++;
-                    }
-                }
-                else
-                {
-                    using (var token = await awaitable)
-                    {
-                        if (token) count++;
-                    }
-                }
-            }
-            return count.AssertIs(PER_TEST);
-        }
-
-        [Benchmark(OperationsPerInvoke = PER_TEST)]
-        public async ValueTask<int> MutexSlim_Async_VT()
-        {
-            int count = 0;
-            for (int i = 0; i < PER_TEST; i++)
-            {
-                using (var token = await _mutexSlim.TryWaitAsync().AsTask())
-                {
-                    if (token) count++;
-                }
-            }
-            return count.AssertIs(PER_TEST);
-        }
-
-        [Benchmark(OperationsPerInvoke = PER_TEST)]
-        public async ValueTask<int> MutexSlim_Async_HotPath_VT()
-        {
-            int count = 0;
-            for (int i = 0; i < PER_TEST; i++)
-            {
-                var awaitable = _mutexSlim.TryWaitAsync().AsTask();
-                if (awaitable.IsCompletedSuccessfully)
-                {
                     using (var token = awaitable.Result)
                     {
                         if (token) count++;
