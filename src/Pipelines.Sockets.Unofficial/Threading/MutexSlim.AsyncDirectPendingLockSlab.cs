@@ -23,6 +23,9 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 _continuationsAndState = new object[SlabSize * 2];
             }
 
+            short _currentIndex;
+            public short TryGetKey() => (short)(_currentIndex == SlabSize ? -1 : _currentIndex++);
+
             void IPendingLockToken.Reset(short key)
             {
                 Volatile.Write(ref _tokens[key], LockState.Pending);

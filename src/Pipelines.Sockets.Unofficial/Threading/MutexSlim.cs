@@ -462,7 +462,6 @@ namespace Pipelines.Sockets.Unofficial.Threading
         }
 
         private AsyncDirectPendingLockSlab _directSlab;
-        private short _nextSlabIndex;
 
         static readonly Action<object>[] _slabCallbacks = new Action<object>[AsyncDirectPendingLockSlab.SlabSize - 1];
         static Action<object> GetCancelationCallback(short key)
@@ -479,12 +478,8 @@ namespace Pipelines.Sockets.Unofficial.Threading
         }
         private IAsyncPendingLockToken GetSlabTokenInsideLock(out short key)
         {
-            if (_directSlab == null || _nextSlabIndex == AsyncDirectPendingLockSlab.SlabSize)
-            {
-                _directSlab = new AsyncDirectPendingLockSlab(this);
-                _nextSlabIndex = 0;
-            }
-            key = _nextSlabIndex++;
+            key = _directSlab?.TryGetKey() ?? -1;
+            if (key < 0) key = (_directSlab = new AsyncDirectPendingLockSlab(this)).TryGetKey();
             return _directSlab;
         }
 
