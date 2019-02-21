@@ -26,8 +26,29 @@ namespace Benchmark
         private readonly MutexSlim _mutexSlim = new MutexSlim(TIMEOUTMS);
         private readonly SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(1, 1);
         private readonly AsyncSemaphore _asyncSemaphore = new AsyncSemaphore(1);
+        private readonly object _syncLock = new object();
+
         const int PER_TEST = 5 * 1024;
 
+        [Benchmark(OperationsPerInvoke = PER_TEST)]
+        public int Monitor_Sync()
+        {
+            int count = 0;
+            for (int i = 0; i < PER_TEST; i++)
+            {
+                bool haveLock = false;
+                Monitor.TryEnter(_syncLock, TIMEOUTMS, ref haveLock);
+                try
+                {
+                    if (haveLock) count++;
+                }
+                finally
+                {
+                    if (haveLock) Monitor.Exit(_syncLock);
+                }
+            }
+            return count.AssertIs(PER_TEST);
+        }
 
         [Benchmark(OperationsPerInvoke = PER_TEST)]
         public int SemaphoreSlim_Sync()

@@ -203,7 +203,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public async Task CanTimeoutLotsOfTimes(WaitOptions waitOptions)
         {
             var fastMux = new MutexSlim(1);
+#if DEBUG
             fastMux.Logged += Log;
+#endif
             using (var outer = fastMux.TryWait())
             {
                 Assert.True(outer.Success);
