@@ -115,7 +115,7 @@ namespace Pipelines.Sockets.Unofficial
             if (_disposed || queueLength > UseThreadPoolQueueLength)
             {
                 Helpers.Incr(Counter.ThreadPoolPushedToMainThreadPool);
-                System.Threading.ThreadPool.QueueUserWorkItem(ThreadPoolRunSingleItem, this);
+                ThreadPool.Schedule(action, state);
             }
             else
             {
@@ -124,7 +124,6 @@ namespace Pipelines.Sockets.Unofficial
         }
 
         private static readonly ParameterizedThreadStart ThreadRunWorkLoop = state => ((DedicatedThreadPoolPipeScheduler)state).RunWorkLoop();
-        private static readonly WaitCallback ThreadPoolRunSingleItem = state => ((DedicatedThreadPoolPipeScheduler)state).RunSingleItem();
 
         private int _availableCount;
         /// <summary>
@@ -147,17 +146,6 @@ namespace Pipelines.Sockets.Unofficial
             }
         }
 
-        private void RunSingleItem()
-        {
-            WorkItem next;
-            lock (_queue)
-            {
-                if (_queue.Count == 0) return;
-                next = _queue.Dequeue();
-            }
-            Interlocked.Increment(ref _totalServicedByPool);
-            Execute(next.Action, next.State);
-        }
         private void RunWorkLoop()
         {
             while (true)
