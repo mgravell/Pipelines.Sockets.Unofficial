@@ -103,7 +103,7 @@ namespace Pipelines.Sockets.Unofficial
             if (action == null) return; // nothing to do
             lock (_queue)
             {
-                if (!(_disposed | _queue.Count > UseThreadPoolQueueLength))
+                if (!(_disposed | _queue.Count >= UseThreadPoolQueueLength))
                 {
                     _queue.Enqueue(new WorkItem(action, state));
                     if (_availableCount != 0)
