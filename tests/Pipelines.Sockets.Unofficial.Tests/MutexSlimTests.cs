@@ -195,17 +195,14 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
         }
 
-        internal const WaitOptions DisableFastPath = unchecked((WaitOptions)0x80000000); // MSB
-
-        [Theory]
+#if DEBUG
+        [Theory] // only makes sense with fast-path disabled, a debug-only option
         [InlineData(WaitOptions.None | DisableFastPath)]
         [InlineData(WaitOptions.DisableAsyncContext | DisableFastPath)]
         public async Task CanTimeoutLotsOfTimes(WaitOptions waitOptions)
         {
             var fastMux = new MutexSlim(1);
-#if DEBUG
             fastMux.Logged += Log;
-#endif
             using (var outer = fastMux.TryWait())
             {
                 Assert.True(outer.Success);
@@ -219,6 +216,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 }
             }
         }
+#endif
 
         [Fact]
         public void CanObtain()

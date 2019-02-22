@@ -101,26 +101,23 @@ namespace Pipelines.Sockets.Unofficial
         public override void Schedule(Action<object> action, object state)
         {
             if (action == null) return; // nothing to do
-            int queueLength;
             lock (_queue)
             {
-                _queue.Enqueue(new WorkItem(action, state));
-                if (_availableCount != 0)
+                if (!(_disposed | _queue.Count > UseThreadPoolQueueLength))
                 {
-                    Monitor.Pulse(_queue); // wake up someone
+                    _queue.Enqueue(new WorkItem(action, state));
+                    if (_availableCount != 0)
+                    {
+                        Monitor.Pulse(_queue); // wake up someone
+                    }
+                    Helpers.Incr(Counter.ThreadPoolScheduled);
+                    return;
                 }
-                queueLength = _queue.Count;
             }
 
-            if (_disposed || queueLength > UseThreadPoolQueueLength)
-            {
-                Helpers.Incr(Counter.ThreadPoolPushedToMainThreadPool);
-                ThreadPool.Schedule(action, state);
-            }
-            else
-            {
-                Helpers.Incr(Counter.ThreadPoolScheduled);
-            }
+            // fallback to thread-pool
+            Helpers.Incr(Counter.ThreadPoolPushedToMainThreadPool);
+            ThreadPool.Schedule(action, state);
         }
 
         private static readonly ParameterizedThreadStart ThreadRunWorkLoop = state => ((DedicatedThreadPoolPipeScheduler)state).RunWorkLoop();

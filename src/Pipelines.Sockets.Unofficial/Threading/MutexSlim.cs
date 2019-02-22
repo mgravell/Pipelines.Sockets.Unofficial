@@ -235,10 +235,14 @@ namespace Pipelines.Sockets.Unofficial.Threading
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int TryTake()
         {
-            int current = Volatile.Read(ref _token), next;
-            return (LockState.GetState(current) == LockState.Pending
-                && Interlocked.CompareExchange(ref _token, next = LockState.GetNextToken(current), current) == current)
-                ? next : 0;
+            int current, next;
+            do // try and take, interlocked; if the value changes, we need to redo in case
+            { // it turns out to be different but still available
+                next = 0; // this is used if it turns out that the current state isn't pending
+                current = Volatile.Read(ref _token);
+            } while (LockState.GetState(current) == LockState.Pending // needs to look available
+                && Interlocked.CompareExchange(ref _token, next = LockState.GetNextToken(current), current) != current); // loop if changed
+            return next;
         }
 
         private int TryTakeBySpinning()
@@ -292,7 +296,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
             if (token != 0) return token;
 
             // if "now or never", bail
-            if (TimeoutMilliseconds == 0 || HasFlag(options, WaitOptions.NoDelay)) return default;
+            if (TimeoutMilliseconds == 0) return default;
 
             bool itemLockTaken = false, queueLockTaken = false;
             var start = GetTime();
@@ -400,7 +404,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
             if (token != 0) return new ValueTask<LockToken>(new LockToken(this, token));
 
             // if "now or never", bail
-            if (TimeoutMilliseconds == 0 || HasFlag(options, WaitOptions.NoDelay)) return default;
+            if (TimeoutMilliseconds == 0) return default;
 
             var start = GetTime();
 
@@ -493,7 +497,8 @@ namespace Pipelines.Sockets.Unofficial.Threading
 #else
             var token = TryTake();
 #endif
-            if (token != 0) return new ValueTask<LockToken>(new LockToken(this, token));
+            if (token != 0 | HasFlag(options, WaitOptions.NoDelay))
+                return new ValueTask<LockToken>(new LockToken(this, token));
 
             // otherwise, do things the hard way
             return TakeWithTimeoutAsync(cancellationToken, options);
@@ -519,7 +524,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
 #else
             var token = TryTake();
 #endif
-            return new LockToken(this, token != 0 ? token : TakeWithTimeout(options));
+            return new LockToken(this, (token != 0 | HasFlag(options, WaitOptions.NoDelay)) ? token : TakeWithTimeout(options));
         }
 
         /// <summary>
