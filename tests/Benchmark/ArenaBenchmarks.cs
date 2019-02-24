@@ -25,39 +25,44 @@ namespace Benchmark
                 }
             }
             _maxCount = _sizes.Max(x => x.Length);
-        }
 
-        [Benchmark]
+            _arenaAllocs = new List<Allocation<int>>(_maxCount);
+            _arrayAllocs = new List<int[]>(_maxCount);
+            _poolAllocs = new List<ArraySegment<int>>(_maxCount);
+        }
+        List<Allocation<int>> _arenaAllocs;
+        List<int[]> _arrayAllocs;
+        List<ArraySegment<int>> _poolAllocs;
+
+        [Benchmark(Description = "new int[]")]
         public void New()
         {
-            var allocs = new List<int[]>(_maxCount);
             for (int i = 0; i < _sizes.Length; i++)
             {
-                allocs.Clear();
+                _arrayAllocs.Clear();
                 var arr = _sizes[i];
                 for(int j = 0; j < arr.Length; j++)
                 {
-                    allocs.Add(new int[arr[j]]);
+                    _arrayAllocs.Add(new int[arr[j]]);
                 }
             }
         }
 
-        [Benchmark]
+        [Benchmark(Description = "ArrayPool<int>.Rent")]
         public void ArrayPool()
         {
-            var allocs = new List<ArraySegment<int>>(_maxCount);
             for (int i = 0; i < _sizes.Length; i++)
             {
-                allocs.Clear();
+                _poolAllocs.Clear();
                 var arr = _sizes[i];
                 for (int j = 0; j < arr.Length; j++)
                 {
                     var size = arr[j];
-                    allocs.Add(new ArraySegment<int>(_pool.Rent(size), 0, size));
+                    _poolAllocs.Add(new ArraySegment<int>(_pool.Rent(size), 0, size));
                 }
 
                 // and put back
-                foreach (var item in allocs)
+                foreach (var item in _poolAllocs)
                 {
                     _pool.Return(item.Array, clearArray: false);
                 }
@@ -67,18 +72,18 @@ namespace Benchmark
         readonly ArrayPool<int> _pool = ArrayPool<int>.Shared;
         readonly Arena<int> _arena = new Arena<int>();
 
-        [Benchmark]
+        [Benchmark(Description = "Arena<int>.Allocate")]
         public void Arena()
         {
-            var allocs = new List<Allocation<int>>(_maxCount);
+            
             for (int i = 0; i < _sizes.Length; i++)
             {
-                allocs.Clear();
+                _arenaAllocs.Clear();
                 _arena.Reset();
                 var arr = _sizes[i];
                 for (int j = 0; j < arr.Length; j++)
                 {
-                    allocs.Add(_arena.Allocate(arr[j]));
+                    _arenaAllocs.Add(_arena.Allocate(arr[j]));
                 }
             }
         }

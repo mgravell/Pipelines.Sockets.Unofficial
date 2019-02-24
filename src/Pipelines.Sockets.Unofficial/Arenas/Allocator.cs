@@ -13,7 +13,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             try
             {
                 // try for 64k *memory* (not 64k elements)
-                int count = (64 * 1024) / Unsafe.SizeOf<T>();
+                int count = (64 * 1024) / UnsafeSize<T>();
                 return count <= 64 ? 64 : count; // avoid too small (only impacts huge types)
             }
             catch
@@ -21,6 +21,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 return 16 * 1024; // arbitrary 16k elements if that fails
             }
         }
+        [MethodImpl(MethodImplOptions.NoInlining)] // because of assembly binding pain in Unsaef
+        private static int UnsafeSize<T>() => Unsafe.SizeOf<T>();
+
         public virtual int DefaultBlockSize => _defaultBlockSize;
 
         public abstract IMemoryOwner<T> Allocate(int length);

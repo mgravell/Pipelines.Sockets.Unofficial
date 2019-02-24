@@ -7,14 +7,23 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     public readonly struct Allocation
     {
         private readonly int _offset, _length;
-        private readonly object _block;
+        private readonly IBlock _block;
+
+        public Type ElementType => _block?.ElementType ?? typeof(void);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Allocation<T> Cast<T>()
-            => _block == null ? default : new Allocation<T>((Block<T>)_block, _offset, _length);
+            => _length == 0 ? TypeCheckedDefault<T>() : new Allocation<T>((Block<T>)_block, _offset, _length);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal Allocation(object block, int offset, int length)
+        Allocation<T> TypeCheckedDefault<T>()
+        {
+            GC.KeepAlive((NilBlock<T>)_block); // null (default) or correct
+            return default;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal Allocation(IBlock block, int offset, int length)
         {
             _block = block;
             _offset = offset;
@@ -29,7 +38,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static implicit operator Allocation(Allocation<T> allocation)
-            => new Allocation(allocation._block, allocation.Offset, allocation._length);
+            => allocation.Untyped();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static explicit operator Allocation<T>(Allocation allocation)
@@ -40,11 +49,58 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             => allocation.AsReadOnly();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Allocation Untyped() => this;
+        public Allocation Untyped() => new Allocation(_block ?? NilBlock<T>.Default, Offset, _length);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ReadOnlySequence<T> AsReadOnly()
-            => IsSingleSegment ? new ReadOnlySequence<T>(_block, Offset, _block, Offset + _length) : MultiSegmentAsReadOnly();
+            => IsEmpty ? default
+            : IsSingleSegment ? new ReadOnlySequence<T>(_block, Offset, _block, Offset + _length) : MultiSegmentAsReadOnly();
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Allocation<T> Slice(int start)
+        {
+            // does the start still fit into the first block?
+            int newStart;
+            if ((_length != 0 & start >= 0) && (newStart = Offset + start) < _block.Length)
+                return new Allocation<T>(_block, newStart, _length - start);
+            return SlowSlice(start, _length - start);
+        }
+
+
+        public Allocation<T> Slice(int start, int length)
+        {
+            // does the start still fit into the first block and still well-defined?
+            int newStart;
+            if ((_length != 0 & start >= 0 & length >= 0 & (start + length <= _length)) && (newStart = Offset + start) < _block.Length)
+                return new Allocation<T>(_block, newStart, length);
+            return SlowSlice(start, _length - start);
+        }
+
+        private Allocation<T> SlowSlice(int start, int length)
+        {
+            // TODO: implement properly - this is damned lazy
+            return TryGetAllocation(AsReadOnly().Slice(start, length), out var alloc)
+                ? alloc : ThrowInvalidCast();
+            Allocation<T> ThrowInvalidCast() => throw new InvalidCastException();
+        }
+
+        public static bool TryGetAllocation(ReadOnlySequence<T> sequence, out Allocation<T> allocation)
+        {
+            if (sequence.IsEmpty)
+            {
+                allocation = default;
+                return true;
+            }
+            SequencePosition start = sequence.Start;
+            if(start.GetObject() is Block<T> startBlock && sequence.End.GetObject() is Block<T>)
+            {
+                allocation = new Allocation<T>(startBlock, start.GetInteger(), checked((int)sequence.Length));
+                return true;
+            }
+            allocation = default;
+            return false;
+
+        }
 
         private ReadOnlySequence<T> MultiSegmentAsReadOnly()
         {
@@ -61,7 +117,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return new ReadOnlySequence<T>(start, startIndex, current, remaining);
         }
 
-        public long Length => _length;
+        public long Length => _length; // we currently only allow int, but technically we could support huge blocks
         public bool IsSingleSegment
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]

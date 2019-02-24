@@ -4,11 +4,25 @@ using System.Runtime.CompilerServices;
 
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
-    internal sealed class Block<T> : ReadOnlySequenceSegment<T>, IDisposable
+    internal interface IBlock
+    {
+        Type ElementType { get; }
+    }
+
+    internal sealed class NilBlock<T> : IBlock
+    {   // this exists just so empty allocations (no block) can be untyped/cast correctly
+        public static IBlock Default { get; } = new NilBlock<T>(); 
+        Type IBlock.ElementType => typeof(T);
+        private NilBlock() { }
+    }
+
+    internal sealed class Block<T> : ReadOnlySequenceSegment<T>, IDisposable, IBlock
     {
         public int Length { get; }
         public IMemoryOwner<T> Allocation { get; private set; }
         private Block<T> _next;
+
+        Type IBlock.ElementType => typeof(T);
 
         public Block(IMemoryOwner<T> allocation, long offset)
         {
