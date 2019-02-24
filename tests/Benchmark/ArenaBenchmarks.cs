@@ -4,8 +4,6 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Benchmark
 {
@@ -14,7 +12,7 @@ namespace Benchmark
     {
         private readonly int[][] _sizes;
         private readonly int _maxCount;
-        private ArenaBenchmarks()
+        public ArenaBenchmarks()
         {
             var rand = new Random(43134114);
             _sizes = new int[100][];

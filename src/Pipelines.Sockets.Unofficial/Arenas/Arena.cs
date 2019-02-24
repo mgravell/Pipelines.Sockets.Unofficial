@@ -22,8 +22,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         public Arena(Allocator<T> allocator = null, ArenaOptions options = default, int blockSize = 0)
         {
-            _blockSize = blockSize <= 0 ? _allocator.DefaultBlockSize : blockSize;
             _allocator = allocator ?? ArrayPoolAllocator<T>.Shared;
+            _blockSize = blockSize <= 0 ? _allocator.DefaultBlockSize : blockSize;
             _options = options;
             _first = _current = AllocateDetachedBlock();
         }
@@ -80,7 +80,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             while (true)
             {
                 var remainingThisBlock = _current.Length - _allocatedCurrentBlock;
-                if (remainingThisBlock <= length)
+                if (remainingThisBlock >= length)
                 {
                     _allocatedCurrentBlock += length;
                     break; // that's all we need, thanks
