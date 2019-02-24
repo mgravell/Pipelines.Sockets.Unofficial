@@ -45,7 +45,6 @@ namespace Benchmark
         [Benchmark]
         public void ArrayPool()
         {
-            var pool = ArrayPool<int>.Shared;
             var allocs = new List<ArraySegment<int>>(_maxCount);
             for (int i = 0; i < _sizes.Length; i++)
             {
@@ -54,32 +53,32 @@ namespace Benchmark
                 for (int j = 0; j < arr.Length; j++)
                 {
                     var size = arr[j];
-                    allocs.Add(new ArraySegment<int>(pool.Rent(size), 0, size));
+                    allocs.Add(new ArraySegment<int>(_pool.Rent(size), 0, size));
                 }
 
                 // and put back
                 foreach (var item in allocs)
                 {
-                    pool.Return(item.Array, clearArray: false);
+                    _pool.Return(item.Array, clearArray: false);
                 }
             }
         }
 
+        readonly ArrayPool<int> _pool = ArrayPool<int>.Shared;
+        readonly Arena<int> _arena = new Arena<int>();
+
         [Benchmark]
         public void Arena()
         {
-            using (var arena = new Arena<int>())
+            var allocs = new List<Allocation<int>>(_maxCount);
+            for (int i = 0; i < _sizes.Length; i++)
             {
-                var allocs = new List<Allocation<int>>(_maxCount);
-                for (int i = 0; i < _sizes.Length; i++)
+                allocs.Clear();
+                _arena.Reset();
+                var arr = _sizes[i];
+                for (int j = 0; j < arr.Length; j++)
                 {
-                    allocs.Clear();
-                    var arr = _sizes[i];
-                    for (int j = 0; j < arr.Length; j++)
-                    {
-                        allocs.Add(arena.Allocate(arr[j]));
-                    }
-                    arena.Reset();
+                    allocs.Add(_arena.Allocate(arr[j]));
                 }
             }
         }
