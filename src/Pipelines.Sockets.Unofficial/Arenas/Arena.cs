@@ -13,19 +13,22 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     }
     public sealed class Arena<T> : IDisposable
     {
-        private readonly Allocator<T> _allocator;
+        private long _allocatedTotal, _capacityTotal;
         private readonly ArenaOptions _options;
         private readonly int _blockSize;
-        private Stand<T> _head;
+        private int _allocatedCurrentBlock;
+        private Block<T> _first, _current;
+        private readonly Allocator<T> _allocator;
 
         public Arena(Allocator<T> allocator = null, ArenaOptions options = default, int blockSize = 0)
         {
             _blockSize = blockSize <= 0 ? _allocator.DefaultBlockSize : blockSize;
             _allocator = allocator ?? ArrayPoolAllocator<T>.Shared;
             _options = options;
+            _first = _current = AllocateDetachedBlock();
         }
 
-        private Stand<T> AllocateDetachedStand()
+        private Block<T> AllocateDetachedBlock()
         {
             void ThrowAllocationFailure() => throw new InvalidOperationException("The allocator provided an empty range");
             var allocation = _allocator.Allocate(_blockSize);
@@ -37,97 +40,59 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
             if (ClearAtReset) // this really means "before use", so...
                 _allocator.Clear(allocation, allocation.Memory.Length);
-            return new Stand<T>(allocation);
+            var block = new Block<T>(allocation, _capacityTotal);
+            _capacityTotal += block.Length;
+            return block;
         }
+
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private Stand<T> Head() => _head ?? (_head = AllocateDetachedStand());
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Allocation<T> Allocate(long length)
+        public Allocation<T> Allocate(int length)
         {
-            var head = Head();
-            return head.Free <= length
-                ? AsSingleBlock(head.Take(unchecked((int)length)))
-                : SlowAllocate(head, length);
+            if(_allocatedCurrentBlock + length <= _current.Length)
+            {
+                var offset = _allocatedCurrentBlock;
+                _allocatedCurrentBlock += length;
+                _allocatedTotal += length;
+                return new Allocation<T>(_current, offset, length);
+            }
+            return SlowAllocate(length);
         }
 
-        public Allocation<T> AsSingleBlock(Memory<T> block)
+        // this is when there wasn't enough space in the current block
+        private Allocation<T> SlowAllocate(int length)
         {
-            var segment = GetSegment(1);
-            Debug.Assert(segment.Count == 1, "expected unit length");
-            segment.Array[segment.Offset] = block;
-            return new Allocation<T>(block.Length, segment);
-        }
-
-        ArraySegment<Memory<T>> GetSegment(int length)
-            => new ArraySegment<Memory<T>>(new Memory<T>[length]); // TODO: implement pool
-
-        private Allocation<T> SlowAllocate(Stand<T> head, long length)
-        {
-            // not enough in the "head"; this *count* be because the head is empty
-            if (head.Free == 0)
+            void MoveNextBlock()
             {
-                // it was indeed; so allocate a new stand and attach it
-                var newStand = AllocateDetachedStand();
-                newStand.Next = head;
-                _head = head = newStand;
-
-                // which means the new stand *might* be big enough
-                if (head.Free <= length)
-                    return AsSingleBlock(head.Take(unchecked((int)length)));
+                _current = _current.Next ?? (_current.Next = AllocateDetachedBlock());
+                _allocatedCurrentBlock = 0;
             }
 
-            int stands = 1; // we'll start with the newest stand, which we now know has space
-            long remaining = length - head.Free;
+            // check to see if the first block is full (so we don't have an
+            // allocation that starts at the EOF of a block; it would work, but
+            // would be less efficient)
+            if (_current.Length <= _allocatedCurrentBlock) MoveNextBlock();
 
-            // allocate new stands as needed; note that we're going to
-            // record them in *reverse* order for now; we will
-            // reverse it again as we attach them
-            Stand<T> newestStand = null;
-            while (remaining > 0)
+            var result = new Allocation<T>(_current, _allocatedCurrentBlock, length);
+            _allocatedTotal += length; // we're going to allocate everything
+
+            // now make sure we actually have blocks to cover that promise
+            while (true)
             {
-                var newStand = AllocateDetachedStand();
-                remaining -= Math.Min(remaining, newStand.Free);
-                newStand.Next = newestStand;
-                newestStand = newStand;
-                stands++;
+                var remainingThisBlock = _current.Length - _allocatedCurrentBlock;
+                if (remainingThisBlock <= length)
+                {
+                    _allocatedCurrentBlock += length;
+                    break; // that's all we need, thanks
+                }
+                else
+                {
+                    length -= remainingThisBlock; // consume all of this block
+                    MoveNextBlock(); // and we're going to need another
+                }
             }
-            Debug.Assert(newestStand != null, "we should have allocated at least one new stand");
 
-            // so now we've got some number of new stands, but
-            // we want to consume them in reverse order
-            var segment = GetSegment(stands);
-            Debug.Assert(segment.Count == stands, $"expected length {stands}, got {segment.Count}");
-            var arr = segment.Array;
-            int offset = segment.Offset;
-
-            var alloc = head.Take(remaining);
-            arr[offset++] = alloc;
-            remaining = length - alloc.Length;
-
-            newestStand = Reverse(newestStand);
-            while(remaining >= 0)
-            {
-                Debug.Assert(newestStand != null, "expected an allocated stand");
-                var nextStand = newestStand.Next;
-                newestStand.Next = head;
-                alloc = newestStand.Take(remaining);
-                arr[offset++] = alloc;
-                remaining = length - alloc.Length;
-
-                head = _head = newestStand; // attach
-                newestStand = nextStand;
-            }
-            Debug.Assert(newestStand == null, "expected to exhaust the new stands");
-            Debug.Assert(offset == segment.Offset + segment.Count, "expected to fill the segment");
-
-            return new Allocation<T>(length, segment);
-
-            Stand<T> Reverse(Stand<T> node)
-            {
-                throw new NotImplementedException();
-            }
+            return result;
         }
 
         bool ClearAtReset
@@ -140,28 +105,37 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         private void Reset(bool clear)
         {
-            var current = _head;
-            while (current != null)
+            if (clear)
             {
-                if (clear)
+                var block = _first;
+                while (block != null)
                 {
-                    var taken = current.Taken;
-                    if (taken != 0) _allocator.Clear(current.Block, taken);
+                    if (block == _current)
+                    {
+                        _allocator.Clear(block.Allocation, _allocatedCurrentBlock);
+                        block = null;
+                    }
+                    else
+                    {
+                        _allocator.Clear(block.Allocation, block.Length);
+                        block = block.Next;
+                    }
                 }
-                current.Reset();
-                current = current.Next;
             }
+            _current = _first;
+            _allocatedCurrentBlock = 0;
+            _allocatedTotal = 0;
         }
         public void Dispose()
         {
             if ((_options & ArenaOptions.ClearAtDispose) != 0)
                 try { Reset(true); } catch { } // best effort only
 
-            var current = _head;
-            _head = null;
+            var current = _first;
+            _first = _current = null;
             while (current != null)
             {
-                try { current.Dispose(); } catch { } // best effort only
+                current.Dispose();
                 current = current.Next;
             }
         }
