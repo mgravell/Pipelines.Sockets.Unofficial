@@ -7,7 +7,6 @@ using System.Linq;
 
 namespace Benchmark
 {
-    [MemoryDiagnoser, CoreJob, ClrJob]
     public class ArenaBenchmarks
     {
         private readonly int[][] _sizes;
