@@ -15,7 +15,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             try
             {
-                // try for 128 *memory* (not 128 elements) - this is so we get on the LOH by default (~85k)
+                // try for 128k *memory* (not 128k elements) - this is so we get on the LOH by default (~85k)
                 int count = (128 * 1024) / Unsafe.SizeOf<T>();
                 return count <= 64 ? 64 : count; // avoid too small (only impacts **huge** types)
             }
