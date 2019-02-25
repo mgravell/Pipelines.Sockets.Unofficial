@@ -19,13 +19,16 @@ namespace Pipelines.Sockets.Unofficial.Tests
                     arr[i] = arena.Allocate(rand.Next(0, 512));
                 }
                 long total = Write(arr);
-                Assert.Equal(total, Read(arr));
+                Assert.Equal(total, ReadSpans(arr));
+                Assert.Equal(total, ReadSegments(arr));
+                Assert.Equal(total, ReadElementsIndexer(arr));
+                Assert.Equal(total, ReadElementsRefAdd(arr));
 
-                var singleSegment = arr.Count(x => x.IsSingleSegment);
+                var singleSegmentCount = arr.Count(x => x.IsSingleSegment);
 
                 // we expect "some" (not zero, not all) single-segments
-                Assert.NotEqual(0, singleSegment);
-                Assert.NotEqual(arr.Length, singleSegment);
+                Assert.NotEqual(0, singleSegmentCount);
+                Assert.NotEqual(arr.Length, singleSegmentCount);
 
             }
         }
@@ -58,7 +61,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             return total;
         }
 
-        internal static long Read(Allocation<int>[] segments)
+        internal static long ReadSpans(Allocation<int>[] segments)
         {
             long total = 0;
             for (int i = 0; i < segments.Length; i++)
@@ -81,6 +84,60 @@ namespace Pipelines.Sockets.Unofficial.Tests
                             total += span[j];
                         }
                     }
+                }
+            }
+            return total;
+        }
+
+        internal static long ReadSegments(Allocation<int>[] segments)
+        {
+            long total = 0;
+            for (int i = 0; i < segments.Length; i++)
+            {
+                var segment = segments[i];
+                if (segment.IsSingleSegment)
+                {
+                    var span = segment.FirstSegment.Span;
+                    for (int j = 0; j < span.Length; j++)
+                    {
+                        total += span[j];
+                    }
+                }
+                else
+                {
+                    foreach (var seg in segment.Segments)
+                    {
+                        var span = seg.Span;
+                        for (int j = 0; j < span.Length; j++)
+                        {
+                            total += span[j];
+                        }
+                    }
+                }
+            }
+            return total;
+        }
+
+        internal static long ReadElementsIndexer(Allocation<int>[] segments)
+        {
+            long total = 0;
+            for (int i = 0; i < segments.Length; i++)
+            {
+                foreach(var val in segments[i].Indexer)
+                {
+                    total += val;
+                }
+            }
+            return total;
+        }
+        internal static long ReadElementsRefAdd(Allocation<int>[] segments)
+        {
+            long total = 0;
+            for (int i = 0; i < segments.Length; i++)
+            {
+                foreach (var val in segments[i].RefAdd)
+                {
+                    total += val;
                 }
             }
             return total;

@@ -4,13 +4,29 @@ using System.Runtime.CompilerServices;
 
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
+    /// <summary>
+    /// Flags that impact behaviour of the arena
+    /// </summary>
     [Flags]
     public enum ArenaOptions
     {
+        /// <summary>
+        /// None
+        /// </summary>
         None,
+        /// <summary>
+        /// Allocations are cleared at each reset (and when initially allocated), so that they are always wiped before use
+        /// </summary>
         ClearAtReset,
+        /// <summary>
+        /// Allocations are cleared when the arean is disposed, so that the contents are not released back to the underlying allocator
+        /// </summary>
         ClearAtDispose,
     }
+
+    /// <summary>
+    /// Represents a lifetime-bound allocator of multiple non-contiguous memory regions
+    /// </summary>
     public sealed class Arena<T> : IDisposable
     {
         private long _allocatedTotal, _capacityTotal;
@@ -20,6 +36,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private Block<T> _first, _current;
         private readonly Allocator<T> _allocator;
 
+        /// <summary>
+        /// Create a new Arena
+        /// </summary>
         public Arena(Allocator<T> allocator = null, ArenaOptions options = default, int blockSize = 0)
         {
             _allocator = allocator ?? ArrayPoolAllocator<T>.Shared;
@@ -45,11 +64,13 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return block;
         }
 
-
+        /// <summary>
+        /// Allocate a (possibly non-contiguous) region of memory from the arena
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Allocation<T> Allocate(int length)
         {
-            if(_allocatedCurrentBlock + length <= _current.Length)
+            if(length >= 0 & _allocatedCurrentBlock + length <= _current.Length)
             {
                 var offset = _allocatedCurrentBlock;
                 _allocatedCurrentBlock += length;
@@ -62,6 +83,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         // this is when there wasn't enough space in the current block
         private Allocation<T> SlowAllocate(int length)
         {
+            void ThrowInvalidLength() => throw new ArgumentOutOfRangeException(nameof(length));
+            if (length < 0) ThrowInvalidLength();
             void MoveNextBlock()
             {
                 _current = _current.Next ?? (_current.Next = AllocateDetachedBlock());
@@ -101,6 +124,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             get => (_options & ArenaOptions.ClearAtReset) != 0;
         }
 
+        /// <summary>
+        /// Resets the arena; all current allocations should be considered invalid - new allocations may overwrite them
+        /// </summary>
         public void Reset() => Reset(ClearAtReset);
 
         private void Reset(bool clear)
@@ -126,6 +152,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             _allocatedCurrentBlock = 0;
             _allocatedTotal = 0;
         }
+
+        /// <summary>
+        /// Releases all resources associated with the arena
+        /// </summary>
         public void Dispose()
         {
             if ((_options & ArenaOptions.ClearAtDispose) != 0)

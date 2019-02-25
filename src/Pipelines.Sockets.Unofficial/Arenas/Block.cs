@@ -9,10 +9,15 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         Type ElementType { get; }
     }
 
-    internal sealed class NilBlock<T> : IBlock
+    internal abstract class NilBlock : IBlock
+    {
+        Type IBlock.ElementType => ElementType;
+        protected abstract Type ElementType { get; }
+    }
+    internal sealed class NilBlock<T> : NilBlock, IBlock
     {   // this exists just so empty allocations (no block) can be untyped/cast correctly
-        public static IBlock Default { get; } = new NilBlock<T>(); 
-        Type IBlock.ElementType => typeof(T);
+        public static IBlock Default { get; } = new NilBlock<T>();
+        protected override Type ElementType => typeof(T);
         private NilBlock() { }
     }
 

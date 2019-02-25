@@ -9,6 +9,7 @@ using System.Linq;
 namespace Benchmark
 {
     [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByCategory)]
+    [CategoriesColumn]
     public class ArenaBenchmarks
     {
         private readonly int[][] _sizes;
@@ -51,9 +52,12 @@ namespace Benchmark
             Write(_poolRW).AssertIs(expected);
 
             int n = firstArray.Sum();
-            Read(_arrayRW).AssertIs(expected);
-            Read(_arenaRW).AssertIs(expected);
-            Read(_poolRW).AssertIs(expected);
+            ReadFor(_arrayRW).AssertIs(expected);
+            ReadSpansFor(_arenaRW).AssertIs(expected);
+            ReadSegmentsFor(_arenaRW).AssertIs(expected);
+            ReadForeachIndexer(_arenaRW).AssertIs(expected);
+            ReadForeachRefAdd(_arenaRW).AssertIs(expected);
+            ReadFor(_poolRW).AssertIs(expected);
         }
         Arena<int> _rwArena;
         List<Allocation<int>> _arenaAllocs;
@@ -79,7 +83,7 @@ namespace Benchmark
             return total;
         }
 
-        static long Read(int[][] segments)
+        static long ReadFor(int[][] segments)
         {
             long total = 0;
             for (int i = 0; i < segments.Length; i++)
@@ -88,6 +92,20 @@ namespace Benchmark
                 for (int j = 0; j < arr.Length; j++)
                 {
                     total += arr[j];
+                }
+            }
+            return total;
+        }
+
+        static long ReadForeach(int[][] segments)
+        {
+            long total = 0;
+            for (int i = 0; i < segments.Length; i++)
+            {
+                var arr = segments[i];
+                foreach(int val in arr)
+                {
+                    total += val;
                 }
             }
             return total;
@@ -122,7 +140,7 @@ namespace Benchmark
             return total;
         }
 
-        static long Read(Allocation<int>[] segments)
+        static long ReadSpansFor(Allocation<int>[] segments)
         {
             long total = 0;
             for (int i = 0; i < segments.Length; i++)
@@ -150,6 +168,61 @@ namespace Benchmark
             return total;
         }
 
+        static long ReadSegmentsFor(Allocation<int>[] segments)
+        {
+            long total = 0;
+            for (int i = 0; i < segments.Length; i++)
+            {
+                var segment = segments[i];
+                if (segment.IsSingleSegment)
+                {
+                    var span = segment.FirstSegment.Span;
+                    for (int j = 0; j < span.Length; j++)
+                    {
+                        total += span[j];
+                    }
+                }
+                else
+                {
+                    foreach (var mem in segment.Segments)
+                    {
+                        var span = mem.Span;
+                        for (int j = 0; j < span.Length; j++)
+                        {
+                            total += span[j];
+                        }
+                    }
+                }
+            }
+            return total;
+        }
+
+        static long ReadForeachIndexer(Allocation<int>[] segments)
+        {
+            long total = 0;
+            for (int i = 0; i < segments.Length; i++)
+            {
+                foreach (int val in segments[i].Indexer)
+                {
+                    total += val;
+                }
+            }
+            return total;
+        }
+
+        static long ReadForeachRefAdd(Allocation<int>[] segments)
+        {
+            long total = 0;
+            for (int i = 0; i < segments.Length; i++)
+            {
+                foreach (int val in segments[i].RefAdd)
+                {
+                    total += val;
+                }
+            }
+            return total;
+        }
+
         static long Write(ArraySegment<int>[] segments)
         {
             long total = 0;
@@ -167,7 +240,7 @@ namespace Benchmark
             return total;
         }
 
-        static long Read(ArraySegment<int>[] segments)
+        static long ReadFor(ArraySegment<int>[] segments)
         {
             long total = 0;
             for (int i = 0; i < segments.Length; i++)
@@ -183,18 +256,51 @@ namespace Benchmark
             return total;
         }
 
+        static long ReadForeach(ArraySegment<int>[] segments)
+        {
+            long total = 0;
+            for (int i = 0; i < segments.Length; i++)
+            {
+                foreach (int val in segments[i])
+                {
+                    total += val;
+                }
+            }
+            return total;
+        }
+
 
         [BenchmarkCategory("read/for")]
         [Benchmark(Description = "int[]")]
-        public long ReadArrayFor() => Read(_arrayRW);
+        public long ReadArrayFor() => ReadFor(_arrayRW);
 
         [BenchmarkCategory("read/for")]
         [Benchmark(Description = "ArrayPool<int>", Baseline = true)]
-        public long ReadArrayPoolFor() => Read(_poolRW);
+        public long ReadArrayPoolFor() => ReadFor(_poolRW);
 
         [BenchmarkCategory("read/for")]
-        [Benchmark(Description = "Arena<int>")]
-        public long ReadArenaFor() => Read(_arenaRW);
+        [Benchmark(Description = "Arena<int>.Spans")]
+        public long ReadArenaSpansFor() => ReadSpansFor(_arenaRW);
+
+        [BenchmarkCategory("read/for")]
+        [Benchmark(Description = "Arena<int>.Segments")]
+        public long ReadArenaSegmentsFor() => ReadSegmentsFor(_arenaRW);
+
+        [BenchmarkCategory("read/foreach")]
+        [Benchmark(Description = "int[]")]
+        public long ReadArrayForeach() => ReadForeach(_arrayRW);
+
+        [BenchmarkCategory("read/foreach")]
+        [Benchmark(Description = "ArrayPool<int>", Baseline = true)]
+        public long ReadArrayPoolForeach() => ReadForeach(_poolRW);
+
+        [BenchmarkCategory("read/foreach")]
+        [Benchmark(Description = "Arena<int>.Indexer")]
+        public long ReadArenaForeachIndexer() => ReadForeachIndexer(_arenaRW);
+
+        [BenchmarkCategory("read/foreach")]
+        [Benchmark(Description = "Arena<int>.RefAdd")]
+        public long ReadArenaForeachRefAdd() => ReadForeachRefAdd(_arenaRW);
 
         [BenchmarkCategory("allocate")]
         [Benchmark(Description = "new int[]")]
