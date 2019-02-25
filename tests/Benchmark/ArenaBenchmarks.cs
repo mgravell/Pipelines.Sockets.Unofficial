@@ -48,16 +48,19 @@ namespace Benchmark
             }
 
             var expected = Write(_arrayRW);
-            Write(_arenaRW).AssertIs(expected);
+            WriteSpans(_arenaRW).AssertIs(expected);
+            WriteSegments(_arenaRW).AssertIs(expected);
             Write(_poolRW).AssertIs(expected);
 
             int n = firstArray.Sum();
             ReadFor(_arrayRW).AssertIs(expected);
             ReadSpansFor(_arenaRW).AssertIs(expected);
             ReadSegmentsFor(_arenaRW).AssertIs(expected);
-            ReadForeachIndexer(_arenaRW).AssertIs(expected);
-            ReadForeachRefAdd(_arenaRW).AssertIs(expected);
             ReadFor(_poolRW).AssertIs(expected);
+
+            ReadForeach(_arrayRW).AssertIs(expected);
+            ReadForeach(_arenaRW).AssertIs(expected);
+            ReadForeach(_poolRW).AssertIs(expected);
         }
         Arena<int> _rwArena;
         List<Allocation<int>> _arenaAllocs;
@@ -111,7 +114,7 @@ namespace Benchmark
             return total;
         }
 
-        static long Write(Allocation<int>[] segments)
+        static long WriteSpans(Allocation<int>[] segments)
         {
             long total = 0;
             int val = 0;
@@ -133,6 +136,36 @@ namespace Benchmark
                         for (int j = 0; j < span.Length; j++)
                         {
                             total+= span[j] = ++val;
+                        }
+                    }
+                }
+            }
+            return total;
+        }
+
+        static long WriteSegments(Allocation<int>[] segments)
+        {
+            long total = 0;
+            int val = 0;
+            for (int i = 0; i < segments.Length; i++)
+            {
+                var segment = segments[i];
+                if (segment.IsSingleSegment)
+                {
+                    var span = segment.FirstSegment.Span;
+                    for (int j = 0; j < span.Length; j++)
+                    {
+                        total += span[j] = ++val;
+                    }
+                }
+                else
+                {
+                    foreach (var seg in segment.Segments)
+                    {
+                        var span = seg.Span;
+                        for (int j = 0; j < span.Length; j++)
+                        {
+                            total += span[j] = ++val;
                         }
                     }
                 }
@@ -197,25 +230,12 @@ namespace Benchmark
             return total;
         }
 
-        static long ReadForeachIndexer(Allocation<int>[] segments)
+        static long ReadForeach(Allocation<int>[] segments)
         {
             long total = 0;
             for (int i = 0; i < segments.Length; i++)
             {
-                foreach (int val in segments[i].Indexer)
-                {
-                    total += val;
-                }
-            }
-            return total;
-        }
-
-        static long ReadForeachRefAdd(Allocation<int>[] segments)
-        {
-            long total = 0;
-            for (int i = 0; i < segments.Length; i++)
-            {
-                foreach (int val in segments[i].RefAdd)
+                foreach (int val in segments[i])
                 {
                     total += val;
                 }
@@ -295,16 +315,31 @@ namespace Benchmark
         public long ReadArrayPoolForeach() => ReadForeach(_poolRW);
 
         [BenchmarkCategory("read/foreach")]
-        [Benchmark(Description = "Arena<int>.Indexer")]
-        public long ReadArenaForeachIndexer() => ReadForeachIndexer(_arenaRW);
+        [Benchmark(Description = "Arena<int>")]
+        public long ReadArenaForeachRefAdd() => ReadForeach(_arenaRW);
 
-        [BenchmarkCategory("read/foreach")]
-        [Benchmark(Description = "Arena<int>.RefAdd")]
-        public long ReadArenaForeachRefAdd() => ReadForeachRefAdd(_arenaRW);
+
+
+        [BenchmarkCategory("write/for")]
+        [Benchmark(Description = "int[]")]
+        public long WriteArrayFor() => Write(_arrayRW);
+
+        [BenchmarkCategory("write/for")]
+        [Benchmark(Description = "ArrayPool<int>", Baseline = true)]
+        public long WriteArrayPoolFor() => Write(_poolRW);
+
+        [BenchmarkCategory("write/for")]
+        [Benchmark(Description = "Arena<int>.Spans")]
+        public long WriteArenaSpansFor() => WriteSpans(_arenaRW);
+
+        [BenchmarkCategory("write/for")]
+        [Benchmark(Description = "Arena<int>.Segments")]
+        public long WriteArenaSegmentsFor() => WriteSegments(_arenaRW);
+
 
         [BenchmarkCategory("allocate")]
-        [Benchmark(Description = "new int[]")]
-        public void New()
+        [Benchmark(Description = "int[]")]
+        public void NewArray()
         {
             for (int i = 0; i < _sizes.Length; i++)
             {

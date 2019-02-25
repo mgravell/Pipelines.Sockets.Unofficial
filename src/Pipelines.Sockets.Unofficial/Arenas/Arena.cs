@@ -29,22 +29,35 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     /// </summary>
     public sealed class Arena<T> : IDisposable
     {
+        /// <summary>
+        /// The number of elements allocated since the last reset
+        /// </summary>
+        public long Allocated => _allocatedTotal;
+
+        /// <summary>
+        /// The current capacity of all regions tracked by the arena
+        /// </summary>
+        public long Capacity => _capacityTotal;
+
         private long _allocatedTotal, _capacityTotal;
         private readonly ArenaOptions _options;
         private readonly int _blockSize;
         private int _allocatedCurrentBlock;
         private Block<T> _first, _current;
         private readonly Allocator<T> _allocator;
+        private readonly Func<long, long, long> _retentionPolicy;
+        private long _lastRetention;
 
         /// <summary>
         /// Create a new Arena
         /// </summary>
-        public Arena(Allocator<T> allocator = null, ArenaOptions options = default, int blockSize = 0)
+        public Arena(Allocator<T> allocator = null, ArenaOptions options = default, int blockSize = 0, Func<long,long, long> retentionPolicy = null)
         {
             _allocator = allocator ?? ArrayPoolAllocator<T>.Shared;
             _blockSize = blockSize <= 0 ? _allocator.DefaultBlockSize : blockSize;
             _options = options;
             _first = _current = AllocateDetachedBlock();
+            _retentionPolicy = retentionPolicy ?? RetentionPolicy.Default;
         }
 
         private Block<T> AllocateDetachedBlock()
@@ -127,7 +140,17 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Resets the arena; all current allocations should be considered invalid - new allocations may overwrite them
         /// </summary>
-        public void Reset() => Reset(ClearAtReset);
+        public void Reset()
+        {
+            long allocated = _allocatedTotal;
+            Reset(ClearAtReset);
+
+            var retain = _retentionPolicy(_lastRetention, allocated);
+            Trim(retain);
+            _lastRetention = retain;
+        }
+
+        private void Trim(long retain) { } // not yet implemented
 
         private void Reset(bool clear)
         {

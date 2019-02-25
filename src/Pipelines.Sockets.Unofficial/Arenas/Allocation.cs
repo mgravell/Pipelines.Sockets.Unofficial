@@ -2,7 +2,6 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
@@ -136,7 +135,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 return true;
             }
             SequencePosition start = sequence.Start;
-            if(start.GetObject() is Block<T> startBlock && sequence.End.GetObject() is Block<T>)
+            if (start.GetObject() is Block<T> startBlock && sequence.End.GetObject() is Block<T>)
             {
                 allocation = new Allocation<T>(startBlock, start.GetInteger(), checked((int)sequence.Length));
                 return true;
@@ -153,7 +152,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             var current = start.Next;
             var remaining = _length - startIndex;
-            while(current.Length < remaining)
+            while (current.Length < remaining)
             {
                 remaining -= current.Length;
                 current = current.Next;
@@ -238,7 +237,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             if (destination.Length < _length) return false;
 
-            foreach(var span in Spans)
+            foreach (var span in Spans)
             {
                 span.CopyTo(destination);
                 destination = destination.Slice(span.Length);
@@ -256,7 +255,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             _block = block;
             _offsetAndMultiSegmentFlag = ((offset + length) > block.Length) ? (offset | MSB) : offset;
             _length = length;
-            
+
         }
 
         /// <summary>
@@ -309,113 +308,22 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             public MemoryEnumerator GetEnumerator() => new MemoryEnumerator(_block, _offset, _length);
         }
 
-        public IndexerEnumerable Indexer => new IndexerEnumerable(this);
-        public readonly ref struct IndexerEnumerable
-        {
-            private readonly int _offset, _length;
-            private readonly Block<T> _block;
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            internal IndexerEnumerable(in Allocation<T> allocation)
-            {
-                _offset = allocation.Offset;
-                _length = allocation._length;
-                _block = allocation._block;
-            }
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public IndexerEnumerator GetEnumerator() => new IndexerEnumerator(_block, _offset, _length);
-        }
+        /// <summary>
+        /// Allows an allocation to be enumerated as values
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Enumerator GetEnumerator() => new Enumerator(_block, Offset, _length);
 
-        public ref struct IndexerEnumerator
+        /// <summary>
+        /// Allows an allocation to be enumerated as values
+        /// </summary>
+        public ref struct Enumerator
         {
             private int _remainingThisSpan, _offsetThisSpan, _remainingOtherBlocks;
             private Block<T> _nextBlock;
             private Span<T> _span;
 
-            internal IndexerEnumerator(Block<T> block, int offset, int length)
-            {
-                var firstSpan = block.Memory.Span;
-                if (offset + length > firstSpan.Length)
-                {
-                    // multi-block
-                    _nextBlock = block.Next;
-                    _remainingThisSpan = firstSpan.Length - offset;
-                    _span = firstSpan.Slice(offset, _remainingThisSpan);
-                    _remainingOtherBlocks = length - _remainingThisSpan;
-                }
-                else
-                {
-                    // single-block
-                    _nextBlock = null;
-                    _remainingThisSpan = length;
-                    _span = firstSpan.Slice(offset);
-                    _remainingOtherBlocks = 0;
-                }
-                _offsetThisSpan = -1;
-            }
-
-            /// <summary>
-            /// Attempt to move the next value
-            /// </summary>
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public bool MoveNext()
-            {
-                if (_remainingThisSpan == 0) return MoveNextBlock();
-                _offsetThisSpan++;
-                _remainingThisSpan--;
-                return true;
-            }
-
-            private bool MoveNextBlock()
-            {
-                if (_remainingOtherBlocks == 0) return false;
-
-                var span = _nextBlock.Memory.Span;
-                _nextBlock = _nextBlock.Next;
-
-                if (_remainingOtherBlocks <= span.Length)
-                {   // we're at the end
-                    span = span.Slice(0, _remainingOtherBlocks);
-                    _remainingOtherBlocks = 0;
-                }
-                else
-                {
-                    _remainingOtherBlocks -= span.Length;
-                }
-                _span = span;
-                _remainingThisSpan = span.Length - 1; // because we're consuming one
-                _offsetThisSpan = 0;
-                return true;
-            }
-
-            /// <summary>
-            /// Obtain the current value
-            /// </summary>
-            public T Current => _span[_offsetThisSpan];
-        }
-
-        public RefAddEnumerable RefAdd => new RefAddEnumerable(this);
-        public readonly ref struct RefAddEnumerable
-        {
-            private readonly int _offset, _length;
-            private readonly Block<T> _block;
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            internal RefAddEnumerable(in Allocation<T> allocation)
-            {
-                _offset = allocation.Offset;
-                _length = allocation._length;
-                _block = allocation._block;
-            }
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public RefAddEnumerator GetEnumerator() => new RefAddEnumerator(_block, _offset, _length);
-        }
-
-        public ref struct RefAddEnumerator
-        {
-            private int _remainingThisSpan, _offsetThisSpan, _remainingOtherBlocks;
-            private Block<T> _nextBlock;
-            private Span<T> _span;
-
-            internal RefAddEnumerator(Block<T> block, int offset, int length)
+            internal Enumerator(Block<T> block, int offset, int length)
             {
                 var firstSpan = block.Memory.Span;
                 if (offset + length > firstSpan.Length)
@@ -477,7 +385,35 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             public T Current
             {
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                get => Unsafe.Add(ref MemoryMarshal.GetReference(_span), _offsetThisSpan);
+                get => _span[_offsetThisSpan];
+                /*
+
+                Note: the choice of using the indexer here was compared against:
+
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                    get => Unsafe.Add(ref MemoryMarshal.GetReference(_span), _offsetThisSpan);
+
+                with the results as below; ref-add is *marginally* faster on netcoreapp2.1,
+                but the indexer is *significantly* faster everywhere else, so; let's assume
+                that the indexer is a more reasonable default. Note that in all cases it is
+                significantly faster (double) compared to ArraySegment<int> via ArrayPool<int>
+
+                |              Method | Runtime |     Toolchain |   Categories |        Mean |
+                |-------------------- |-------- |-------------- |------------- |------------:|
+                |  Arena<int>.Indexer |     Clr |        net472 | read/foreach |   105.06 us |
+                |   Arena<int>.RefAdd |     Clr |        net472 | read/foreach |   131.81 us |
+                |  Arena<int>.Indexer |    Core | netcoreapp2.0 | read/foreach |   105.13 us |
+                |   Arena<int>.RefAdd |    Core | netcoreapp2.0 | read/foreach |   142.11 us |
+                |  Arena<int>.Indexer |    Core | netcoreapp2.1 | read/foreach |    95.80 us |
+                |   Arena<int>.RefAdd |    Core | netcoreapp2.1 | read/foreach |    92.80 us |
+                                                (for context only)
+                |      ArrayPool<int> |     Clr |        net472 | read/foreach |   258.75 us |
+                |             'int[]' |     Clr |        net472 | read/foreach |    22.92 us |
+                |      ArrayPool<int> |    Core | netcoreapp2.0 | read/foreach |   154.89 us |
+                |             'int[]' |    Core | netcoreapp2.0 | read/foreach |    23.58 us |
+                |      ArrayPool<int> |    Core | netcoreapp2.1 | read/foreach |   172.11 us |
+                |             'int[]' |    Core | netcoreapp2.1 | read/foreach |    23.42 us |
+                 */
             }
         }
 

@@ -21,8 +21,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 long total = Write(arr);
                 Assert.Equal(total, ReadSpans(arr));
                 Assert.Equal(total, ReadSegments(arr));
-                Assert.Equal(total, ReadElementsIndexer(arr));
-                Assert.Equal(total, ReadElementsRefAdd(arr));
+                Assert.Equal(total, ReadElements(arr));
 
                 var singleSegmentCount = arr.Count(x => x.IsSingleSegment);
 
@@ -118,24 +117,12 @@ namespace Pipelines.Sockets.Unofficial.Tests
             return total;
         }
 
-        internal static long ReadElementsIndexer(Allocation<int>[] segments)
+        internal static long ReadElements(Allocation<int>[] segments)
         {
             long total = 0;
             for (int i = 0; i < segments.Length; i++)
             {
-                foreach(var val in segments[i].Indexer)
-                {
-                    total += val;
-                }
-            }
-            return total;
-        }
-        internal static long ReadElementsRefAdd(Allocation<int>[] segments)
-        {
-            long total = 0;
-            for (int i = 0; i < segments.Length; i++)
-            {
-                foreach (var val in segments[i].RefAdd)
+                foreach(var val in segments[i])
                 {
                     total += val;
                 }
