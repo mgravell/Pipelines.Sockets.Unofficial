@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Buffers;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace Pipelines.Sockets.Unofficial.Arenas
@@ -59,7 +60,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Allocation<T> Slice(int start)
         {
-            // does the start still fit into the first block?
+            // does the start fit into the first block?
             int newStart;
             if ((_length != 0 & start >= 0) && (newStart = Offset + start) < _block.Length)
                 return new Allocation<T>(_block, newStart, _length - start);
@@ -69,7 +70,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         public Allocation<T> Slice(int start, int length)
         {
-            // does the start still fit into the first block and still well-defined?
+            // does the start fit into the first block and still well-defined?
             int newStart;
             if ((_length != 0 & start >= 0 & length >= 0 & (start + length <= _length)) && (newStart = Offset + start) < _block.Length)
                 return new Allocation<T>(_block, newStart, length);
@@ -78,10 +79,13 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         private Allocation<T> SlowSlice(int start, int length)
         {
-            // TODO: implement properly - this is damned lazy
-            return TryGetAllocation(AsReadOnly().Slice(start, length), out var alloc)
-                ? alloc : ThrowInvalidCast();
-            Allocation<T> ThrowInvalidCast() => throw new InvalidCastException();
+            if (start < 0 | start > _length) ThrowArgumentOutOfRange(nameof(start));
+            if (length < 0 | start + length > _length) ThrowArgumentOutOfRange(nameof(length));
+
+            // note that this can be a zero length range that preserves the block, for SequencePosition purposes
+            return new Allocation<T>(_block, Offset + start, length);
+
+            void ThrowArgumentOutOfRange(string paramName) => throw new ArgumentOutOfRangeException(paramName);
         }
 
         public static bool TryGetAllocation(ReadOnlySequence<T> sequence, out Allocation<T> allocation)
@@ -141,40 +145,22 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public Memory<T> FirstSegment
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => _block == null ? default : _block.Memory.Slice(Offset, _length);
+            get => _block == null ? default :
+                IsSingleSegment ? _block.Memory.Slice(_offsetAndMultiSegmentFlag, _length) : _block.Memory.Slice(Offset);
         }
         public Span<T> FirstSpan
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => _block == null ? default : _block.Memory.Span.Slice(Offset, _length);
+            get => _block == null ? default :
+                IsSingleSegment ? _block.Memory.Span.Slice(_offsetAndMultiSegmentFlag, _length) : _block.Memory.Span.Slice(Offset);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void CopyTo(Span<T> destination)
         {
             if (IsSingleSegment) FirstSpan.CopyTo(destination);
-            else SlowCopy(destination);
-        }
+            else if (!TrySlowCopy(destination)) ThrowLengthError();
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void CopyTo(Memory<T> destination)
-        {
-            if (IsSingleSegment) FirstSegment.CopyTo(destination);
-            else SlowCopy(destination.Span);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryCopyTo(Span<T> destination)
-            => IsSingleSegment ? FirstSpan.TryCopyTo(destination) : TrySlowCopyTo(destination);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryCopyTo(Memory<T> destination)
-            => IsSingleSegment ? FirstSegment.TryCopyTo(destination) : TrySlowCopyTo(destination.Span);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SlowCopy(Span<T> destination)
-        {
-            if (!TrySlowCopyTo(destination)) ThrowLengthError();
             void ThrowLengthError()
             {
                 Span<int> one = stackalloc int[1];
@@ -182,18 +168,28 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
         }
 
-        private bool TrySlowCopyTo(Span<T> destination)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool TryCopyTo(Span<T> destination)
+            => IsSingleSegment ? FirstSpan.TryCopyTo(destination) : TrySlowCopy(destination);
+
+        private bool TrySlowCopy(Span<T> destination)
         {
             if (destination.Length < _length) return false;
 
             throw new NotImplementedException();
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal Allocation(Block<T> block, int offset, int length)
         {
-            _offsetAndMultiSegmentFlag = offset + block.Length < length ? (offset | MSB) : offset;
-            _length = length;
+            Debug.Assert(block != null, "block should never be null");
+            Debug.Assert(length >= 0, "block should not be negative");
+            Debug.Assert(offset >= 0, "offset should not be negative");
+
             _block = block;
+            _offsetAndMultiSegmentFlag = ((offset + length) > block.Length) ? (offset | MSB) : offset;
+            _length = length;
+            
         }
 
         public SpanEnumerable Spans => new SpanEnumerable(this);
@@ -247,7 +243,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 var block = _nextBlock;
                 _nextBlock = block.Next;
 
-                var span = _nextBlock.Memory.Span;
+                var span = block.Memory.Span;
 
                 if (_remaining <= span.Length - _offset)
                 {
