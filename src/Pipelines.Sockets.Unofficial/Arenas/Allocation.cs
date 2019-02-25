@@ -127,7 +127,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             int newStart;
             if ((_length != 0 & start >= 0) && (newStart = Offset + start) < _block.Length)
                 return new Allocation<T>(_block, newStart, _length - start);
-            return SlowSlice(start, _length - start);
+            return SliceIntoLaterPage(start, _length - start);
         }
 
         /// <summary>
@@ -139,16 +139,35 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             int newStart;
             if ((_length != 0 & start >= 0 & length >= 0 & (start + length <= _length)) && (newStart = Offset + start) < _block.Length)
                 return new Allocation<T>(_block, newStart, length);
-            return SlowSlice(start, _length - start);
+            return SliceIntoLaterPage(start, length);
         }
 
-        private Allocation<T> SlowSlice(int start, int length)
+        private Allocation<T> SliceIntoLaterPage(int start, int length)
         {
             if (start < 0 | start > _length) ThrowArgumentOutOfRange(nameof(start));
             if (length < 0 | start + length > _length) ThrowArgumentOutOfRange(nameof(length));
 
-            // note that this can be a zero length range that preserves the block, for SequencePosition purposes
-            return new Allocation<T>(_block, Offset + start, length);
+            if (_block == null)
+            {
+                if (length == 0) return this;
+                ThrowArgumentOutOfRange(nameof(length));
+            }
+
+            // remove whatever is left from the current page
+            // and move to the next
+            int fromThisPage = _block.Length - Offset;
+            start -= fromThisPage;
+            var block = _block.Next;
+
+            // remove however-many entire pages we need
+            // (note: we already asserted that it should fit!)
+            while (start > block.Length)
+            {
+                start -= block.Length;
+                block = block.Next;
+            }
+
+            return new Allocation<T>(block, start, length);
 
             void ThrowArgumentOutOfRange(string paramName) => throw new ArgumentOutOfRangeException(paramName);
         }

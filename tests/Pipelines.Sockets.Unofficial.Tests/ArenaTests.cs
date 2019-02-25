@@ -8,6 +8,54 @@ namespace Pipelines.Sockets.Unofficial.Tests
     public class ArenaTests
     {
         [Fact]
+        public void SliceAndDice()
+        {
+            using (var arena = new Arena<int>(blockSize: 16))
+            {
+                var alloc = arena.Allocate(2048);
+
+                int i = 0, spanCount = 0;
+                foreach(var span in alloc.Spans)
+                {
+                    spanCount++;
+                    for (int j = 0; j < span.Length; j++)
+                    {
+                        span[j] = i++;
+                    }
+                }
+                Assert.True(spanCount >= 10);
+
+                var all = alloc.Slice(0, (int)alloc.Length);
+                Assert.Equal(2048, all.Length);
+                Check(all, 0);
+
+                var small = alloc.Slice(8, 4);
+                Assert.Equal(4, small.Length);
+                Check(small, 8);
+
+                var subSection = alloc.Slice(1250);
+                Assert.Equal(2048 - 1250, subSection.Length);
+                Check(subSection, 1250);
+
+                Assert.Throws<ArgumentOutOfRangeException>(() => alloc.Slice(1, (int)alloc.Length));
+            }
+
+            void Check(Allocation<int> range, int start)
+            {
+                int count = 0;
+                foreach(var span in range.Spans)
+                {
+                    for(int i = 0; i < span.Length; i++)
+                    {
+                        Assert.Equal(start++, span[i]);
+                        count++;
+                    }
+                }
+                Assert.Equal(range.Length, count);
+            }
+        }
+
+        [Fact]
         public void WriteAndRead()
         {
             using (var arena = new Arena<int>(blockSize: 1024))
@@ -31,6 +79,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
             }
         }
+
         internal static long Write(Allocation<int>[] segments)
         {
             int val = 0;
