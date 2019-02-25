@@ -14,6 +14,20 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private readonly IBlock _block;
 
         /// <summary>
+        /// Indicates the number of elements in the allocation
+        /// </summary>
+        public long Length => _length; // we currently only allow int, but technically we could support huge blocks
+
+        /// <summary>
+        /// Indicates whether the allocation is empty (zero elements)
+        /// </summary>
+        public bool IsEmpty
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => _length == 0;
+        }
+
+        /// <summary>
         /// Indicates the type of element defined the allocation
         /// </summary>
         public Type ElementType
@@ -42,6 +56,21 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             _block = block;
             _offset = offset;
             _length = length;
+        }
+
+        /// <summary>
+        /// If possible, copy the contents of the allocation into a contiguous region
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool TryCopyTo(Array destination, int offset = 0) => _length == 0 ? true : _block.TryCopyTo(this, destination, offset);
+
+        /// <summary>
+        /// Copy the contents of the allocation into a contiguous region
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void CopyTo(Array destination, int offset = 0)
+        {
+            if (_length != 0) _block.CopyTo(this, destination, offset);
         }
     }
 
