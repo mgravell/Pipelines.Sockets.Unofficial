@@ -130,7 +130,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 {
                     int token; // if work to do, try and get a new token
                     Log($"pending items: {_queue.Count}");
-                    if (_queue.Count == 0 || (token = TryTake()) == 0) return;
+                    if (_queue.Count == 0 || (token = TryTakeLoopIfChanges()) == 0) return;
 
                     while (_queue.Count != 0)
                     {
@@ -233,7 +233,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int TryTake()
+        private int TryTakeLoopIfChanges()
         {
             int current, next;
             do // try and take, interlocked; if the value changes, we need to redo in case
@@ -245,6 +245,16 @@ namespace Pipelines.Sockets.Unofficial.Threading
             return next;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int TryTakeOnceOnly()
+        {
+            int current, next;
+            return LockState.GetState(current = Volatile.Read(ref _token)) == LockState.Pending // needs to look available
+                && Interlocked.CompareExchange(ref _token, next = LockState.GetNextToken(current), current) == current
+                ? next : 0;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int TryTakeBySpinning()
         {
             // try a SpinWait to see if we can avoid the expensive bits
@@ -252,7 +262,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
             do
             {
                 spin.SpinOnce();
-                var token = TryTake();
+                var token = TryTakeOnceOnly();
                 if (token != 0) return token;
             } while (!spin.NextSpinWillYield);
             return default;
@@ -288,10 +298,11 @@ namespace Pipelines.Sockets.Unofficial.Threading
         private int TakeWithTimeout(WaitOptions options)
         {
             // try and spin
+            int token;
 #if DEBUG
-            var token = HasFlag(options, DisableFastPath) ? 0 : TryTakeBySpinning();
+            token = HasFlag(options, DisableFastPath) ? 0 : TryTakeBySpinning();
 #else
-            var token = TryTakeBySpinning();
+            token = TryTakeBySpinning();
 #endif
             if (token != 0) return token;
 
@@ -325,9 +336,9 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 if (!queueLockTaken) return default; // couldn't even get the lock, let alone the mutex
 
 #if DEBUG
-                token = HasFlag(options, DisableFastPath) ? 0 : TryTake();
+                token = HasFlag(options, DisableFastPath) ? 0 : TryTakeOnceOnly();
 #else
-                token = TryTake();
+                token = TryTakeOnceOnly();
 #endif
                 if (token != 0)
                 {
@@ -395,12 +406,14 @@ namespace Pipelines.Sockets.Unofficial.Threading
         private ValueTask<LockToken> TakeWithTimeoutAsync(CancellationToken cancellationToken, WaitOptions options)
 #pragma warning restore RCS1231 // Make parameter ref read-only.
         {
+            int token;
             // try and spin
 #if DEBUG
-            var token = HasFlag(options, DisableFastPath) ? 0 : TryTakeBySpinning();
+            token = HasFlag(options, DisableFastPath) ? 0 : TryTakeBySpinning();
 #else
-            var token = TryTakeBySpinning();
+            token = TryTakeBySpinning();
 #endif
+
             if (token != 0) return new ValueTask<LockToken>(new LockToken(this, token));
 
             // if "now or never", bail
@@ -418,9 +431,9 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 if (cancellationToken.IsCancellationRequested) return GetCanceled();
 
 #if DEBUG
-                token = HasFlag(options, DisableFastPath) ? 0 : TryTake();
+                token = HasFlag(options, DisableFastPath) ? 0 : TryTakeOnceOnly();
 #else
-                token = TryTake();
+                token = TryTakeOnceOnly();
 #endif
                 if (token != 0)
                 {
@@ -493,9 +506,9 @@ namespace Pipelines.Sockets.Unofficial.Threading
         {
             if (cancellationToken.IsCancellationRequested) return GetCanceled();
 #if DEBUG
-            var token = HasFlag(options, DisableFastPath) ? 0 : TryTake();
+            var token = HasFlag(options, DisableFastPath) ? 0 : TryTakeOnceOnly();
 #else
-            var token = TryTake();
+            var token = TryTakeOnceOnly();
 #endif
             if (token != 0 | HasFlag(options, WaitOptions.NoDelay))
                 return new ValueTask<LockToken>(new LockToken(this, token));
@@ -520,9 +533,9 @@ namespace Pipelines.Sockets.Unofficial.Threading
         public LockToken TryWait(WaitOptions options = WaitOptions.None)
         {
 #if DEBUG
-            var token = HasFlag(options, DisableFastPath) ? 0 : TryTake();
+            var token = HasFlag(options, DisableFastPath) ? 0 : TryTakeOnceOnly();
 #else
-            var token = TryTake();
+            var token = TryTakeOnceOnly();
 #endif
             return new LockToken(this, (token != 0 | HasFlag(options, WaitOptions.NoDelay)) ? token : TakeWithTimeout(options));
         }
