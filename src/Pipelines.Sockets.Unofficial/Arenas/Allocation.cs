@@ -463,6 +463,15 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 |             'int[]' |    Core | netcoreapp2.1 | read/foreach |    23.42 us |
                  */
             }
+
+            /// <summary>
+            /// Obtain a reference to the current value
+            /// </summary>
+            public ref T CurrentReference
+            {
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                get => ref _span[_offsetThisSpan];
+            }
         }
 
         /// <summary>
