@@ -243,3 +243,7 @@ Basically: **just don't do it**. Part of choosing to use an `Arena<T>` is making
 ### Naming is hard (?)
 
 With the existing area being `ReadOnlySequence<T>`, it is very tempting to call the writable version `Sequence<T>`. But that also feels like an ambiguous name, with `Allocation<T>` being more specific. I could be open to persuasion here...
+
+### How can I play with it?
+
+Right now, it is available in the "unlisted" nuget drop, [1.0.37](https://www.nuget.org/packages/Pipelines.Sockets.Unofficial/1.0.37). Have fun!
