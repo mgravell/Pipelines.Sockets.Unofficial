@@ -31,6 +31,7 @@ Arena allocation avoids the downsides of simple or pooled array allocation:
 - allocations become very cheap and simple
 - allocations typically come from neighbouring memory areas, maximizing memory locality
 - collection becomes very cheap
+- both of the extreme allocation scenarios (high volumes of very small allocations, and low volumes of very large allocations) become **much** less painful
 - but: we might need to consider "non-contiguous memory" (e.g. "take 3 from stand C and the first five 5 from stand D")
 
 The last point sounds like an inconvenience, but if you're touching "pipelines", you're probably already familiar with `ReadOnlySequence<T>`, which is **exactly** this scenario, expressed in read-only terms; so we can use this familiar concept, but in a read/write model.
