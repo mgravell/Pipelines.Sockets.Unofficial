@@ -69,7 +69,7 @@ using(var arena = new Arena<SomeType>()) // note: options available on .ctor
 }
 ```
 
-In the above, `block` and `anotherBlock` are `Allocation<SomeType>` values; these are the write-friendly cousins of `ReadOnlySequence<SomeType>` with all the features you'd expect - `.Length`, `.Slice(...)`, access to the internal data, etc. Importantly, an `Allocation<T>` is a `readonly struct` value-types (meaning: zero allocations). As with `ReadOnlySequence<T>`, using them is complicated slightly by the fact that it *may* (sometimes) involve non-contiguous memory, so just like with `ReadOnlySequence<T>`, *typically* you'd want to check `.IsSingleSegment` and access `.FirstSpan` (`Span<T>`) or `.FirstSegment` (`Memory<T>`) for an optimized simple fast path, falling back to multi-segment processing otherwise.
+In the above, `block` and `anotherBlock` are `Allocation<SomeType>` values; these are the write-friendly cousins of `ReadOnlySequence<SomeType>` with all the features you'd expect - `.Length`, `.Slice(...)`, access to the internal data, etc. Importantly, an `Allocation<T>` is a `readonly struct` value-type (meaning: zero allocations). As with `ReadOnlySequence<T>`, using them is complicated slightly by the fact that it *may* (sometimes) involve non-contiguous memory, so just like with `ReadOnlySequence<T>`, *typically* you'd want to check `.IsSingleSegment` and access `.FirstSpan` (`Span<T>`) or `.FirstSegment` (`Memory<T>`) for an optimized simple fast path, falling back to multi-segment processing otherwise.
 
 ## How to work with the values in an allocation
 
