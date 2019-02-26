@@ -7,6 +7,8 @@ An [arena allocator is a mechanism for allocating memory](https://en.wikipedia.o
 - allocation becomes very cheap because we're just taking successive slivers from large slabs
 - collection becomes *free*: since nothing outlives the batch, we just set our eyes back to the start
 
+For the purposes of this API, I'm talking about arena allocators specifically in the context of allocating array-like structures (think `T[]`, `ArrayPool<T>`, etc).
+
 You can think of it as "stadium seating":
 
 - "hi, I need 92 seats" - "sure, take all of stand A (50 seats), and the first 42 seats from stand B"
