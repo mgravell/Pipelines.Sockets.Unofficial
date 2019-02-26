@@ -111,7 +111,7 @@ Or we could write it *more conviently* (but less efficiently) as:
 static decimal SumOrderValue(Allocation<Order> orders)
 {
     decimal total = 0;
-    foreach(var order in orders)
+    foreach (var order in orders)
         total += order.NetValue;
     return total;    
 }
@@ -126,7 +126,7 @@ However, we can *also* make use of the value iterator in some interesing ways - 
 
 If the mention of `ref return` references sounds scary: it really isn't; ultimately this is identical to what the array (`T[]`) and span (`Span<T>`) indexers already return; in most cases you simply don't need to stress about it.
 
-One particular interesting scenario that presents itself here is when the `T` is itself a large struct; with *regular* `foreach`, the iterator value (via `.Current`) is a `T`, which can force the large struct to be copied on the stack. We can avoid this problem using `.CurrentReference`, for example:
+One particular interesting scenario that presents itself here is when the `T` is itself a large `struct`; with *regular* `foreach`, the iterator value (via `.Current`) is a `T`, which can force the large `struct` to be copied on the stack. We can avoid this problem using `.CurrentReference`, for example:
 
 ``` c#
 static decimal SumOrderValue(Allocation<Order> orders)
