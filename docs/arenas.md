@@ -185,7 +185,7 @@ You can even *convert back again* - but **only** from sequences that were obtain
 
 ``` c#
 ReadOnlySequence<T> readOnly = ...
-if (Allocation<T>.TryGetAllocation(readOnly, out Allocation<T> block))
+if (Allocation<T>.TryGetAllocation(readOnly, out var block))
 {
     ...
 }
