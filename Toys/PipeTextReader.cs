@@ -574,7 +574,7 @@ namespace Pipelines.Sockets.Unofficial
             ArrayPool<char>.Shared.Return(arr);
             return finalResult;
         }
-        private string ConsumeString(ReadOnlySequence<byte> buffer)
+        private string ConsumeString(in ReadOnlySequence<byte> buffer)
         {
             var s = GetString(buffer, _encoding, _decoder, false);
             _reader.AdvanceTo(buffer.End);

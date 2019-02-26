@@ -149,6 +149,20 @@ Allocation<T> block = ...
 ReadOnlySequence<T> readOnly = block;
 ```
 
+You can even *convert back again* - but **only** from sequences that were obtained from an `Allocation<T>` in the first place:
+
+``` c#
+ReadOnlySequence<T> readOnly = ...
+if (Allocation<T>.TryGetAllocation(readOnly, out ReadOnlySequence<T> block))
+{
+    ...
+}
+```
+
+(or via the `explicit` conversion operator, which will `throw` for invalid sequences)
+
+
+
 ## Recursive structs
 
 A common pattern in data parsing is the [DOM](https://en.wikipedia.org/wiki/Document_Object_Model), and in a low-allocation parser you might want to create a `struct`-based DOM, i.e.
@@ -211,9 +225,9 @@ So: on .NET Core in particular, there is *zero loss* (especially if you're using
 
 ![performance](performance.png)
 
-## What if?
+## Other questions
 
-### Thread safety?
+### What about thread-safety?
 
 An `Arena<T>` is not thread-safe; normally, it is assumed that an individual batch will only be processed by a single thread, so we don't attempt to make it thread-safe. If you have a batch-processing scenario where you *can* process the data in parallel: that's fine, but you will need to add some kind of synchrnoization (usually via `lock`) around the calls to `Allocate()` and `Reset()`. Note that two *separate* concurrent batches should not usually use the same `Arena<T>`, unless you are happy that `Reset()` applies to both of them.
 
@@ -225,3 +239,7 @@ If your code chooses to leak an `Allocation<T>` outside of a batch (more specifi
 - the data may have been released from the arena back to the allocator; if you're using the default `ArrayPool<T>` allocator, then this is similar to holding onto an array after calling `ArrayPool<T>.Return(...)`; if you're using an unmanaged allocater, this could immediately give you an access violation ... or you could just end up overwriting arbitrary memory now in use for other purposes inside your application
 
 Basically: **just don't do it**. Part of choosing to use an `Arena<T>` is making the determination that **you know the lifetime of your data**, and are therefore choosing not to do silly things. The risks here are mostly comparable to identical concerns when using `ArrayPool<T>`, so this is a perfectly reasonable and acceptable compromise.
+
+### Naming is hard (?)
+
+With the existing area being `ReadOnlySequence<T>`, it is very tempting to call the writable version `Sequence<T>`. But that also feels like an ambiguous name, with `Allocation<T>` being more specific. I could be open to persuasion here...

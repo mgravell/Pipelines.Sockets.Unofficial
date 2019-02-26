@@ -199,6 +199,19 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             => allocation.AsReadOnly();
 
         /// <summary>
+        /// Converts a typed allocation to a typed read-only-sequence
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static explicit operator Allocation<T> (ReadOnlySequence<T> sequence)
+        {
+            if (TryGetAllocation(sequence, out var allocation)) return allocation;
+            ThrowInvalidCast();
+            return default; // to make compiler happy
+
+            void ThrowInvalidCast() => throw new InvalidCastException();
+        }
+
+        /// <summary>
         /// Represents a typed allocation as an untyped allocation
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -209,7 +222,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ReadOnlySequence<T> AsReadOnly()
-            => IsEmpty ? default
+            => _block == null ? default
             : IsSingleSegment ? new ReadOnlySequence<T>(_block, Offset, _block, Offset + _length) : MultiSegmentAsReadOnly();
 
         /// <summary>
@@ -295,13 +308,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Attempts to convert a typed read-only-sequence back to a typed allocation; the sequence must have originated from a valid typed allocation
         /// </summary>
-        public static bool TryGetAllocation(ReadOnlySequence<T> sequence, out Allocation<T> allocation)
+        public static bool TryGetAllocation(in ReadOnlySequence<T> sequence, out Allocation<T> allocation)
         {
-            if (sequence.IsEmpty)
-            {
-                allocation = default;
-                return true;
-            }
             SequencePosition start = sequence.Start;
             if (start.GetObject() is Block<T> startBlock && sequence.End.GetObject() is Block<T>)
             {
@@ -309,8 +317,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 return true;
             }
             allocation = default;
-            return false;
-
+            return sequence.IsEmpty; // empty sequences can be considered acceptable
         }
 
         private ReadOnlySequence<T> MultiSegmentAsReadOnly()
