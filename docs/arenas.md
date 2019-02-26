@@ -176,7 +176,7 @@ ReadOnlySequence<T> readOnly = block.AsReadOnly();
 
 or even via the implicit operator:
 
-```
+``` c#
 Allocation<T> block = ...
 ReadOnlySequence<T> readOnly = block;
 ```
