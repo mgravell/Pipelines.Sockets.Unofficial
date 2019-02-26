@@ -111,7 +111,7 @@ static decimal SumOrderValue(Allocation<Order> orders)
 {
     decimal total = 0;
     foreach(var order in orders)
-        total += span[i].NetValue;
+        total += order.NetValue;
     return total;    
 }
 ```
