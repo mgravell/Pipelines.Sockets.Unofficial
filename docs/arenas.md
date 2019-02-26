@@ -174,12 +174,7 @@ Allocation<T> block = ...
 ReadOnlySequence<T> readOnly = block.AsReadOnly();
 ```
 
-or even via the implicit operator:
-
-``` c#
-Allocation<T> block = ...
-ReadOnlySequence<T> readOnly = block;
-```
+(or via the `implicit` conversion operator)
 
 You can even *convert back again* - but **only** from sequences that were obtained from an `Allocation<T>` in the first place:
 
