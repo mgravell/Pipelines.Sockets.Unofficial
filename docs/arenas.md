@@ -70,7 +70,7 @@ In the above, `block` and `anotherBlock` are `Allocation<SomeType>` values; thes
 
 ## How to work with the values in an allocation
 
-Similarly to `ReadOnlySequence<T>` there is no *indexer* access to the entire block, but you can iterate over the individual segments if needed; but you can also iterate over the spans or even the individual elements:
+Similarly to `ReadOnlySequence<T>` there is no *indexer* access to the entire block, but you can iterate over the individual segments (`Memory<T>`) if needed. You can also iterate over the spans (`Span<T>`) or even the individual elements (`T`):
 
 ``` c#
 foreach (Memory<T> segment in block.Segments) { ... }
@@ -83,22 +83,34 @@ Note that because the segments and spans here are writable rather than read-only
 The most common pattern - and the most efficient - is to iterate over a span via the indexer, so a *very* common usage might be:
 
 ``` c#
-static double SumOrderValue(Allocation<Order> orders)
+static decimal SumOrderValue(Allocation<Order> orders)
 {
-    static double Sum(Span<Order> span)
+    static decimal Sum(Span<Order> span)
     {
-        double total = 0;
+        decimal total = 0;
         for(int i = 0 ; i < span.Length ; i++)
             total += span[i].NetValue;
         return total;
     }
 
     if (orders.IsSingleSegment) return Sum(orders.FirstSpan);
-    double total = 0;
+    decimal total = 0;
     foreach (var span in orders.Spans)
         total += Sum(span);
     }
     return total;
+}
+```
+
+Or we could write it *more conviently* (but less efficiently) as:
+
+``` c#
+static decimal SumOrderValue(Allocation<Order> orders)
+{
+    decimal total = 0;
+    foreach(var order in orders)
+        total += span[i].NetValue;
+    return total;    
 }
 ```
 
