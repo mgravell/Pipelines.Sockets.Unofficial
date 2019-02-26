@@ -286,5 +286,5 @@ Absolutely! It *probably* makes sense for any such type to be a `class` rather t
 Considerations:
 
 - indexer access might be expensive, and the current `Allocation<T>.Enumerator` is a `ref struct`, meaning you can't store it as a field (in the hope that most indexer access is actually incremental); we could perhaps add some API to help with this, perhaps based on `SequencePosition`?
-- you can't resize an `Allocation<T>` (but then... you can't resize a `T[]` either)
+- you can't *expand* (enlarge) an `Allocation<T>` (but then... you can't resize a `T[]` *at all*); you can, however, *shrink* an `Allocation<T>` - by using `Slice()` (which returns a sub-range of an existing allocation)
 - most other common API surfaces should be easy to add, though
