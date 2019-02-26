@@ -392,7 +392,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 var span = from.Current.Span;
                 for(int i = 0; i < span.Length;i++)
                 {
-                    to.GetNextReference() = span[i];
+                    to.GetNext() = span[i];
                 }
             }
         }
@@ -423,7 +423,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             var to = destination.GetEnumerator();
             while(from.MoveNext())
             {
-                to.GetNextReference() = projection(from.Current);
+                to.GetNext() = projection(from.Current);
             }
         }
 
@@ -456,7 +456,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             var to = destination.GetEnumerator();
             while (from.MoveNext())
             {
-                to.GetNextReference() = projection(from.Current, in state);
+                to.GetNext() = projection(from.Current, in state);
             }
         }
 

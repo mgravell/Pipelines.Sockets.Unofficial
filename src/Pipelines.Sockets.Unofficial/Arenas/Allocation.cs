@@ -529,23 +529,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
 
             /// <summary>
-            /// Progresses the iterator, asserting that space is available, returning the next value
+            /// Progresses the iterator, asserting that space is available, returning a reference to the next value
             /// </summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-
-            public T GetNext()
-            {
-                if (!MoveNext()) ThrowOutOfRange();
-                return Current;
-            }
-
-            /// <summary>
-            /// Progresses the iterator, asserting that space is available, returning the next reference
-            /// </summary>
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-
-            public ref T GetNextReference()
+            public ref T GetNext()
             {
                 if (!MoveNext()) ThrowOutOfRange();
                 return ref CurrentReference;
