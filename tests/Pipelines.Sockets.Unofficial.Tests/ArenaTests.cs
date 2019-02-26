@@ -178,5 +178,48 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
             return total;
         }
+
+        [Fact]
+        public void Copy()
+        {
+            using (Arena<int> from = new Arena<int>(blockSize: 5), to = new Arena<int>(blockSize: 5))
+            {
+                var source = from.Allocate(100);
+                Assert.False(source.IsSingleSegment);
+                Assert.Equal(100, source.Length);
+                var iter = source.GetEnumerator();
+                int i = 0;
+                while (iter.MoveNext()) iter.Current = i++;
+
+                var doubles = to.Allocate(source, (in int x) => 2 * x);
+                Assert.False(doubles.IsSingleSegment);
+                Assert.Equal(100, doubles.Length);
+                i = 0;
+                iter = doubles.GetEnumerator();
+                while (iter.MoveNext())
+                {
+                    Assert.Equal(2 * i++, iter.Current);
+                }
+            }
+        }
+
+        [Fact]
+        public void Positions()
+        {
+            using (Arena<int> from = new Arena<int>(blockSize: 5))
+            {
+                from.Allocate(42); // just want an arbitrary offset here
+                var source = from.Allocate(100);
+                Assert.Throws<ArgumentOutOfRangeException>(() => source.GetPosition(-1));
+                Assert.Throws<ArgumentOutOfRangeException>(() => source.GetPosition(101));
+
+                Assert.Equal(source.GetPosition(0), source.Start());
+                Assert.Equal(source.GetPosition(100), source.End());
+                for (int i = 0; i <= 100; i++)
+                {
+                    Assert.Equal(i + 42, source.GetPosition(i).TryGetOffset().Value);
+                }
+            }
+        }
     }
 }

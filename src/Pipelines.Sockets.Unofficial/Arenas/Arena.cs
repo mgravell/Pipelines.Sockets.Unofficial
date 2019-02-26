@@ -83,7 +83,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Allocation<T> Allocate(int length)
         {
-            if(length >= 0 & _allocatedCurrentBlock + length <= _current.Length)
+            // note: even for zero-length blocks, we'd rather have them start
+            // at the start of the next block, for consistency
+            if(length > 0 & _allocatedCurrentBlock + length <= _current.Length)
             {
                 var offset = _allocatedCurrentBlock;
                 _allocatedCurrentBlock += length;

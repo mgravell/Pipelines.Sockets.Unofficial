@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
@@ -49,6 +50,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return arr;
         }
 
+        private static void ThrowInvalid() => throw new InvalidOperationException();
+
         /// <summary>
         /// Copy the data from an allocation to a span, applying a projection
         /// </summary>
@@ -57,7 +60,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             if (!TryCopyTo<TFrom, TTo>(in source, destination, projection))
                 ThrowInvalid();
-            void ThrowInvalid() => throw new InvalidOperationException();
         }
 
         /// <summary>
@@ -68,7 +70,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             if (!TryCopyTo<TFrom, TState, TTo>(in source, destination, projection, in state))
                 ThrowInvalid();
-            void ThrowInvalid() => throw new InvalidOperationException();
         }
 
         /// <summary>
@@ -79,7 +80,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             if (!TryCopyTo<TFrom, TTo>(source, in destination, projection))
                 ThrowInvalid();
-            void ThrowInvalid() => throw new InvalidOperationException();
         }
 
         /// <summary>
@@ -90,7 +90,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             if (!TryCopyTo<TFrom, TState, TTo>(source, in destination, projection, in state))
                 ThrowInvalid();
-            void ThrowInvalid() => throw new InvalidOperationException();
         }
 
         /// <summary>
@@ -101,7 +100,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             if (!TryCopyTo<TFrom, TTo>(source, in destination, projection))
                 ThrowInvalid();
-            void ThrowInvalid() => throw new InvalidOperationException();
         }
 
         /// <summary>
@@ -112,7 +110,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             if (!TryCopyTo<TFrom, TState, TTo>(source, in destination, projection, in state))
                 ThrowInvalid();
-            void ThrowInvalid() => throw new InvalidOperationException();
         }
 
         /// <summary>
@@ -312,5 +309,168 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
             return true;
         }
+
+        /// <summary>
+        /// Copy the data from an allocation to a new allocation, applying a projection
+        /// </summary>
+        public static Allocation<TTo> Allocate<TFrom, TTo>(this Arena<TTo> arena, in Allocation<TFrom> source, Projection<TFrom, TTo> projection)
+        {
+            if (source.IsEmpty) return arena.Allocate(0); // retains position etc
+
+            var block = arena.Allocate(checked((int)source.Length));
+            source.CopyTo(block, projection);
+            return block;
+        }
+
+        /// <summary>
+        /// Copy the data from an allocation to a new allocation, applying a projection
+        /// </summary>
+        public static Allocation<TTo> Allocate<TFrom, TState, TTo>(this Arena<TTo> arena, in Allocation<TFrom> source,
+            Projection<TFrom, TState, TTo> projection, in TState state)
+        {
+            if (source.IsEmpty) return arena.Allocate(0); // retains position etc
+
+            var block = arena.Allocate(checked((int)source.Length));
+            source.CopyTo(block, projection, state);
+            return block;
+        }
+
+        /// <summary>
+        /// Copy the data from between two allocations, applying a projection
+        /// </summary>
+        public static void CopyTo<T>(this in Allocation<T> source, in Allocation<T> destination)
+        {
+            if (!TryCopyTo<T>(source, destination)) ThrowInvalid();
+        }
+
+        /// <summary>
+        /// Copy the data from between two allocations, applying a projection
+        /// </summary>
+        public static bool TryCopyTo<T>(this in Allocation<T> source, in Allocation<T> destination)
+        {
+            if (source.Length > destination.Length) return false;
+            if (source.IsSingleSegment & destination.IsSingleSegment) return source.FirstSpan.TryCopyTo(destination.FirstSpan);
+            SlowCopyTo<T>(source, destination);
+            return true; // we checked the lengths first
+        }
+
+        static void SlowCopyTo<T>(in Allocation<T> source, in Allocation<T> destination)
+        {
+            var from = source.GetEnumerator();
+            var to = destination.GetEnumerator();
+            while (from.MoveNext())
+            {
+                to.Current = from.Current;
+            }
+        }
+
+        /// <summary>
+        /// Copy the data from between two allocations, applying a projection
+        /// </summary>
+        public static void CopyTo<T>(this in ReadOnlySequence<T> source, in Allocation<T> destination)
+        {
+            if (!TryCopyTo<T>(source, destination)) ThrowInvalid();
+        }
+
+        /// <summary>
+        /// Copy the data from between two allocations, applying a projection
+        /// </summary>
+        public static bool TryCopyTo<T>(this in ReadOnlySequence<T> source, in Allocation<T> destination)
+        {
+            if (source.Length > destination.Length) return false;
+            if (source.IsSingleSegment & destination.IsSingleSegment) return source.First.Span.TryCopyTo(destination.FirstSpan);
+            SlowCopyTo<T>(source, destination);
+            return true; // we checked the lengths first
+        }
+
+        static void SlowCopyTo<T>(in ReadOnlySequence<T> source, in Allocation<T> destination)
+        {
+            var from = source.GetEnumerator();
+            var to = destination.GetEnumerator();
+            while (from.MoveNext())
+            {
+                var span = from.Current.Span;
+                for(int i = 0; i < span.Length;i++)
+                {
+                    to.GetNextReference() = span[i];
+                }
+            }
+        }
+
+        /// <summary>
+        /// Copy the data from between two allocations, applying a projection
+        /// </summary>
+        public static void CopyTo<TFrom, TTo>(this in Allocation<TFrom> source, in Allocation<TTo> destination, Projection<TFrom, TTo> projection)
+        {
+            if (!TryCopyTo<TFrom, TTo>(source, destination, projection)) ThrowInvalid();
+        }
+
+        /// <summary>
+        /// Copy the data from between two allocations, applying a projection
+        /// </summary>
+        public static bool TryCopyTo<TFrom, TTo>(this in Allocation<TFrom> source, in Allocation<TTo> destination, Projection<TFrom, TTo> projection)
+        {
+            if (source.Length > destination.Length) return false;
+            if (source.IsSingleSegment) return source.FirstSpan.TryCopyTo(in destination, projection);
+            if (destination.IsSingleSegment) return source.TryCopyTo(destination.FirstSpan, projection);
+            SlowCopyTo<TFrom, TTo>(source, destination, projection);
+            return true; // we checked the lengths first
+        }
+
+        static void SlowCopyTo<TFrom, TTo>(in Allocation<TFrom> source, in Allocation<TTo> destination, Projection<TFrom, TTo> projection)
+        {
+            var from = source.GetEnumerator();
+            var to = destination.GetEnumerator();
+            while(from.MoveNext())
+            {
+                to.GetNextReference() = projection(from.Current);
+            }
+        }
+
+        /// <summary>
+        /// Copy the data from between two allocations, applying a projection
+        /// </summary>
+        public static void CopyTo<TFrom, TState, TTo>(this in Allocation<TFrom> source, in Allocation<TTo> destination,
+            Projection<TFrom, TState, TTo> projection, in TState state)
+        {
+            if (!TryCopyTo<TFrom, TState, TTo>(source, destination, projection, in state)) ThrowInvalid();
+        }
+
+        /// <summary>
+        /// Copy the data from between two allocations, applying a projection
+        /// </summary>
+        public static bool TryCopyTo<TFrom, TState, TTo>(this in Allocation<TFrom> source, in Allocation<TTo> destination,
+            Projection<TFrom, TState, TTo> projection, in TState state)
+        {
+            if (source.Length > destination.Length) return false;
+            if (source.IsSingleSegment) return source.FirstSpan.TryCopyTo(in destination, projection, in state);
+            if (destination.IsSingleSegment) return source.TryCopyTo(destination.FirstSpan, projection, in state);
+            SlowCopyTo<TFrom, TState, TTo>(source, destination, projection, in state);
+            return true; // we checked the lengths first
+        }
+
+        static void SlowCopyTo<TFrom, TState, TTo>(in Allocation<TFrom> source, in Allocation<TTo> destination,
+            Projection<TFrom, TState, TTo> projection, in TState state)
+        {
+            var from = source.GetEnumerator();
+            var to = destination.GetEnumerator();
+            while (from.MoveNext())
+            {
+                to.GetNextReference() = projection(from.Current, in state);
+            }
+        }
+
+        /// <summary>
+        /// Attempt to calculate the net offset of a position
+        /// </summary>
+        public static long? TryGetOffset(this SequencePosition position)
+        {
+            var obj = position.GetObject();
+            var offset = position.GetInteger();
+            if (obj == null && offset == 0) return 0;
+            if (obj is IBlock block) return block.RunningIndex + offset;
+            return null; // nope!
+        }
+
     }
 }

@@ -8,10 +8,60 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     /// <summary>
     /// Represents an Allocation-T without needing to know the T at compile-time
     /// </summary>
-    public readonly struct Allocation
+    public readonly struct Allocation : IEquatable<Allocation>
     {
         private readonly int _offset, _length;
         private readonly IBlock _block;
+
+        /// <summary>
+        /// Returns an empty block of the supplied type
+        /// </summary>
+        public static Allocation Empty<T>() => new Allocation(NilBlock<T>.Default, 0, 0);
+
+        /// <summary>
+        /// Tests two allocations for equality
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override bool Equals(object obj) => obj is Allocation other && Equals(in other);
+
+        /// <summary>
+        /// Tests two allocations for equality
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        bool IEquatable<Allocation>.Equals(Allocation other) => Equals(in other);
+
+        /// <summary>
+        /// Tests two allocations for equality
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool Equals(in Allocation other)
+            => _length == 0 ? other.Length == 0 // all empty allocations are equal - in part because default is type-less
+                : (_length == other.Length & _offset == other._offset & _block == other._block);
+
+        /// <summary>
+        /// Used for equality operations
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override int GetHashCode()
+            => _length == 0 ? 0 : (_length * -_offset) ^ _block.GetHashCode();
+
+        /// <summary>
+        /// Summaries an allocation as a string
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override string ToString() => $"{_length}×{ElementType.Name}";
+
+        /// <summary>
+        /// Tests two allocations for equality
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool operator ==(Allocation x, Allocation y) => x.Equals(in y);
+
+        /// <summary>
+        /// Tests two allocations for equality
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool operator !=(Allocation x, Allocation y) => !x.Equals(in y);
 
         /// <summary>
         /// Indicates the number of elements in the allocation
@@ -77,7 +127,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     /// <summary>
     /// Represents a (possibly non-contiguous) region of memory; the read/write cousin or ReadOnlySequence-T
     /// </summary>
-    public readonly struct Allocation<T>
+    public readonly struct Allocation<T> : IEquatable<Allocation<T>>
     {
         private readonly int _offsetAndMultiSegmentFlag, _length;
         private readonly Block<T> _block;
@@ -95,6 +145,51 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static explicit operator Allocation<T>(Allocation allocation)
             => allocation.Cast<T>();
+
+        /// <summary>
+        /// Tests two allocations for equality
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override bool Equals(object obj) => obj is Allocation<T> other && Equals(in other);
+
+        /// <summary>
+        /// Tests two allocations for equality
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        bool IEquatable<Allocation<T>>.Equals(Allocation<T> other) => Equals(in other);
+
+        /// <summary>
+        /// Tests two allocations for equality
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool Equals(in Allocation<T> other)
+            => _length == 0 ? other.Length == 0 // all empty allocations are equal - in part because default is type-less
+                : (_length == other.Length & _offsetAndMultiSegmentFlag == other._offsetAndMultiSegmentFlag & _block == other._block);
+
+        /// <summary>
+        /// Used for equality operations
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override int GetHashCode()
+            => _length == 0 ? 0 : (_length * -_offsetAndMultiSegmentFlag) ^ _block.GetHashCode();
+
+        /// <summary>
+        /// Summaries an allocation as a string
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override string ToString() => $"{_length}×{typeof(T).Name}";
+
+        /// <summary>
+        /// Tests two allocations for equality
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool operator ==(Allocation<T> x, Allocation<T> y) => x.Equals(in y);
+
+        /// <summary>
+        /// Tests two allocations for equality
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool operator !=(Allocation<T> x, Allocation<T> y) => !x.Equals(in y);
 
         /// <summary>
         /// Converts a typed allocation to a typed read-only-sequence
@@ -116,6 +211,31 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public ReadOnlySequence<T> AsReadOnly()
             => IsEmpty ? default
             : IsSingleSegment ? new ReadOnlySequence<T>(_block, Offset, _block, Offset + _length) : MultiSegmentAsReadOnly();
+
+        /// <summary>
+        /// Calculate the start position of the current allocation
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public SequencePosition Start() => new SequencePosition(_block, Offset);
+
+        /// <summary>
+        /// Calculate the end position of the current allocation
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public SequencePosition End() => GetPosition(_length);
+
+        /// <summary>
+        /// Calculate a position inside the current allocation
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public SequencePosition GetPosition(long offset)
+        {
+            int blockOffset;
+            // if the position is well-defined inside the current page, we can do this cheaply
+            if ((offset >= 0 & offset < _length) && (blockOffset = (int)offset + Offset) < _block.Length)
+                return new SequencePosition(_block, blockOffset);
+            return SliceIntoLaterPage(checked((int)offset), 0).Start();
+        }
 
         /// <summary>
         /// Obtains a sub-region of an allocation
@@ -405,6 +525,32 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 return true;
             }
 
+            private static void ThrowOutOfRange() => throw new IndexOutOfRangeException();
+
+
+            /// <summary>
+            /// Progresses the iterator, asserting that space is available, returning the next value
+            /// </summary>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+
+            public T GetNext()
+            {
+                if (!MoveNext()) ThrowOutOfRange();
+                return Current;
+            }
+
+            /// <summary>
+            /// Progresses the iterator, asserting that space is available, returning the next reference
+            /// </summary>
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+
+            public ref T GetNextReference()
+            {
+                if (!MoveNext()) ThrowOutOfRange();
+                return ref CurrentReference;
+            }
+
             private bool MoveNextBlock()
             {
                 if (_remainingOtherBlocks == 0) return false;
@@ -434,6 +580,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 get => _span[_offsetThisSpan];
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                set => _span[_offsetThisSpan] = value;
                 /*
 
                 Note: the choice of using the indexer here was compared against:

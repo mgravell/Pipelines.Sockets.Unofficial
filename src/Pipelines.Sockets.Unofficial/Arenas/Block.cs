@@ -9,6 +9,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         Type ElementType { get; }
         bool TryCopyTo(in Allocation allocation, Array destination, int offset);
         void CopyTo(in Allocation allocation, Array destination, int offset);
+        long RunningIndex { get; }
     }
 
     internal abstract class NilBlock : IBlock
@@ -17,6 +18,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         protected abstract Type ElementType { get; }
         bool IBlock.TryCopyTo(in Allocation allocation, Array destination, int offset) => true;
         void IBlock.CopyTo(in Allocation allocation, Array destination, int offset) { }
+        long IBlock.RunningIndex => 0;
     }
     internal sealed class NilBlock<T> : NilBlock, IBlock
     {   // this exists just so empty allocations (no block) can be untyped/cast correctly
