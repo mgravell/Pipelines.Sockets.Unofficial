@@ -125,7 +125,24 @@ However, we can *also* make use of the value iterator in some interesing ways - 
 
 If the mention of `ref return` references sounds scary: it really isn't; ultimately this is identical to what the array (`T[]`) and span (`Span<T>`) indexers already return; in most cases you simply don't need to stress about it.
 
-This last option is particularly useful for migrating existing code; consider:
+One particular interesting scenario that presents itself here is when the `T` is itself a large struct; with *regular* `foreach`, the iterator value (via `.Current`) is a `T`, which can force the large struct to be copied on the stack. We can avoid this problem using `.CurrentReference`, for example:
+
+``` c#
+static decimal SumOrderValue(Allocation<Order> orders)
+{
+    decimal total = 0;
+    var iter = orders.GetEnumerator();
+    while (iter.MoveNext())
+        total += iter.CurrentReference.NetValue;
+    return total;
+}
+```
+
+The `iter.CurrentReference.NetValue` here is a highly efficient way of accessing the value *directly in the underlying memory*, without ever copying the `Order` itself. It *looks* identical, but the impact here can be significant (for large `T`).
+
+Note that not only can you *read* data in this way (without copying), but you can similarly *assign* data directly into the underlying memory (overwriting the value) - simply by *assigning* to `.CurrentReference`. This is, once again, semantically identical to assigning to an array (`T[]`) or span (`Span<T>`) via the indexer.
+
+The `GetNext()` option works similarly, and is particularly useful for migrating existing code; consider:
 
 ``` c#
 int[] values = new int[itemCount];
