@@ -261,3 +261,13 @@ With the existing area being `ReadOnlySequence<T>`, it is very tempting to call 
 ### How can I play with it?
 
 Right now, it is available in the "unlisted" nuget drop, [1.0.37](https://www.nuget.org/packages/Pipelines.Sockets.Unofficial/1.0.37). Have fun!
+
+### Could I create something like `List<T>` on top of it?
+
+Absolutely! It *probably* makes sense for any such type to be a `class` rather than a `struct`, though, since a lot of list access is done via interfaces, which *usually* involves boxing (since not many people write APIs that take things like `<TList, ITtem> where TList : IList<TItem>`, which is what you'd need for "constrained" access without boxing).
+
+Considerations:
+
+- indexer access might be expensive, and the current `Allocation<T>.Enumerator` is a `ref struct`, meaning you can't store it as a field (in the hope that most indexer access is actually incremental); we could perhaps add some API to help with this, perhaps based on `SequencePosition`?
+- you can't resize an `Allocation<T>` (but then... you can't resize a `T[]` either)
+- most other common API surfaces should be easy to add, though
