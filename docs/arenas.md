@@ -138,7 +138,7 @@ static decimal SumOrderValue(Allocation<Order> orders)
 }
 ```
 
-The `iter.CurrentReference.NetValue` here is a highly efficient way of accessing the value *directly in the underlying memory*, without ever copying the `Order` itself. It *looks* identical, but the impact here can be significant (for large `T`).
+The `iter.CurrentReference.NetValue` here is a highly efficient way of accessing the value *directly in the underlying memory*, without ever copying the `Order` itself. It *looks* identical, but the impact here can be significant (for large `struct T`).
 
 Note that not only can you *read* data in this way (without copying), but you can similarly *assign* data directly into the underlying memory (overwriting the value) - simply by *assigning* to `.CurrentReference`. This is, once again, semantically identical to assigning to an array (`T[]`) or span (`Span<T>`) via the indexer.
 
@@ -184,7 +184,7 @@ You can even *convert back again* - but **only** from sequences that were obtain
 
 ``` c#
 ReadOnlySequence<T> readOnly = ...
-if (Allocation<T>.TryGetAllocation(readOnly, out ReadOnlySequence<T> block))
+if (Allocation<T>.TryGetAllocation(readOnly, out Allocation<T> block))
 {
     ...
 }
