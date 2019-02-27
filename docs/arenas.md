@@ -36,14 +36,15 @@ Arena allocation avoids the downsides of simple or pooled array allocation:
 
 The last point sounds like an inconvenience, but if you're touching "pipelines", you're probably already familiar with `ReadOnlySequence<T>`, which is **exactly** this scenario, expressed in read-only terms; so we can use this familiar concept, but in a read/write model.
 
-## Introducing `Arena<T>`
+## Introducing `Arena` and `Arena<T>`
 
-To help solve this, we add `Arena<T>`, an arena allocator for blocks of memory of type `T` - broadly comparable to `T[]`/`ArraySegment<T>`/`Memory<T>`.
+To help solve this, we add `Arena<T>`, an arena allocator for blocks of memory of type `T` - broadly comparable to `T[]`/`ArraySegment<T>`/`Memory<T>`. In many cases, however, we might
+have multiple types involved in a batch; to help with this, the non-generic `Arena` extends this further by providing efficient access to *multiple* types.
 
-Usage is simple:
+Usage of `Arena<T>` is simple:
 
 ``` c#
-using(var arena = new Arena<SomeType>()) // note: options available on .ctor
+using (var arena = new Arena<SomeType>()) // note: options available on .ctor
 {
     while (haveWorkToDo) // typically you'll be processing multiple batches
     {
@@ -69,7 +70,39 @@ using(var arena = new Arena<SomeType>()) // note: options available on .ctor
 }
 ```
 
-In the above, `block` and `anotherBlock` are `Allocation<SomeType>` values; these are the write-friendly cousins of `ReadOnlySequence<SomeType>` with all the features you'd expect - `.Length`, `.Slice(...)`, access to the internal data, etc. Importantly, an `Allocation<T>` is a `readonly struct` value-type (meaning: zero allocations). As with `ReadOnlySequence<T>`, using them is complicated slightly by the fact that it *may* (sometimes) involve non-contiguous memory, so just like with `ReadOnlySequence<T>`, *typically* you'd want to check `.IsSingleSegment` and access `.FirstSpan` (`Span<T>`) or `.FirstSegment` (`Memory<T>`) for an optimized simple fast path, falling back to multi-segment processing otherwise.
+In the above, `block` and `anotherBlock` are `Sequence<SomeType>` values; these are the write-friendly cousins of `ReadOnlySequence<SomeType>` with all the features you'd expect - `.Length`, `.Slice(...)`, access to the internal data, etc. Importantly, an `Sequence<T>` is a `readonly struct` value-type (meaning: zero allocations). As with `ReadOnlySequence<T>`, using them is complicated slightly by the fact that it *may* (sometimes) involve non-contiguous memory, so just like with `ReadOnlySequence<T>`, *typically* you'd want to check `.IsSingleSegment` and access `.FirstSpan` (`Span<T>`) or `.FirstSegment` (`Memory<T>`) for an optimized simple fast path, falling back to multi-segment processing otherwise.
+
+If we want to use `Arena` to allocate sequences of multiple types:
+
+``` c#
+using (var arena = new Arena()) // note: options available on .ctor
+{
+    while (haveWorkToDo) // typically you'll be processing multiple batches
+    {
+        // ... blah blah lots of work ...
+
+        foreach (var row in something)
+        {
+            // get a chunk of memory
+            var block = arena.Allocate<long>(42);
+            // ...
+            var anotherBlock = arena.Allocate<Foo>(itemCount);
+            // ...
+        }
+        
+        
+        // ... more work ...
+
+        // END OF THIS BATCH - we're going to invalidate all the
+        // allocations that we constructed during this batch, and
+        // start again
+        arena.Reset();
+    } 
+}
+```
+
+Note that we now use the generic `Allocate<T>` method, supplying the target type at the call-site. The returned sequence types remain the same, but internally the arena can optimize memory usage by
+allocating all types that satisfy `T : unmanaged` (i.e. `struct` types that don't include any reference-type fields) by allocating them all from the same raw memory.
 
 ## How to work with the values in a sequence
 
@@ -86,7 +119,7 @@ Note that because the segments and spans here are writable rather than read-only
 The most common pattern - and the most efficient - is to iterate over a span via the indexer, so a *very* common usage might be:
 
 ``` c#
-static decimal SumOrderValue(Allocation<Order> orders)
+static decimal SumOrderValue(Sequence<Order> orders)
 {
     static decimal Sum(Span<Order> span)
     {
@@ -108,7 +141,7 @@ static decimal SumOrderValue(Allocation<Order> orders)
 Or we could write it *more conviently* (but less efficiently) as:
 
 ``` c#
-static decimal SumOrderValue(Allocation<Order> orders)
+static decimal SumOrderValue(Sequence<Order> orders)
 {
     decimal total = 0;
     foreach (var order in orders)
@@ -129,7 +162,7 @@ If the mention of `ref return` references sounds scary: it really isn't; ultimat
 One particular interesting scenario that presents itself here is when the `T` is itself a large `struct`; with *regular* `foreach`, the iterator value (via `.Current`) is a `T`, which can force the large `struct` to be copied on the stack. We can avoid this problem using `.CurrentReference`, for example:
 
 ``` c#
-static decimal SumOrderValue(Allocation<Order> orders)
+static decimal SumOrderValue(Sequence<Order> orders)
 {
     decimal total = 0;
     var iter = orders.GetEnumerator();
@@ -167,20 +200,20 @@ return values;
 
 ## Conversion to `ReadOnlySequence<T>`
 
-Because the `Allocation<T>` concept is so close to `ReadOnlySequence<T>`, you may want to get the read-only version of the memory; fortunatly, this is simple:
+Because the `Sequence<T>` concept is so close to `ReadOnlySequence<T>`, you may want to get the read-only version of the memory; fortunatly, this is simple:
 
 ``` c#
-Allocation<T> block = ...
+Sequence<T> block = ...
 ReadOnlySequence<T> readOnly = block.AsReadOnly();
 ```
 
 (or via the `implicit` conversion operator)
 
-You can even *convert back again* - but **only** from sequences that were obtained from an `Allocation<T>` in the first place:
+You can even *convert back again* - but **only** from sequences that were obtained from an `Sequence<T>` in the first place:
 
 ``` c#
 ReadOnlySequence<T> readOnly = ...
-if (Allocation<T>.TryGetAllocation(readOnly, out var block))
+if (Sequence<T>.TryGetAllocation(readOnly, out var block))
 {
     ...
 }
@@ -197,8 +230,8 @@ A common pattern in data parsing is the [DOM](https://en.wikipedia.org/wiki/Docu
 ``` c#
 readonly struct Node {
     // not shown: some other state
-    public Allocation<Node> Children { get; }
-    public Node(/* other state */, Allocation<Node> children)
+    public Sequence<Node> Children { get; }
+    public Node(/* other state */, Sequence<Node> children)
     {
         // not shown: assign other state
         Children = children;
@@ -206,7 +239,7 @@ readonly struct Node {
 }
 ```
 
-The above is trivially possible with arrays (`T[]`), but the above declaration is actually invalid; the CLR assumes that `Allocation<T>` could feasibly contain a field of type `T` (now, or in the future), and if it did, a `struct` would indirectly contain itself. This makes it impossible to determine the size of the `struct`, and the CLR refuses to accept the type. It works with naked arrays because the runtime knows that an array is a regular reference, but the above would also fail for `Memory<Node>`, `ReadOnlySequence<Node>`, `ArraySegment<Node>` etc.
+The above is trivially possible with arrays (`T[]`), but the above declaration is actually invalid; the CLR assumes that `Sequence<T>` could feasibly contain a field of type `T` (now, or in the future), and if it did, a `struct` would indirectly contain itself. This makes it impossible to determine the size of the `struct`, and the CLR refuses to accept the type. It works with naked arrays because the runtime knows that an array is a regular reference, but the above would also fail for `Memory<Node>`, `ReadOnlySequence<Node>`, `ArraySegment<Node>` etc.
 
 Because this type of scenario is desirable, we add an additional concept to help us with this use-case: *untyped allocations*. Actually, they aren't really untyped - it is all just a trick to make the runtime happy, but - the following works perfectly and remains zero-allocation:
 
@@ -214,8 +247,8 @@ Because this type of scenario is desirable, we add an additional concept to help
 readonly struct Node {
     // not shown: some other state
     private readonly Allocation _children; // note no <T> here
-    public Allocation<Node> Children => _children.Cast<Node>();
-    public Node(/* other state */, Allocation<Node> children)
+    public Sequence<Node> Children => _children.Cast<Node>();
+    public Node(/* other state */, Sequence<Node> children)
     {
         // not shown: assign other state
         _children = children.Untyped();
@@ -224,6 +257,29 @@ readonly struct Node {
 ```
 
 (conversion operators are provided for convenience, too - `implicit` for the `Untyped()` step and `explicit` for the `Cast<T>()` step)
+
+## References (flyweights)
+
+Sometimes, again when dealing with large `struct T`, it would be nice if we could embed a value without paying the cost of embedding a large field into another type, or dealing
+with lots of stack copies. In the scope of a local method, we can do this using "`ref` locals", i.e.
+
+``` c#
+ref Foo x = ref span[42];
+// x isn't a Foo *instance* - it is a *reference* to the instance
+```
+
+Unfortunately, `ref` fields are not permitted, even in `ref struct` types. As a compromise, arenas provides a similar concept to a `ref` field: a [flyweight](https://en.wikipedia.org/wiki/Flyweight_pattern), specifically
+via `Reference<T>`. Again, this is another value type, so there is no allocation cost - and a `Reference<T>` value knows where to look for the *actual* value inside the arena.
+
+By using `ref return`, the flyweight - which itself is suitably small - can be used as a field to provide access to a reference:
+
+``` c#
+Reference<Foo> myRef = arena.Allocate(); // note no length supplied
+```
+
+From here, `myRef.Value` is a *reference* to the data in the arena, so it can be read, written, passed as a reference, etc very cheaply. There is also an `implicit` conversion
+operator from `Reference<T>` to `T`.
+
 
 ## Configuration
 
@@ -235,8 +291,8 @@ A number of configuration options are provided in the `Arena<T>` constructor:
   - if you prefer, `UnmanagedAllocator<T>.Shared` can be used for any `T : unmanaged`, which uses `Marshal.AllocHGlobal` and `Marshal.FreeHGlobal`
   - or you can provide your own custom allocator if you want to do something more exotic
 - `options` - a set of flags that impact overall behaviour:
-  - `ArenaOptions.ClearAtReset` ensures that memory is wiped (to zero) before handing it to consumers via `Allocate()`; for performance, rather than wipe per allocation, the entire allocated region is wiped when `Reset()` is called, or whenever a new block is allocated
-  - `ArenaOptions.ClearAtDispose` ensures that memory is wiped (to zero) before the underlying allocator returns it to wherever it came from; this prevents your data from become accessible to arbitrary consumers (for example via `ArrayPool<T>` when using the default configuration) and is *broadly* comparable to the `ArrayPool<T>.Return(array, clearArray: true)` option; note that this option can not prevent direct memory access from seeing your data while in use (nothing can)
+  - `ArenaFlags.ClearAtReset` ensures that memory is wiped (to zero) before handing it to consumers via `Allocate()`; for performance, rather than wipe per allocation, the entire allocated region is wiped when `Reset()` is called, or whenever a new block is allocated
+  - `ArenaFlags.ClearAtDispose` ensures that memory is wiped (to zero) before the underlying allocator returns it to wherever it came from; this prevents your data from become accessible to arbitrary consumers (for example via `ArrayPool<T>` when using the default configuration) and is *broadly* comparable to the `ArrayPool<T>.Return(array, clearArray: true)` option; note that this option can not prevent direct memory access from seeing your data while in use (nothing can)
 - `blockSize` - the amount (in elements of `T`) to request from the underlying allocator when a new block is required; note that the allocator uses this for guidance only and could allocate different amounts. The default option is to allocate blocks of 128KiB - this ensures low fragmentation and (for the default array-based allocator) means that the backing arrays are on the Large Object Heap; a large block size also means that virtually all allocations are single-segment rather than multi-segment
 - `retentionPolicy` - **not currently implemented** - provides a mechanism for determining when to *release* memory at the end of each batches; it is normal for the amount of memory to fluctuate between batches, so it usually isn't desirable to release everything each time; the default policy is to use an exponential decay of 90% - meaning: each time we `Reset()`, if we had used less memory than before, we'll drop the amount to retain to 90% of what it was previously (if we used *more*, it'll jump up to the new amount immediately). This means that we don't *immediately* release untouched blocks, but if we *consistently* find ourselves using much less than we previously have, we will *eventually* release blocks. Other common policies (`Recent`, `Nothing`, `Everything`, etc) are available under `RetentionPolicy` - or you can provide your own custom retention policy as a function of the previously retained amount, and the amount used in the current batch (`Func<long,long,long>`)
 
@@ -246,7 +302,7 @@ Performance is shown in the image below; a short summary would be:
 
 - allocations are about 25 times faster than `new T[]` arrays (presumably mostly due to GC overheads), and about 10-15 times faster than `ArrayPool<T>` (presumably due to the more complex work required by an array-pool)
 - read and write when using optimized `for` loops using the span indexers are, on .NET Core, idential to using similar `for` loops using arrays; on .NET Framework (which has a different `Span<T>` implementation and may lack bounds-check elision), performance is degraded to half that of raw arrays (this is endemic to `Span<T>` generally, and is not specific to `Arena<T>`)
-- read when using element-based `foreach` loops is degraded to a quarter of the performance when compared to arrays; for a comparison/baseline, when using `ArraySegment<T>` (a convenient way of representing `ArrayPool<T>` leases, due to the fact that leased arrays are oversized), this is actually very good, with `ArraySegment<T>` being *twice as slow* as the `Allocation<T>` implementation of simple `foreach`
+- read when using element-based `foreach` loops is degraded to a quarter of the performance when compared to arrays; for a comparison/baseline, when using `ArraySegment<T>` (a convenient way of representing `ArrayPool<T>` leases, due to the fact that leased arrays are oversized), this is actually very good, with `ArraySegment<T>` being *twice as slow* as the `Sequence<T>` implementation of simple `foreach`
 
 So: on .NET Core in particular, there is *zero loss* (especially if you're using optimized span-based access), and **lots of win** in allocation. On .NET Framework, there is *some loss* (an *extremely* fast number becomes a *very* fast number when using span-based access), and still **lots of win** in allocation. Use of `foreach` is *perfecty acceptable* (but not as fast as span-based access) - especially for non-critical code-paths.
 
@@ -258,18 +314,14 @@ So: on .NET Core in particular, there is *zero loss* (especially if you're using
 
 An `Arena<T>` is not thread-safe; normally, it is assumed that an individual batch will only be processed by a single thread, so we don't attempt to make it thread-safe. If you have a batch-processing scenario where you *can* process the data in parallel: that's fine, but you will need to add some kind of synchrnoization (usually via `lock`) around the calls to `Allocate()` and `Reset()`. Note that two *separate* concurrent batches should not usually use the same `Arena<T>`, unless you are happy that `Reset()` applies to both of them.
 
-### What if I keep hold of a sequence?
+### What if I keep hold of a sequence or reference?
 
-If your code chooses to leak an `Allocation<T>` outside of a batch (more specifically: past a `Reset()` call, or past the arena's final `Dispose()` call), then: **that's on you**. What happens next is undefined, but commonly:
+If your code chooses to leak an `Sequence<T>` outside of a batch (more specifically: past a `Reset()` call, or past the arena's final `Dispose()` call), then: **that's on you**. What happens next is undefined, but commonly:
 
 - you could be stomping over data that is still in the arena; it may or may not have been wiped (depending on the configuration), and may or may not have been handed to new allocations in later batches
 - the data may have been released from the arena back to the allocator; if you're using the default `ArrayPool<T>` allocator, then this is similar to holding onto an array after calling `ArrayPool<T>.Return(...)`; if you're using an unmanaged allocater, this could immediately give you an access violation ... or you could just end up overwriting arbitrary memory now in use for other purposes inside your application
 
 Basically: **just don't do it**. Part of choosing to use an `Arena<T>` is making the determination that **you know the lifetime of your data**, and are therefore choosing not to do silly things. The risks here are mostly comparable to identical concerns when using `ArrayPool<T>`, so this is a perfectly reasonable and acceptable compromise.
-
-### Naming is hard (?)
-
-With the existing area being `ReadOnlySequence<T>`, it is very tempting to call the writable version `Sequence<T>`. But that also feels like an ambiguous name, with `Allocation<T>` being more specific. I could be open to persuasion here...
 
 ### How can I play with it?
 
@@ -281,6 +333,6 @@ Absolutely! It *probably* makes sense for any such type to be a `class` rather t
 
 Considerations:
 
-- indexer access might be expensive, and the current `Allocation<T>.Enumerator` is a `ref struct`, meaning you can't store it as a field (in the hope that most indexer access is actually incremental); we could perhaps add some API to help with this, perhaps based on `SequencePosition`?
-- you can't *expand* (enlarge) an `Allocation<T>` (but then... you can't resize a `T[]` *at all*); you can, however, *shrink* an `Allocation<T>` - by using `Slice()` (which returns a sub-range of an existing allocation)
+- indexer access might be expensive, and the current `Sequence<T>.Enumerator` is a `ref struct`, meaning you can't store it as a field (in the hope that most indexer access is actually incremental); we could perhaps add some API to help with this, perhaps based on `SequencePosition`?
+- you can't *expand* (enlarge) an `Sequence<T>` (but then... you can't resize a `T[]` *at all*); you can, however, *shrink* an `Sequence<T>` - by using `Slice()` (which returns a sub-range of an existing allocation)
 - most other common API surfaces should be easy to add, though
