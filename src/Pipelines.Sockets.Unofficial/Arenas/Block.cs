@@ -20,6 +20,18 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         long RunningIndex { get; }
     }
 
+
+    /// <summary>
+    /// A memory-owner that provides direct access to the root reference
+    /// </summary>
+    public interface IRootedMemoryOwner<T> : IMemoryOwner<T>
+    {
+        /// <summary>
+        /// The root reference of the block
+        /// </summary>
+        ref T Root { get; }
+    }
+
     /// <summary>
     /// Represents an abstract chained segment of mutable memory
     /// </summary>
