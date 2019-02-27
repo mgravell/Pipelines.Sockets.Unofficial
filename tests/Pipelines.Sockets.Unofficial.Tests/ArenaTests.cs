@@ -57,7 +57,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public void SliceAndDice()
         {
-            using (var arena = new Arena<int>(blockSize: 16))
+            using (var arena = new Arena<int>(new ArenaOptions(blockSize: 16)))
             {
                 var alloc = arena.Allocate(2048);
 
@@ -105,7 +105,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public void WriteAndRead()
         {
-            using (var arena = new Arena<int>(blockSize: 1024))
+            using (var arena = new Arena<int>(new ArenaOptions(blockSize: 1024)))
             {
                 var rand = new Random(43134114);
                 var arr = new Sequence<int>[100];
@@ -226,10 +226,11 @@ namespace Pipelines.Sockets.Unofficial.Tests
             return total;
         }
 
+        private readonly ArenaOptions _blockSizeFive = new ArenaOptions(blockSize: 5);
         [Fact]
         public void Copy()
         {
-            using (Arena<int> from = new Arena<int>(blockSize: 5), to = new Arena<int>(blockSize: 5))
+            using (Arena<int> from = new Arena<int>(_blockSizeFive), to = new Arena<int>(_blockSizeFive))
             {
                 var source = from.Allocate(100);
                 Assert.False(source.IsSingleSegment);
@@ -253,7 +254,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public void Positions()
         {
-            using (Arena<int> from = new Arena<int>(blockSize: 5))
+            using (Arena<int> from = new Arena<int>(_blockSizeFive))
             {
                 from.Allocate(42); // just want an arbitrary offset here
                 var source = from.Allocate(100);

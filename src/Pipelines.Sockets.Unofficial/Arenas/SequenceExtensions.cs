@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Buffers;
+using System.Runtime.CompilerServices;
 
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
@@ -501,10 +502,25 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             var obj = position.GetObject();
             var offset = position.GetInteger();
-            if (obj == null && offset == 0) return 0;
+            if (obj == null) return offset;
             if (obj is ISegment segment) return segment.RunningIndex + offset;
             return null; // nope!
         }
+
+#if DEBUG
+        /// <summary>
+        /// Attempt to calculate the net offset of a position
+        /// </summary>
+        internal static long? TryGetByteOffset<T>(this SequencePosition position)
+        {
+            var obj = position.GetObject();
+            var offset = position.GetInteger();
+            if (obj == null) return offset;
+
+            if (obj is ISegment segment) return segment.ByteOffset + (offset * Unsafe.SizeOf<T>());
+            return null; // nope!
+        }
+#endif
 
     }
 }

@@ -234,7 +234,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             int segmentOffset;
             // if the position is well-defined inside the current page, we can do this cheaply
-            if ((offset >= 0 & offset < _length) && (segmentOffset = (int)offset + Offset) < _head.Length)
+            if ((offset >= 0 & offset <= _length) && (segmentOffset = (int)offset + Offset) < _head.Length)
                 return new SequencePosition(_head, segmentOffset);
             return SliceIntoLaterPage(checked((int)offset), 0).Start();
         }
@@ -247,7 +247,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             // does the start fit into the first segment?
             int newStart;
-            if ((_length != 0 & start >= 0) && (newStart = Offset + start) < _head.Length)
+            if ((_length != 0 & start >= 0 & start <= _length) && (newStart = Offset + start) < _head.Length)
                 return new Sequence<T>(newStart, _length - start, _head);
             return SliceIntoLaterPage(start, _length - start);
         }
@@ -270,7 +270,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public Reference<T> GetReference(int offset)
         {
             int finalOffset;
-            if ((_length != 0 & offset >= 0) && (finalOffset = Offset + offset) < _head.Length)
+            if ((_length != 0 & offset >= 0 & offset <= _length) && (finalOffset = Offset + offset) < _head.Length)
                 return new Reference<T>(_head, finalOffset);
             return SliceIntoLaterPage(offset, 1).GetReference(0);
         }
@@ -291,6 +291,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             int fromThisPage = _head.Length - Offset;
             start -= fromThisPage;
             var segment = _head.Next;
+            Debug.Assert(segment != null, "expected a later page");
 
             // remove however-many entire pages we need
             // (note: we already asserted that it should fit!)
@@ -298,6 +299,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 start -= segment.Length;
                 segment = segment.Next;
+                Debug.Assert(start <= 0 || segment != null, "expected a later page");
             }
 
             return new Sequence<T>((int)start, length, segment);

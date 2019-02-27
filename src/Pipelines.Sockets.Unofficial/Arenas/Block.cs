@@ -8,7 +8,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     /// <summary>
     /// Represents an abstract chained segment of mutable memory
     /// </summary>
-    public interface ISegment
+    internal interface ISegment
     {
         /// <summary>
         /// The type of data represented by this segment
@@ -18,18 +18,25 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// The offset of this segment in the chain
         /// </summary>
         long RunningIndex { get; }
+
+#if DEBUG
+        /// <summary>
+        /// The true byte offset of the segment
+        /// </summary>
+        long ByteOffset { get; }
+#endif
     }
 
 
     /// <summary>
     /// A memory-owner that provides direct access to the root reference
     /// </summary>
-    public interface IRootedMemoryOwner<T> : IMemoryOwner<T>
+    public interface IPinnedMemoryOwner<T> : IMemoryOwner<T> where T : unmanaged
     {
         /// <summary>
         /// The root reference of the block
         /// </summary>
-        ref T Root { get; }
+        unsafe T* Root { get; }
     }
 
     /// <summary>
@@ -44,8 +51,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public int Length
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => base.Memory.Length; // don't need the extra cast here
+            [MethodImpl(MethodImplOptions.AggressiveInlining)] get; private set;
         }
 
         /// <summary>
@@ -67,10 +73,20 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => MemoryMarshal.AsMemory(base.Memory);
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            protected set => base.Memory = value;
+            protected set
+            {
+                base.Memory = value;
+                Length = value.Length;
+            }
         }
 
         Type ISegment.ElementType => typeof(T);
+
+#if DEBUG
+        long ISegment.ByteOffset => ByteOffset;
+
+        protected virtual long ByteOffset => Unsafe.SizeOf<T>() * RunningIndex;
+#endif
     }
 
     internal sealed class Block<T> : SequenceSegment<T>, IDisposable // , IBlock

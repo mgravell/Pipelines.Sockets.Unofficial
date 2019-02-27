@@ -65,7 +65,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public override IMemoryOwner<T> Allocate(int length)
             => new OwnedArray(_pool, _pool.Rent(length));
 
-        sealed class OwnedArray : IMemoryOwner<T>, IRootedMemoryOwner<T>
+        private sealed class OwnedArray : IMemoryOwner<T>
         {
             private T[] _array;
             private readonly ArrayPool<T> _pool;
@@ -76,8 +76,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
 
             public Memory<T> Memory => _array;
-
-            public ref T Root => ref _array[0];
 
             public void Dispose()
             {
@@ -105,14 +103,14 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public override IMemoryOwner<T> Allocate(int length) => new OwnedPointer(length);
 
-        private sealed class OwnedPointer : MemoryManager<T>, IRootedMemoryOwner<T>
+        private sealed class OwnedPointer : MemoryManager<T>, IPinnedMemoryOwner<T>
         {
             ~OwnedPointer() => Dispose(false);
 
             private T* _ptr;
             private readonly int _length;
 
-            public ref T Root => ref Unsafe.AsRef<T>(_ptr);
+            public T* Root => _ptr;
 
             public OwnedPointer(int length)
                 => _ptr = (T*)Marshal.AllocHGlobal((_length = length) * sizeof(T)).ToPointer();

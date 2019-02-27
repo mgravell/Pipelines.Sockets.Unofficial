@@ -8,7 +8,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     /// Flags that impact behaviour of the arena
     /// </summary>
     [Flags]
-    public enum ArenaOptions
+    public enum ArenaFlags
     {
         /// <summary>
         /// None
@@ -24,23 +24,49 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         ClearAtDispose,
     }
 
+    internal interface IArena : IDisposable
+    {
+        long Allocated();
+        long Capacity { get; }
+        void Reset();
+    }
+
     /// <summary>
     /// Represents a lifetime-bound allocator of multiple non-contiguous memory regions
     /// </summary>
-    public sealed class Arena<T> : IDisposable
+    public sealed class Arena<T> : IDisposable, IArena
     {
         /// <summary>
         /// The number of elements allocated since the last reset
         /// </summary>
-        public long Allocated => _allocatedTotal;
+        public long Allocated()
+        {
+            var current = _first;
+            long total = 0;
+            while(current != null)
+            {
+                if(ReferenceEquals(current, _current))
+                {
+                    total += _allocatedCurrentBlock;
+                    break;
+                }
+                else
+                {
+                    total += current.Length;
+                    current = current.Next;
+                }
+            }
+            return total;
+        }
+        
 
         /// <summary>
         /// The current capacity of all regions tracked by the arena
         /// </summary>
         public long Capacity => _capacityTotal;
 
-        private long _allocatedTotal, _capacityTotal;
-        private readonly ArenaOptions _options;
+        private long _capacityTotal;
+        private readonly ArenaFlags _flags;
         private readonly int _blockSize;
         private int _allocatedCurrentBlock;
         private Block<T> _first, _current;
@@ -51,13 +77,14 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Create a new Arena
         /// </summary>
-        public Arena(Allocator<T> allocator = null, ArenaOptions options = default, int blockSize = 0, Func<long,long, long> retentionPolicy = null)
+        public Arena(ArenaOptions options = null, Allocator<T> allocator = null)
         {
             _allocator = allocator ?? ArrayPoolAllocator<T>.Shared;
-            _blockSize = blockSize <= 0 ? _allocator.DefaultBlockSize : blockSize;
-            _options = options;
+            if (options == null) options = ArenaOptions.Default;
+            _blockSize = options.BlockSize <= 0 ? _allocator.DefaultBlockSize : options.BlockSize;
+            _flags = options.Flags;
             _first = _current = AllocateDetachedBlock();
-            _retentionPolicy = retentionPolicy ?? RetentionPolicy.Default;
+            _retentionPolicy = options.RetentionPolicy ?? RetentionPolicy.Default;
         }
 
         private Block<T> AllocateDetachedBlock()
@@ -84,15 +111,39 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public Sequence<T> Allocate(int length)
         {
             // note: even for zero-length blocks, we'd rather have them start
-            // at the start of the next block, for consistency
-            if(length > 0 & _allocatedCurrentBlock + length <= _current.Length)
+            // at the start of the next block, for consistency; for consistent
+            // *End()*, we also want end-terminated blocks to create a new block,
+            // so that we always have first.End() == second.Start()
+            if(length > 0 & length < RemainingCurrentBlock)
             {
                 var offset = _allocatedCurrentBlock;
                 _allocatedCurrentBlock += length;
-                _allocatedTotal += length;
                 return new Sequence<T>(offset, length, _current);
             }
             return SlowAllocate(length);
+        }
+
+        internal int AllocatedCurrentBlock => _allocatedCurrentBlock;
+
+        internal Block<T> CurrentBlock => _current;
+        internal Block<T> FirstBlock => _first;
+
+        internal int RemainingCurrentBlock
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => _current.Length - _allocatedCurrentBlock;
+        }
+
+        internal void SkipToNextPage()
+        {
+            if (AllocatedCurrentBlock == 0) return; // we're already there
+
+            // burn whatever is left, if any
+            if (RemainingCurrentBlock != 0) Allocate(RemainingCurrentBlock); // discard
+
+            // now do a dummy zero-length allocation, which has the side-effect
+            // of moving us to a new page
+            SlowAllocate(0);
         }
 
         /// <summary>
@@ -118,13 +169,17 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             if (_current.Length <= _allocatedCurrentBlock) MoveNextBlock();
 
             var result = new Sequence<T>(_allocatedCurrentBlock, length, _current);
-            _allocatedTotal += length; // we're going to allocate everything
 
             // now make sure we actually have blocks to cover that promise
             while (true)
             {
                 var remainingThisBlock = _current.Length - _allocatedCurrentBlock;
-                if (remainingThisBlock >= length)
+                if (length == remainingThisBlock)
+                {
+                    MoveNextBlock(); // burn the page, to ensure we have everything covererd
+                    break; // done
+                }
+                else if (length < remainingThisBlock)
                 {
                     _allocatedCurrentBlock += length;
                     break; // that's all we need, thanks
@@ -142,7 +197,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         bool ClearAtReset
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => (_options & ArenaOptions.ClearAtReset) != 0;
+            get => (_flags & ArenaFlags.ClearAtReset) != 0;
         }
 
         /// <summary>
@@ -150,7 +205,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public void Reset()
         {
-            long allocated = _allocatedTotal;
+            long allocated = Allocated();
             Reset(ClearAtReset);
 
             var retain = _retentionPolicy(_lastRetention, allocated);
@@ -183,7 +238,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
             _current = _first;
             _allocatedCurrentBlock = 0;
-            _allocatedTotal = 0;
         }
 
         /// <summary>
@@ -191,7 +245,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public void Dispose()
         {
-            if ((_options & ArenaOptions.ClearAtDispose) != 0)
+            if ((_flags & ArenaFlags.ClearAtDispose) != 0)
                 try { Reset(true); } catch { } // best effort only
 
             var current = _first;
