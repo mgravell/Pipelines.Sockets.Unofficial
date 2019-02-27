@@ -34,7 +34,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     public interface IPinnedMemoryOwner<T> : IMemoryOwner<T> where T : unmanaged
     {
         /// <summary>
-        /// The root reference of the block
+        /// The root reference of the block, or a null-pointer if the data should not be considered pinned
         /// </summary>
         unsafe T* Root { get; }
     }

@@ -72,9 +72,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             Allocator<T> allocator = null; // use the implicit default
             if(typeof(T) == typeof(byte))
             {   // unless we're talking about bytes, in which case
-                // using the unmanaged alloctor gives us the advantage
-                // of pinned buffers
-                allocator = (Allocator<T>)(object)UnmanagedAllocator<byte>.Shared;
+                // using a pinned alloctor gives us more direct access
+                // in the cast steps
+                allocator = (Allocator<T>)(object)PinnedArrayPoolAllocator<byte>.Shared;
             }
             return new Arena<T>(options, allocator); // use the default allocator, and the options provided
         }
@@ -269,10 +269,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             protected override long ByteOffset => _byteOffset;
 #endif
 
-            public MappedSegment(MappedSegment<T> previous, Block<byte> original)
+            public unsafe MappedSegment(MappedSegment<T> previous, Block<byte> original)
             {
                 MemoryManager<T> mapped;
-                if (original.Allocation is IPinnedMemoryOwner<byte> rooted)
+                if (original.Allocation is IPinnedMemoryOwner<byte> rooted && rooted.Root != null)
                 {   // in this case, we can just cheat like crazy
                     mapped = new PinnedConvertingMemoryManager(rooted);
                 }

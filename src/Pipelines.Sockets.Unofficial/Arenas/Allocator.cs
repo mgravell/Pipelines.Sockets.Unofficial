@@ -86,6 +86,63 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
     }
 
+    internal sealed class PinnedArrayPoolAllocator<T> : Allocator<T> where T : unmanaged
+    {
+        private readonly ArrayPool<T> _pool;
+
+        /// <summary>
+        /// An array-pool allocator that uses the shared array-pool
+        /// </summary>
+        public static PinnedArrayPoolAllocator<T> Shared { get; } = new PinnedArrayPoolAllocator<T>();
+
+        public PinnedArrayPoolAllocator(ArrayPool<T> pool = null) => _pool = pool ?? ArrayPool<T>.Shared;
+
+        public override IMemoryOwner<T> Allocate(int length)
+            => new PinnedArray(_pool, _pool.Rent(length));
+
+        private unsafe sealed class PinnedArray : IPinnedMemoryOwner<T>
+        {
+            private T[] _array;
+            private readonly ArrayPool<T> _pool;
+            private GCHandle _pin;
+            private T* _ptr;
+            public PinnedArray(ArrayPool<T> pool, T[] array)
+            {
+                _pool = pool;
+                _array = array;
+                _pin = GCHandle.Alloc(array, GCHandleType.Pinned);
+                _ptr = (T*)_pin.AddrOfPinnedObject().ToPointer();
+            }
+
+            public Memory<T> Memory => _array;
+
+            T* IPinnedMemoryOwner<T>.Root => _ptr;
+
+            private void Dispose(bool disposing)
+            {
+                if (disposing)
+                {
+                    var arr = _array;
+                    _array = null;
+                    if (arr != null) _pool.Return(arr);
+                }
+                if (_ptr != null)
+                {
+                    _ptr = null;
+                    try { _pin.Free(); } catch { } // best efforst
+                    _pin = default;
+                }
+            }
+            ~PinnedArray() => Dispose(false);
+
+            public void Dispose()
+            {
+                Dispose(true);
+                GC.SuppressFinalize(this);
+            }
+        }
+    }
+
     /// <summary>
     /// An allocator that allocates unmanaged memory, releasing the memory back to the OS when done
     /// </summary>
