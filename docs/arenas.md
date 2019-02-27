@@ -325,7 +325,7 @@ Basically: **just don't do it**. Part of choosing to use an `Arena<T>` is making
 
 ### How can I play with it?
 
-Right now, it is available in the "unlisted" nuget drop, [1.0.37](https://www.nuget.org/packages/Pipelines.Sockets.Unofficial/1.0.37). Have fun!
+Right now, it is available in the "unlisted" nuget drop, [1.0.53](https://www.nuget.org/packages/Pipelines.Sockets.Unofficial/1.0.53). Have fun!
 
 ### Could I create something like `List<T>` on top of it?
 
