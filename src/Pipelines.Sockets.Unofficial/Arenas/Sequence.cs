@@ -202,6 +202,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Sequence Untyped() => new Sequence((object)_head ?? EmptySentinel, Offset, _length);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal Sequence<TTo> DirectCast<TTo>() => new Sequence<TTo>(Offset, _length, (SequenceSegment<TTo>)(object)_head);
+
         // used to accurately identify a default instance (null _head) when
         // using untyped sequences
         internal static readonly object EmptySentinel = new object();

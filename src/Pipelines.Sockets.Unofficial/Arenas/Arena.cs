@@ -68,7 +68,17 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Create a type-specific arena with the options suggested
         /// </summary>
         public virtual Arena<T> CreateArena<T>(ArenaOptions options)
-            => new Arena<T>(options); // use the default allocator, and the options provided
+        {
+            Allocator<T> allocator = null; // use the implicit default
+            if(typeof(T) == typeof(byte))
+            {   // unless we're talking about bytes, in which case
+                // using the unmanaged alloctor gives us the advantage
+                // of pinned buffers
+                allocator = (Allocator<T>)(object)UnmanagedAllocator<byte>.Shared;
+            }
+            return new Arena<T>(options, allocator); // use the default allocator, and the options provided
+        }
+            
     }
 
     public sealed class Arena : IDisposable
@@ -125,17 +135,29 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Sequence<T> Allocate<T>(int length)
         {
-            Func<Arena, int, Sequence<T>> helper;
-            if (
+            // recall that the JIT will remove the unwanted versions of these
+            if (typeof(T) == typeof(byte)) return AllocateUnmanaged<byte>(length).DirectCast<T>();
+            else if (typeof(T) == typeof(sbyte)) return AllocateUnmanaged<sbyte>(length).DirectCast<T>();
+            else if (typeof(T) == typeof(int)) return AllocateUnmanaged<int>(length).DirectCast<T>();
+            else if (typeof(T) == typeof(short)) return AllocateUnmanaged<short>(length).DirectCast<T>();
+            else if (typeof(T) == typeof(ushort)) return AllocateUnmanaged<ushort>(length).DirectCast<T>();
+            else if (typeof(T) == typeof(long)) return AllocateUnmanaged<long>(length).DirectCast<T>();
+            else if (typeof(T) == typeof(uint)) return AllocateUnmanaged<uint>(length).DirectCast<T>();
+            else if (typeof(T) == typeof(ulong)) return AllocateUnmanaged<ulong>(length).DirectCast<T>();
+            else
+            {
+                Func<Arena, int, Sequence<T>> helper;
+                if (
 #if SOCKET_STREAM_BUFFERS // when this is available, we can check it here and the JIT will make magic happen
                 !RuntimeHelpers.IsReferenceOrContainsReferences<T>() &&
 #endif
                 (helper = PerTypeHelpers<T>.Allocate) != null)
-            {
-                return helper(this, length);
-            }
+                {
+                    return helper(this, length);
+                }
 
-            return GetArena<T>().Allocate(length);
+                return GetArena<T>().Allocate(length);
+            }
         }
 
         private Dictionary<Type, IArena> _typedArenas = new Dictionary<Type, IArena>();
