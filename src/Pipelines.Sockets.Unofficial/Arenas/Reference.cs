@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
 
@@ -37,8 +38,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public Reference(T[] array, int offset) : this(offset, array)
         {
-            if (array == null) throw new ArgumentNullException(nameof(array));
-            if (offset < 0 | offset >= array.Length) throw new ArgumentOutOfRangeException(nameof(offset));
+            if (array == null) Throw.ArgumentNull(nameof(array));
+            if (offset < 0 | offset >= array.Length) Throw.ArgumentOutOfRange(nameof(offset));
         }
 
         /// <summary>
@@ -46,8 +47,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public Reference(IMemoryOwner<T> memory, int offset) : this(offset, memory)
         {
-            if (memory == null) throw new ArgumentNullException(nameof(memory));
-            if (offset < 0 | offset >= memory.Memory.Length) throw new ArgumentOutOfRangeException(nameof(offset));
+            if (memory == null) Throw.ArgumentNull(nameof(memory));
+            if (offset < 0 | offset >= memory.Memory.Length) Throw.ArgumentOutOfRange(nameof(offset));
         }
 
         internal Reference(int offset, object obj) // trusted .ctor

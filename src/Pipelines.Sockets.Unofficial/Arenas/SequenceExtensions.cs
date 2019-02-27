@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
 
@@ -51,8 +52,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return arr;
         }
 
-        private static void ThrowInvalid() => throw new InvalidOperationException();
-
         /// <summary>
         /// Copy the data from a sequence to a span, applying a projection
         /// </summary>
@@ -60,7 +59,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             Span<TTo> destination, Projection<TFrom, TTo> projection)
         {
             if (!TryCopyTo<TFrom, TTo>(in source, destination, projection))
-                ThrowInvalid();
+                Throw.InvalidOperation();
         }
 
         /// <summary>
@@ -70,7 +69,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             Span<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
         {
             if (!TryCopyTo<TFrom, TState, TTo>(in source, destination, projection, in state))
-                ThrowInvalid();
+                Throw.InvalidOperation();
         }
 
         /// <summary>
@@ -79,7 +78,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public static void CopyTo<T>(this ReadOnlySpan<T> source, in Sequence<T> destination)
         {
             if (!TryCopyTo<T>(source, in destination))
-                ThrowInvalid();
+                Throw.InvalidOperation();
         }
 
         /// <summary>
@@ -89,7 +88,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
             if (!TryCopyTo<TFrom, TTo>(source, in destination, projection))
-                ThrowInvalid();
+                Throw.InvalidOperation();
         }
 
         /// <summary>
@@ -99,7 +98,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
         {
             if (!TryCopyTo<TFrom, TState, TTo>(source, in destination, projection, in state))
-                ThrowInvalid();
+                Throw.InvalidOperation();
         }
 
         /// <summary>
@@ -109,7 +108,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
             if (!TryCopyTo<TFrom, TTo>(source, in destination, projection))
-                ThrowInvalid();
+                Throw.InvalidOperation();
         }
 
         /// <summary>
@@ -119,7 +118,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
         {
             if (!TryCopyTo<TFrom, TState, TTo>(source, in destination, projection, in state))
-                ThrowInvalid();
+                Throw.InvalidOperation();
         }
 
         /// <summary>
@@ -128,7 +127,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public static bool TryCopyTo<TFrom, TTo>(this in Sequence<TFrom> source,
             Span<TTo> destination, Projection<TFrom, TTo> projection)
         {
-            void ThrowNoProjection() => throw new ArgumentNullException(nameof(projection));
+            void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
             if (projection == null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
@@ -161,7 +160,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public static bool TryCopyTo<TFrom, TState, TTo>(this in Sequence<TFrom> source,
                 Span<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
         {
-            void ThrowNoProjection() => throw new ArgumentNullException(nameof(projection));
+            void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
             if (projection == null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
@@ -219,7 +218,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public static bool TryCopyTo<TFrom, TTo>(this Span<TFrom> source,
             in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
-            void ThrowNoProjection() => throw new ArgumentNullException(nameof(projection));
+            void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
             if (projection == null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
@@ -252,7 +251,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public static bool TryCopyTo<TFrom, TState, TTo>(this Span<TFrom> source,
                 in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
         {
-            void ThrowNoProjection() => throw new ArgumentNullException(nameof(projection));
+            void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
             if (projection == null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
@@ -285,7 +284,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public static bool TryCopyTo<TFrom, TTo>(this ReadOnlySpan<TFrom> source,
             in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
-            void ThrowNoProjection() => throw new ArgumentNullException(nameof(projection));
+            void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
             if (projection == null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
@@ -318,7 +317,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public static bool TryCopyTo<TFrom, TState, TTo>(this ReadOnlySpan<TFrom> source,
                 in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
         {
-            void ThrowNoProjection() => throw new ArgumentNullException(nameof(projection));
+            void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
             if (projection == null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
@@ -375,7 +374,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public static void CopyTo<T>(this in Sequence<T> source, in Sequence<T> destination)
         {
-            if (!TryCopyTo<T>(source, destination)) ThrowInvalid();
+            if (!TryCopyTo<T>(source, destination)) Throw.InvalidOperation();
         }
 
         /// <summary>
@@ -404,7 +403,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public static void CopyTo<T>(this in ReadOnlySequence<T> source, in Sequence<T> destination)
         {
-            if (!TryCopyTo<T>(source, destination)) ThrowInvalid();
+            if (!TryCopyTo<T>(source, destination)) Throw.InvalidOperation();
         }
 
         /// <summary>
@@ -437,7 +436,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public static void CopyTo<TFrom, TTo>(this in Sequence<TFrom> source, in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
-            if (!TryCopyTo<TFrom, TTo>(source, destination, projection)) ThrowInvalid();
+            if (!TryCopyTo<TFrom, TTo>(source, destination, projection)) Throw.InvalidOperation();
         }
 
         /// <summary>
@@ -468,7 +467,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public static void CopyTo<TFrom, TState, TTo>(this in Sequence<TFrom> source, in Sequence<TTo> destination,
             Projection<TFrom, TState, TTo> projection, in TState state)
         {
-            if (!TryCopyTo<TFrom, TState, TTo>(source, destination, projection, in state)) ThrowInvalid();
+            if (!TryCopyTo<TFrom, TState, TTo>(source, destination, projection, in state)) Throw.InvalidOperation();
         }
 
         /// <summary>

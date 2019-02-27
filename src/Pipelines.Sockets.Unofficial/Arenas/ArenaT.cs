@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
@@ -89,13 +90,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         private Block<T> AllocateDetachedBlock()
         {
-            void ThrowAllocationFailure() => throw new InvalidOperationException("The allocator provided an empty range");
             var allocation = _allocator.Allocate(_blockSize);
-            if (allocation == null) ThrowAllocationFailure();
+            if (allocation == null) Throw.InvalidOperation("The allocator provided an empty range");
             if (allocation.Memory.IsEmpty)
             {
                 try { allocation.Dispose(); } catch { } // best efforts
-                ThrowAllocationFailure();
+                Throw.InvalidOperation("The allocator provided an empty range");
             }
             if (ClearAtReset) // this really means "before use", so...
                 _allocator.Clear(allocation, allocation.Memory.Length);
@@ -155,8 +155,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         // this is when there wasn't enough space in the current block
         private Sequence<T> SlowAllocate(int length)
         {
-            void ThrowInvalidLength() => throw new ArgumentOutOfRangeException(nameof(length));
-            if (length < 0) ThrowInvalidLength();
+            if (length < 0) Throw.ArgumentOutOfRange(nameof(length));
             void MoveNextBlock()
             {
                 _current = _current.Next ?? (_current.Next = AllocateDetachedBlock());

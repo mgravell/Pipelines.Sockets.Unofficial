@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Buffers;
 using System.IO;
 using System.Net;
@@ -34,7 +35,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             var timeout = Task.Delay(5000);
             var code = ConnectImpl();
             var first = await Task.WhenAny(timeout, code).ConfigureAwait(false);
-            if (first == timeout) throw new TimeoutException();
+            if (first == timeout) Throw.Timeout();
         }
 
         private async Task ConnectImpl()
@@ -46,7 +47,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             {
                 server = Task.Run(() => SyncEchoServer(waitForRunning, endpoint));
                 if (!Monitor.Wait(waitForRunning, 5000))
-                    throw new TimeoutException("Server didn't start");
+                    Throw.Timeout("Server didn't start");
             }
 
             string actual;

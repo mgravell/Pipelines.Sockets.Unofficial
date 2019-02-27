@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO.Pipelines;
@@ -258,7 +259,8 @@ namespace Pipelines.Sockets.Unofficial
             if (sendPipeOptions == null) sendPipeOptions = PipeOptions.Default;
             if (receivePipeOptions == null) receivePipeOptions = PipeOptions.Default;
 
-            Socket = socket ?? throw new ArgumentNullException(nameof(socket));
+            if (socket == null) Throw.ArgumentNull(nameof(socket));
+            Socket = socket;
             SocketConnectionOptions = socketConnectionOptions;
             _sendToSocket = new Pipe(sendPipeOptions);
             _receiveFromSocket = new Pipe(receivePipeOptions);

@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.IO.Pipelines;
 using System.Net;
 using System.Net.Sockets;
@@ -23,7 +24,7 @@ namespace Pipelines.Sockets.Unofficial
             ProtocolType protocolType = ProtocolType.Tcp,
             PipeOptions sendOptions = null, PipeOptions receiveOptions = null)
         {
-            if (_listener != null) throw new InvalidOperationException("Server is already running");
+            if (_listener != null) Throw.InvalidOperation("Server is already running");
             Socket listener = new Socket(addressFamily, socketType, protocolType);
             listener.Bind(endPoint);
             listener.Listen(20);

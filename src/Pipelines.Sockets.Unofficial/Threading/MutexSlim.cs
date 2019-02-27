@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO.Pipelines;
@@ -90,7 +91,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
             TimeoutMilliseconds = timeoutMilliseconds;
             _scheduler = scheduler ?? PipeScheduler.ThreadPool;
             _token = LockState.ChangeState(0, LockState.Pending); // initialize as unowned
-            void ThrowInvalidTimeout() => throw new ArgumentOutOfRangeException(nameof(timeoutMilliseconds));
+            void ThrowInvalidTimeout() => Throw.ArgumentOutOfRange(nameof(timeoutMilliseconds));
             IsThreadPool = (object)_scheduler == (object)PipeScheduler.ThreadPool;
         }
 
@@ -105,14 +106,12 @@ namespace Pipelines.Sockets.Unofficial.Threading
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void Release(int token, bool demandMatch = true)
         {
-            void ThrowInvalidLockHolder() => throw new InvalidOperationException("Attempt to release a MutexSlim lock token that was not held");
-
             // release the token (we can check for wrongness without needing the lock, note)
             Log($"attempting to release token {LockState.ToString(token)}");
             if (Interlocked.CompareExchange(ref _token, LockState.ChangeState(token, LockState.Pending), token) != token)
             {
                 Log($"token {LockState.ToString(token)} is invalid");
-                if (demandMatch) ThrowInvalidLockHolder();
+                if (demandMatch) Throw.InvalidLockHolder();
                 return;
             }
 

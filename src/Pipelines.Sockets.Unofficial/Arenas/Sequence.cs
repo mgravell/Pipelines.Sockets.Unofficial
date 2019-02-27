@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -190,10 +191,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public static explicit operator Sequence<T> (ReadOnlySequence<T> readOnlySequence)
         {
             if (TryGetSequence(readOnlySequence, out var sequence)) return sequence;
-            ThrowInvalidCast();
+            Throw.InvalidCast();
             return default; // to make compiler happy
-
-            void ThrowInvalidCast() => throw new InvalidCastException();
         }
 
         /// <summary>
@@ -307,7 +306,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             return new Sequence<T>((int)start, length, segment);
 
-            void ThrowArgumentOutOfRange(string paramName) => throw new ArgumentOutOfRangeException(paramName);
+            void ThrowArgumentOutOfRange(string paramName) => Throw.ArgumentOutOfRange(paramName);
         }
 
         /// <summary>
@@ -431,9 +430,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public Sequence(SequenceSegment<T> segment, int offset, int length)
         {
             // basica parameter check
-            if (segment == null) throw new ArgumentNullException(nameof(segment));
-            if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset));
-            if (length < 0) throw new ArgumentOutOfRangeException(nameof(length));
+            if (segment == null) Throw.ArgumentNull(nameof(segment));
+            if (offset < 0) Throw.ArgumentOutOfRange(nameof(offset));
+            if (length < 0) Throw.ArgumentOutOfRange(nameof(length));
 
             // check that length is valid for the complete chain
             long unaffountedFor = length + offset;
@@ -443,7 +442,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 unaffountedFor -= current.Length;
                 current = current.Next;
             }
-            if (unaffountedFor > 0) throw new ArgumentOutOfRangeException(nameof(length));
+            if (unaffountedFor > 0) Throw.ArgumentOutOfRange(nameof(length));
 
             // assign
             _head = segment;
@@ -564,16 +563,13 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 return true;
             }
 
-            private static void ThrowOutOfRange() => throw new IndexOutOfRangeException();
-
-
             /// <summary>
             /// Progresses the iterator, asserting that space is available, returning a reference to the next value
             /// </summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public ref T GetNext()
             {
-                if (!MoveNext()) ThrowOutOfRange();
+                if (!MoveNext()) Throw.EnumeratorOutOfRange();
                 return ref CurrentReference;
             }
 
@@ -691,9 +687,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 return true;
             }
 
-            internal Span<T> GetNext()
+            /// <summary>
+            /// Asserts that another span is available, and returns then next span
+            /// </summary>
+            public Span<T> GetNext()
             {
-                if (!MoveNext()) throw new InvalidOperationException();
+                if (!MoveNext()) Throw.EnumeratorOutOfRange();
                 return Current;
             }
 
@@ -750,6 +749,15 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             /// Obtain the current segment
             /// </summary>
             public Memory<T> Current => _current;
+
+            /// <summary>
+            /// Asserts that another span is available, and returns then next span
+            /// </summary>
+            public Memory<T> GetNext()
+            {
+                if (!MoveNext()) Throw.EnumeratorOutOfRange();
+                return Current;
+            }
         }
     }
 }

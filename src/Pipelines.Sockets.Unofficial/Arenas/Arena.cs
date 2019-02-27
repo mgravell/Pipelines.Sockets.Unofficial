@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
@@ -81,11 +82,17 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             
     }
 
+    /// <summary>
+    /// An arena allocator that can allocate sequences for multiple data types
+    /// </summary>
     public sealed class Arena : IDisposable
     {
         private readonly ArenaOptions _options;
         private ArenaFactory _factory;
 
+        /// <summary>
+        /// Create a new Arena instance
+        /// </summary>
         public Arena(ArenaOptions options = null, ArenaFactory factory = null)
         {
             _options = options ?? ArenaOptions.Default;
@@ -129,10 +136,16 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
         }
 
+        /// <summary>
+        /// Allocate a single instance as a reference
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Reference<T> Allocate<T>() => Allocate<T>(1).GetReference(0);
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        /// <summary>
+        /// Allocate a block of data
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)] // aggressive mostly in the JIT-optimized cases!
         public Sequence<T> Allocate<T>(int length)
         {
             // recall that the JIT will remove the unwanted versions of these
@@ -169,7 +182,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private Arena<T> CreateNewArena<T>()
         {
             var factory = _factory;
-            if (factory == null) throw new ObjectDisposedException(ToString());
+            if (factory == null) Throw.ObjectDisposed(ToString());
             return factory.CreateArena<T>(_options);
         }
 
@@ -191,10 +204,16 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
         }
 
+        /// <summary>
+        /// Allocate a single instance as a reference
+        /// </summary>
         [EditorBrowsable(EditorBrowsableState.Never), Browsable(false)]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Reference<T> AllocateUnmanaged<T>() where T : unmanaged => AllocateUnmanaged<T>(1).GetReference(0);
 
+        /// <summary>
+        /// Allocate a block of data
+        /// </summary>
         [EditorBrowsable(EditorBrowsableState.Never), Browsable(false)]
         public Sequence<T> AllocateUnmanaged<T>(int length) where T : unmanaged
         {
@@ -229,7 +248,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             while (length != 0)
             {
                 int elementsThisPage = arena.RemainingCurrentBlock / Unsafe.SizeOf<T>();
-                if (elementsThisPage == 0) throw new InvalidOperationException($"Unable to fit {typeof(T).Name} on the block");
+                if (elementsThisPage == 0) Throw.InvalidOperation($"Unable to fit {typeof(T).Name} on the block");
 
                 if (length == elementsThisPage)
                 {
@@ -322,9 +341,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
                 public override Span<T> GetSpan() => MemoryMarshal.Cast<byte, T>(_unrooted.Memory.Span);
 
-                public override MemoryHandle Pin(int elementIndex = 0) => throw new NotSupportedException();
+                public override MemoryHandle Pin(int elementIndex = 0) { Throw.NotSupported(); return default; }
 
-                public override void Unpin() => throw new NotSupportedException();
+                public override void Unpin() => Throw.NotSupported();
 
                 protected override void Dispose(bool disposing) { } // not our memory
             }
@@ -352,7 +371,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 previous = mapped;
                 current = current.Next;
             }
-            throw new InvalidOperationException("The requested block was not found in the map-chain");
+            Throw.InvalidOperation("The requested block was not found in the map-chain");
+            return default;
         }
 
         private MappedSegment<T> MapBlock<T>(MappedSegment<T> previous, Block<byte> original) where T : unmanaged

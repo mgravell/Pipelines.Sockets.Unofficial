@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
@@ -97,9 +98,8 @@ namespace Pipelines.Sockets.Unofficial.Threading
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             internal LockToken AssertNotCanceled()
             {
-                if (LockState.IsCanceled(_token)) ThrowCanceled();
+                if (LockState.IsCanceled(_token)) Throw.TaskCanceled();
                 return this;
-                void ThrowCanceled() => throw new TaskCanceledException();
             }
         }
     }

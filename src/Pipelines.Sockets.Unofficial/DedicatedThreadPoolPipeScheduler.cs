@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
@@ -44,7 +45,7 @@ namespace Pipelines.Sockets.Unofficial
         public DedicatedThreadPoolPipeScheduler(string name = null, int workerCount = 5, int useThreadPoolQueueLength = 10,
             ThreadPriority priority = ThreadPriority.Normal)
         {
-            if (workerCount < 0) throw new ArgumentNullException(nameof(workerCount));
+            if (workerCount < 0) Throw.ArgumentNull(nameof(workerCount));
 
             WorkerCount = workerCount;
             UseThreadPoolQueueLength = useThreadPoolQueueLength;
