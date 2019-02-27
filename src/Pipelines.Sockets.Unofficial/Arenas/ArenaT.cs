@@ -18,19 +18,23 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Allocations are cleared at each reset (and when initially allocated), so that they are always wiped before use
         /// </summary>
-        ClearAtReset,
+        ClearAtReset = 1,
         /// <summary>
         /// Allocations are cleared when the arean is disposed, so that the contents are not released back to the underlying allocator
         /// </summary>
-        ClearAtDispose,
+        ClearAtDispose = 2,
         /// <summary>
         /// When possible, and when no allocator is explicitly provided; prefer using unmanaged memory
         /// </summary>
-        PreferUnmanaged,
+        PreferUnmanaged = 4,
+        /// <summary>
+        /// When possible, use pinned memory
+        /// </summary>
+        PreferPinned = 8,
         /// <summary>
         /// Disallow blittable types from using a single pool of memory
         /// </summary>
-        DisableBlittableSharedMemory
+        DisableBlittableSharedMemory = 16
     }
 
     internal interface IArena : IDisposable
@@ -93,16 +97,16 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             _flags = options.Flags;
             if (!PerTypeHelpers<T>.IsBlittable)
             {
-                _flags &= ~(ArenaFlags.DisableBlittableSharedMemory | ArenaFlags.PreferUnmanaged); // remove options that can't apply
+                _flags &= ~(ArenaFlags.DisableBlittableSharedMemory | ArenaFlags.PreferUnmanaged | ArenaFlags.PreferPinned); // remove options that can't apply
                 _flags |= ArenaFlags.ClearAtDispose | ArenaFlags.ClearAtReset; // add options that *must* apply
                 // (in particular, we don't want references keeping objects alive; we won't be held to blame!)
             }
 
-            if (allocator == null)
-            {
-                if ((_flags & ArenaFlags.PreferUnmanaged) != 0)
-                    allocator = PerTypeHelpers<T>.PreferUnmanaged();
-            }
+            if (allocator == null & (_flags & ArenaFlags.PreferUnmanaged) != 0)
+                allocator = PerTypeHelpers<T>.PreferUnmanaged();
+            if (allocator == null & (_flags & ArenaFlags.PreferPinned) != 0)
+                allocator = PerTypeHelpers<T>.PreferPinned();
+
             _allocator = allocator ?? ArrayPoolAllocator<T>.Shared; // safest default for everything
 
             _blockSize = options.BlockSize <= 0 ? _allocator.DefaultBlockSize : options.BlockSize;

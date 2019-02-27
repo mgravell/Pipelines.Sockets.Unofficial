@@ -27,7 +27,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
         public static readonly Func<Arena, int, Sequence<T>> AllocateUnmanaged;
 
-        private static Allocator<T> _preferUnmanaged;
+        private static Allocator<T> _preferUnmanaged, _preferPinned;
         public static Allocator<T> PreferUnmanaged()
         {
             return _preferUnmanaged ?? (_preferUnmanaged = Calculate());
@@ -40,6 +40,26 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                     {
                         typeof(UnmanagedAllocator<>).MakeGenericType(typeof(T))
                             .GetProperty(nameof(UnmanagedAllocator<int>.Shared))
+                            .GetValue(null);
+                    }
+                    catch { }
+                }
+                return PreferPinned(); // safe fallback
+            }
+        }
+
+        public static Allocator<T> PreferPinned()
+        {
+            return _preferPinned ?? (_preferPinned = Calculate());
+
+            Allocator<T> Calculate()
+            {
+                if (IsBlittable)
+                {
+                    try
+                    {
+                        typeof(PinnedArrayPoolAllocator<>).MakeGenericType(typeof(T))
+                            .GetProperty(nameof(PinnedArrayPoolAllocator<int>.Shared))
                             .GetValue(null);
                     }
                     catch { }
