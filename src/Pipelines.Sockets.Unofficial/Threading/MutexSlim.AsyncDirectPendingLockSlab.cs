@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Sources;
@@ -52,7 +53,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
                 // set the state first, as we'll always *read* the continuation first, so we can't get confused
                 var oldState = Interlocked.CompareExchange(ref _continuationsAndState[SlabSize + key], state, s_NoState);
-                if (oldState != s_NoState) ThrowMultipleContinuations();
+                if (oldState != s_NoState) Throw.MultipleContinuations();
 
                 var oldContinuation = Interlocked.CompareExchange(ref _continuationsAndState[key], continuation, null);
                 if (oldContinuation == s_Completed)
@@ -60,11 +61,8 @@ namespace Pipelines.Sockets.Unofficial.Threading
                     // we'd already finished; invoke it inline
                     continuation.Invoke(state);
                 }
-                else if (oldContinuation != null) ThrowMultipleContinuations();
+                else if (oldContinuation != null) Throw.MultipleContinuations();
             }
-
-
-            private static void ThrowMultipleContinuations() => throw new InvalidOperationException($"Only one pending continuation is permitted");
 
             LockToken IValueTaskSource<LockToken>.GetResult(short key) => new LockToken(_mutex, LockState.GetResult(ref _tokens[key]));
 

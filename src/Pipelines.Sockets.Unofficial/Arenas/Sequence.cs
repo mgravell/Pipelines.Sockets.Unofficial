@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -6,70 +7,70 @@ using System.Runtime.CompilerServices;
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
     /// <summary>
-    /// Represents an Allocation-T without needing to know the T at compile-time
+    /// Represents a Sequence without needing to know the type at compile-time
     /// </summary>
-    public readonly struct Allocation : IEquatable<Allocation>
+    public readonly struct Sequence : IEquatable<Sequence>
     {
         private readonly int _offset, _length;
-        private readonly IBlock _block;
+        private readonly object _obj;
 
         /// <summary>
-        /// Returns an empty block of the supplied type
+        /// Returns an empty sequence of the supplied type
         /// </summary>
-        public static Allocation Empty<T>() => new Allocation(NilBlock<T>.Default, 0, 0);
+        public static Sequence Empty<T>() => new Sequence(Sequence<T>.EmptySentinel, 0, 0);
 
         /// <summary>
-        /// Tests two allocations for equality
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override bool Equals(object obj) => obj is Allocation other && Equals(in other);
-
-        /// <summary>
-        /// Tests two allocations for equality
+        /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        bool IEquatable<Allocation>.Equals(Allocation other) => Equals(in other);
+        public override bool Equals(object obj) => obj is Sequence other && Equals(in other);
 
         /// <summary>
-        /// Tests two allocations for equality
+        /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool Equals(in Allocation other)
-            => _length == 0 ? other.Length == 0 // all empty allocations are equal - in part because default is type-less
-                : (_length == other.Length & _offset == other._offset & _block == other._block);
+        bool IEquatable<Sequence>.Equals(Sequence other) => Equals(in other);
+
+        /// <summary>
+        /// Tests two sequences for equality
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool Equals(in Sequence other)
+            => _length == 0 ? other.Length == 0 // all empty sequences are equal - in part because default is type-less
+                : (_length == other.Length & _offset == other._offset & _obj == other._obj);
 
         /// <summary>
         /// Used for equality operations
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override int GetHashCode()
-            => _length == 0 ? 0 : (_length * -_offset) ^ _block.GetHashCode();
+            => _length == 0 ? 0 : (_length * -_offset) ^ RuntimeHelpers.GetHashCode(_obj);
 
         /// <summary>
-        /// Summaries an allocation as a string
+        /// Summarizes a sequence as a string
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override string ToString() => $"{_length}×{ElementType.Name}";
 
         /// <summary>
-        /// Tests two allocations for equality
+        /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool operator ==(Allocation x, Allocation y) => x.Equals(in y);
+        public static bool operator ==(Sequence x, Sequence y) => x.Equals(in y);
 
         /// <summary>
-        /// Tests two allocations for equality
+        /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool operator !=(Allocation x, Allocation y) => !x.Equals(in y);
+        public static bool operator !=(Sequence x, Sequence y) => !x.Equals(in y);
 
         /// <summary>
-        /// Indicates the number of elements in the allocation
+        /// Indicates the number of elements in the sequence
         /// </summary>
-        public long Length => _length; // we currently only allow int, but technically we could support huge blocks
+        public long Length => _length; // we currently only allow int, but technically we could support huge regions
 
         /// <summary>
-        /// Indicates whether the allocation is empty (zero elements)
+        /// Indicates whether the sequence is empty (zero elements)
         /// </summary>
         public bool IsEmpty
         {
@@ -78,209 +79,210 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Indicates the type of element defined the allocation
+        /// Indicates the type of element defined by the sequence
         /// </summary>
         public Type ElementType
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => _block?.ElementType ?? typeof(void);
+            get
+            {
+                if (_obj is ISegment segment) return segment.ElementType;
+                return _obj == null ? typeof(void) : _obj.GetType().GetElementType();
+                
+            }
         }
 
         /// <summary>
-        /// Converts an untyped allocation back to a typed allocation; the type must be correct
+        /// Converts an untyped sequence back to a typed sequence; the type must be correct
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Allocation<T> Cast<T>()
-            => _block is NilBlock ? TypeCheckedDefault<T>() : new Allocation<T>((Block<T>)_block, _offset, _length);
+        public Sequence<T> Cast<T>()
+            => _length == 0 && _obj == Sequence<T>.EmptySentinel
+            ? default
+            : new Sequence<T>(_offset, _length, (SequenceSegment<T>)_obj);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        Allocation<T> TypeCheckedDefault<T>()
+        internal Sequence(object obj, int offset, int length)
         {
-            GC.KeepAlive((NilBlock<T>)_block); // null (default) or correct
-            return default;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal Allocation(IBlock block, int offset, int length)
-        {
-            _block = block;
+            _obj = obj;
             _offset = offset;
             _length = length;
-        }
-
-        /// <summary>
-        /// If possible, copy the contents of the allocation into a contiguous region
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryCopyTo(Array destination, int offset = 0) => _length == 0 ? true : _block.TryCopyTo(this, destination, offset);
-
-        /// <summary>
-        /// Copy the contents of the allocation into a contiguous region
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void CopyTo(Array destination, int offset = 0)
-        {
-            if (_length != 0) _block.CopyTo(this, destination, offset);
         }
     }
 
     /// <summary>
     /// Represents a (possibly non-contiguous) region of memory; the read/write cousin or ReadOnlySequence-T
     /// </summary>
-    public readonly struct Allocation<T> : IEquatable<Allocation<T>>
+    public readonly struct Sequence<T> : IEquatable<Sequence<T>>
     {
         private readonly int _offsetAndMultiSegmentFlag, _length;
-        private readonly Block<T> _block;
+        private readonly SequenceSegment<T> _head;
 
         /// <summary>
-        /// Represents a typed allocation as an untyped allocation
+        /// Represents a typed sequence as an untyped sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static implicit operator Allocation(Allocation<T> allocation)
-            => allocation.Untyped();
+        public static implicit operator Sequence(Sequence<T> sequence)
+            => sequence.Untyped();
 
         /// <summary>
-        /// Converts an untyped allocation back to a typed allocation; the type must be correct
+        /// Converts an untyped sequence back to a typed sequence; the type must be correct
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static explicit operator Allocation<T>(Allocation allocation)
-            => allocation.Cast<T>();
+        public static explicit operator Sequence<T>(Sequence sequence)
+            => sequence.Cast<T>();
 
         /// <summary>
-        /// Tests two allocations for equality
+        /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override bool Equals(object obj) => obj is Allocation<T> other && Equals(in other);
+        public override bool Equals(object obj) => obj is Sequence<T> other && Equals(in other);
 
         /// <summary>
-        /// Tests two allocations for equality
+        /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        bool IEquatable<Allocation<T>>.Equals(Allocation<T> other) => Equals(in other);
+        bool IEquatable<Sequence<T>>.Equals(Sequence<T> other) => Equals(in other);
 
         /// <summary>
-        /// Tests two allocations for equality
+        /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool Equals(in Allocation<T> other)
-            => _length == 0 ? other.Length == 0 // all empty allocations are equal - in part because default is type-less
-                : (_length == other.Length & _offsetAndMultiSegmentFlag == other._offsetAndMultiSegmentFlag & _block == other._block);
+        public bool Equals(in Sequence<T> other)
+            => _length == 0 ? other.Length == 0 // all empty sequences are equal - in part because default is type-less
+                : (_length == other.Length & _offsetAndMultiSegmentFlag == other._offsetAndMultiSegmentFlag & _head == other._head);
 
         /// <summary>
         /// Used for equality operations
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override int GetHashCode()
-            => _length == 0 ? 0 : (_length * -_offsetAndMultiSegmentFlag) ^ _block.GetHashCode();
+            => _length == 0 ? 0 : (_length * -_offsetAndMultiSegmentFlag) ^ RuntimeHelpers.GetHashCode(_head);
 
         /// <summary>
-        /// Summaries an allocation as a string
+        /// Summaries a sequence as a string
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override string ToString() => $"{_length}×{typeof(T).Name}";
 
         /// <summary>
-        /// Tests two allocations for equality
+        /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool operator ==(Allocation<T> x, Allocation<T> y) => x.Equals(in y);
+        public static bool operator ==(Sequence<T> x, Sequence<T> y) => x.Equals(in y);
 
         /// <summary>
-        /// Tests two allocations for equality
+        /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool operator !=(Allocation<T> x, Allocation<T> y) => !x.Equals(in y);
+        public static bool operator !=(Sequence<T> x, Sequence<T> y) => !x.Equals(in y);
 
         /// <summary>
-        /// Converts a typed allocation to a typed read-only-sequence
+        /// Converts a typed sequence to a typed read-only-sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static implicit operator ReadOnlySequence<T>(Allocation<T> allocation)
-            => allocation.AsReadOnly();
+        public static implicit operator ReadOnlySequence<T>(Sequence<T> sequence)
+            => sequence.AsReadOnly();
 
         /// <summary>
-        /// Converts a typed allocation to a typed read-only-sequence
+        /// Converts a typed sequence to a typed read-only-sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static explicit operator Allocation<T> (ReadOnlySequence<T> sequence)
+        public static explicit operator Sequence<T> (ReadOnlySequence<T> readOnlySequence)
         {
-            if (TryGetAllocation(sequence, out var allocation)) return allocation;
-            ThrowInvalidCast();
+            if (TryGetSequence(readOnlySequence, out var sequence)) return sequence;
+            Throw.InvalidCast();
             return default; // to make compiler happy
-
-            void ThrowInvalidCast() => throw new InvalidCastException();
         }
 
         /// <summary>
-        /// Represents a typed allocation as an untyped allocation
+        /// Represents a typed sequence as an untyped sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Allocation Untyped() => new Allocation(_block ?? NilBlock<T>.Default, Offset, _length);
+        public Sequence Untyped() => new Sequence((object)_head ?? EmptySentinel, Offset, _length);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal Sequence<TTo> DirectCast<TTo>() => new Sequence<TTo>(Offset, _length, (SequenceSegment<TTo>)(object)_head);
+
+        // used to accurately identify a default instance (null _head) when
+        // using untyped sequences
+        internal static readonly object EmptySentinel = new object();
 
         /// <summary>
-        /// Converts a typed allocation to a typed read-only-sequence
+        /// Converts a typed sequence to a typed read-only-sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ReadOnlySequence<T> AsReadOnly()
-            => _block == null ? default
-            : IsSingleSegment ? new ReadOnlySequence<T>(_block, Offset, _block, Offset + _length) : MultiSegmentAsReadOnly();
+            => _head == null ? default
+            : IsSingleSegment ? new ReadOnlySequence<T>(_head, Offset, _head, Offset + _length) : MultiSegmentAsReadOnly();
 
         /// <summary>
-        /// Calculate the start position of the current allocation
+        /// Calculate the start position of the current sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public SequencePosition Start() => new SequencePosition(_block, Offset);
+        public SequencePosition Start() => new SequencePosition(_head, Offset);
 
         /// <summary>
-        /// Calculate the end position of the current allocation
+        /// Calculate the end position of the current sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public SequencePosition End() => GetPosition(_length);
 
         /// <summary>
-        /// Calculate a position inside the current allocation
+        /// Calculate a position inside the current sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public SequencePosition GetPosition(long offset)
         {
-            int blockOffset;
+            int segmentOffset;
             // if the position is well-defined inside the current page, we can do this cheaply
-            if ((offset >= 0 & offset < _length) && (blockOffset = (int)offset + Offset) < _block.Length)
-                return new SequencePosition(_block, blockOffset);
+            if ((offset >= 0 & offset <= _length) && (segmentOffset = (int)offset + Offset) < _head.Length)
+                return new SequencePosition(_head, segmentOffset);
             return SliceIntoLaterPage(checked((int)offset), 0).Start();
         }
 
         /// <summary>
-        /// Obtains a sub-region of an allocation
+        /// Obtains a sub-region of a sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Allocation<T> Slice(int start)
+        public Sequence<T> Slice(int start)
         {
-            // does the start fit into the first block?
+            // does the start fit into the first segment?
             int newStart;
-            if ((_length != 0 & start >= 0) && (newStart = Offset + start) < _block.Length)
-                return new Allocation<T>(_block, newStart, _length - start);
+            if ((_length != 0 & start >= 0 & start <= _length) && (newStart = Offset + start) < _head.Length)
+                return new Sequence<T>(newStart, _length - start, _head);
             return SliceIntoLaterPage(start, _length - start);
         }
 
         /// <summary>
-        /// Obtains a sub-region of an allocation
+        /// Obtains a sub-region of a sequence
         /// </summary>
-        public Allocation<T> Slice(int start, int length)
+        public Sequence<T> Slice(int start, int length)
         {
-            // does the start fit into the first block and still well-defined?
+            // does the start fit into the first segment and still well-defined?
             int newStart;
-            if ((_length != 0 & start >= 0 & length >= 0 & (start + length <= _length)) && (newStart = Offset + start) < _block.Length)
-                return new Allocation<T>(_block, newStart, length);
+            if ((_length != 0 & start >= 0 & length >= 0 & (start + length <= _length)) && (newStart = Offset + start) < _head.Length)
+                return new Sequence<T>(newStart, length, _head);
             return SliceIntoLaterPage(start, length);
         }
 
-        private Allocation<T> SliceIntoLaterPage(int start, int length)
+        /// <summary>
+        /// Obtains a reference into the segment
+        /// </summary>
+        public Reference<T> GetReference(int offset)
+        {
+            int finalOffset;
+            if ((_length != 0 & offset >= 0 & offset <= _length) && (finalOffset = Offset + offset) < _head.Length)
+                return new Reference<T>(_head, finalOffset);
+            return SliceIntoLaterPage(offset, 1).GetReference(0);
+        }
+
+        private Sequence<T> SliceIntoLaterPage(long start, int length)
         {
             if (start < 0 | start > _length) ThrowArgumentOutOfRange(nameof(start));
             if (length < 0 | start + length > _length) ThrowArgumentOutOfRange(nameof(length));
 
-            if (_block == null)
+            if (_head == null)
             {
                 if (length == 0) return this;
                 ThrowArgumentOutOfRange(nameof(length));
@@ -288,41 +290,43 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             // remove whatever is left from the current page
             // and move to the next
-            int fromThisPage = _block.Length - Offset;
+            int fromThisPage = _head.Length - Offset;
             start -= fromThisPage;
-            var block = _block.Next;
+            var segment = _head.Next;
+            Debug.Assert(segment != null, "expected a later page");
 
             // remove however-many entire pages we need
             // (note: we already asserted that it should fit!)
-            while (start > block.Length)
+            while (start > segment.Length)
             {
-                start -= block.Length;
-                block = block.Next;
+                start -= segment.Length;
+                segment = segment.Next;
+                Debug.Assert(start <= 0 || segment != null, "expected a later page");
             }
 
-            return new Allocation<T>(block, start, length);
+            return new Sequence<T>((int)start, length, segment);
 
-            void ThrowArgumentOutOfRange(string paramName) => throw new ArgumentOutOfRangeException(paramName);
+            void ThrowArgumentOutOfRange(string paramName) => Throw.ArgumentOutOfRange(paramName);
         }
 
         /// <summary>
-        /// Attempts to convert a typed read-only-sequence back to a typed allocation; the sequence must have originated from a valid typed allocation
+        /// Attempts to convert a typed read-only-sequence back to a typed sequence; the sequence must have originated from a valid typed sequence
         /// </summary>
-        public static bool TryGetAllocation(in ReadOnlySequence<T> sequence, out Allocation<T> allocation)
+        public static bool TryGetSequence(in ReadOnlySequence<T> readOnlySequence, out Sequence<T> sequence)
         {
-            SequencePosition start = sequence.Start;
-            if (start.GetObject() is Block<T> startBlock && sequence.End.GetObject() is Block<T>)
+            SequencePosition start = readOnlySequence.Start;
+            if (start.GetObject() is SequenceSegment<T> segment && readOnlySequence.End.GetObject() is SequenceSegment<T>)
             {
-                allocation = new Allocation<T>(startBlock, start.GetInteger(), checked((int)sequence.Length));
+                sequence = new Sequence<T>(start.GetInteger(), checked((int)readOnlySequence.Length), segment);
                 return true;
             }
-            allocation = default;
-            return sequence.IsEmpty; // empty sequences can be considered acceptable
+            sequence = default;
+            return readOnlySequence.IsEmpty; // empty sequences can be considered acceptable
         }
 
         private ReadOnlySequence<T> MultiSegmentAsReadOnly()
         {
-            var start = _block;
+            var start = _head;
             var startIndex = Offset;
 
             var current = start.Next;
@@ -336,12 +340,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Indicates the number of elements in the allocation
+        /// Indicates the number of elements in the sequence
         /// </summary>
-        public long Length => _length; // we currently only allow int, but technically we could support huge blocks
+        public long Length => _length; // we currently only allow int, but technically we could support huge regions
 
         /// <summary>
-        /// Indicates whether the allocation involves multiple segments, vs whether all the data fits into the first segment
+        /// Indicates whether the sequence involves multiple segments, vs whether all the data fits into the first segment
         /// </summary>
         public bool IsSingleSegment
         {
@@ -358,7 +362,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Indicates whether the allocation is empty (zero elements)
+        /// Indicates whether the sequence is empty (zero elements)
         /// </summary>
         public bool IsEmpty
         {
@@ -372,8 +376,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public Memory<T> FirstSegment
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => _block == null ? default :
-                IsSingleSegment ? _block.Memory.Slice(_offsetAndMultiSegmentFlag, _length) : _block.Memory.Slice(Offset);
+            get => _head == null ? default :
+                IsSingleSegment ? _head.Memory.Slice(_offsetAndMultiSegmentFlag, _length) : _head.Memory.Slice(Offset);
         }
         /// <summary>
         /// Obtains the first segment, in terms of a span
@@ -381,12 +385,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public Span<T> FirstSpan
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => _block == null ? default :
-                IsSingleSegment ? _block.Memory.Span.Slice(_offsetAndMultiSegmentFlag, _length) : _block.Memory.Span.Slice(Offset);
+            get => _head == null ? default :
+                IsSingleSegment ? _head.Memory.Span.Slice(_offsetAndMultiSegmentFlag, _length) : _head.Memory.Span.Slice(Offset);
         }
 
         /// <summary>
-        /// Copy the contents of the allocation into a contiguous region
+        /// Copy the contents of the sequence into a contiguous region
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void CopyTo(Span<T> destination)
@@ -402,7 +406,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// If possible, copy the contents of the allocation into a contiguous region
+        /// If possible, copy the contents of the sequence into a contiguous region
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool TryCopyTo(Span<T> destination)
@@ -420,102 +424,129 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return true;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal Allocation(Block<T> block, int offset, int length)
+        /// <summary>
+        /// Create a new sequence from a segment chain
+        /// </summary>
+        public Sequence(SequenceSegment<T> segment, int offset, int length)
         {
-            Debug.Assert(block != null, "block should never be null");
-            Debug.Assert(length >= 0, "block should not be negative");
+            // basica parameter check
+            if (segment == null) Throw.ArgumentNull(nameof(segment));
+            if (offset < 0) Throw.ArgumentOutOfRange(nameof(offset));
+            if (length < 0) Throw.ArgumentOutOfRange(nameof(length));
+
+            // check that length is valid for the complete chain
+            long unaffountedFor = length + offset;
+            var current = segment;
+            while (unaffountedFor > 0 & current != null)
+            {
+                unaffountedFor -= current.Length;
+                current = current.Next;
+            }
+            if (unaffountedFor > 0) Throw.ArgumentOutOfRange(nameof(length));
+
+            // assign
+            _head = segment;
+            _offsetAndMultiSegmentFlag = ((offset + length) > segment.Length) ? (offset | MSB) : offset;
+            _length = length;
+        }
+
+        // this is the TRUSTED ctor; full checks are not conducted
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal Sequence(int offset, int length, SequenceSegment<T> segment)
+        {
+            Debug.Assert(segment != null, "segment should never be null");
+            Debug.Assert(length >= 0, "length should not be negative");
             Debug.Assert(offset >= 0, "offset should not be negative");
 
-            _block = block;
-            _offsetAndMultiSegmentFlag = ((offset + length) > block.Length) ? (offset | MSB) : offset;
+            _head = segment;
+            _offsetAndMultiSegmentFlag = ((offset + length) > segment.Length) ? (offset | MSB) : offset;
             _length = length;
 
         }
 
         /// <summary>
-        /// Allows an allocation to be enumerated as spans
+        /// Allows a sequence to be enumerated as spans
         /// </summary>
         public SpanEnumerable Spans => new SpanEnumerable(this);
 
         /// <summary>
-        /// Allows an allocation to be enumerated as memory instances
+        /// Allows a sequence to be enumerated as memory instances
         /// </summary>
         public MemoryEnumerable Segments => new MemoryEnumerable(this);
 
         /// <summary>
-        /// Allows an allocation to be enumerated as spans
+        /// Allows a sequence to be enumerated as spans
         /// </summary>
         public readonly ref struct SpanEnumerable
         {
             private readonly int _offset, _length;
-            private readonly Block<T> _block;
-            internal SpanEnumerable(in Allocation<T> allocation)
+            private readonly SequenceSegment<T> _segment;
+            internal SpanEnumerable(in Sequence<T> sequence)
             {
-                _offset = allocation.Offset;
-                _length = allocation._length;
-                _block = allocation._block;
+                _offset = sequence.Offset;
+                _length = sequence._length;
+                _segment = sequence._head;
             }
 
             /// <summary>
-            /// Allows an allocation to be enumerated as spans
+            /// Allows a sequence to be enumerated as spans
             /// </summary>
-            public SpanEnumerator GetEnumerator() => new SpanEnumerator(_block, _offset, _length);
+            public SpanEnumerator GetEnumerator() => new SpanEnumerator(_segment, _offset, _length);
         }
 
         /// <summary>
-        /// Allows an allocation to be enumerated as memory instances
+        /// Allows a sequence to be enumerated as memory instances
         /// </summary>
         public readonly ref struct MemoryEnumerable
         {
             private readonly int _offset, _length;
-            private readonly Block<T> _block;
-            internal MemoryEnumerable(in Allocation<T> allocation)
+            private readonly SequenceSegment<T> _segment;
+            internal MemoryEnumerable(in Sequence<T> sequence)
             {
-                _offset = allocation.Offset;
-                _length = allocation._length;
-                _block = allocation._block;
+                _offset = sequence.Offset;
+                _length = sequence._length;
+                _segment = sequence._head;
             }
 
             /// <summary>
-            /// Allows an allocation to be enumerated as memory instances
+            /// Allows a sequence to be enumerated as memory instances
             /// </summary>
-            public MemoryEnumerator GetEnumerator() => new MemoryEnumerator(_block, _offset, _length);
+            public MemoryEnumerator GetEnumerator() => new MemoryEnumerator(_segment, _offset, _length);
         }
 
         /// <summary>
-        /// Allows an allocation to be enumerated as values
+        /// Allows a sequence to be enumerated as values
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Enumerator GetEnumerator() => new Enumerator(_block, Offset, _length);
+        public Enumerator GetEnumerator() => new Enumerator(_head, Offset, _length);
 
         /// <summary>
-        /// Allows an allocation to be enumerated as values
+        /// Allows a sequence to be enumerated as values
         /// </summary>
         public ref struct Enumerator
         {
-            private int _remainingThisSpan, _offsetThisSpan, _remainingOtherBlocks;
-            private Block<T> _nextBlock;
+            private int _remainingThisSpan, _offsetThisSpan, _remainingOtherSegments;
+            private SequenceSegment<T> _nextSegment;
             private Span<T> _span;
 
-            internal Enumerator(Block<T> block, int offset, int length)
+            internal Enumerator(SequenceSegment<T> segment, int offset, int length)
             {
-                var firstSpan = block.Memory.Span;
+                var firstSpan = segment.Memory.Span;
                 if (offset + length > firstSpan.Length)
                 {
-                    // multi-block
-                    _nextBlock = block.Next;
+                    // multi-segment
+                    _nextSegment = segment.Next;
                     _remainingThisSpan = firstSpan.Length - offset;
                     _span = firstSpan.Slice(offset, _remainingThisSpan);
-                    _remainingOtherBlocks = length - _remainingThisSpan;
+                    _remainingOtherSegments = length - _remainingThisSpan;
                 }
                 else
                 {
-                    // single-block
-                    _nextBlock = null;
+                    // single-segment
+                    _nextSegment = null;
                     _remainingThisSpan = length;
                     _span = firstSpan.Slice(offset);
-                    _remainingOtherBlocks = 0;
+                    _remainingOtherSegments = 0;
                 }
                 _offsetThisSpan = -1;
             }
@@ -526,14 +557,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool MoveNext()
             {
-                if (_remainingThisSpan == 0) return MoveNextBlock();
+                if (_remainingThisSpan == 0) return MoveNextSegment();
                 _offsetThisSpan++;
                 _remainingThisSpan--;
                 return true;
             }
-
-            private static void ThrowOutOfRange() => throw new IndexOutOfRangeException();
-
 
             /// <summary>
             /// Progresses the iterator, asserting that space is available, returning a reference to the next value
@@ -541,25 +569,25 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public ref T GetNext()
             {
-                if (!MoveNext()) ThrowOutOfRange();
+                if (!MoveNext()) Throw.EnumeratorOutOfRange();
                 return ref CurrentReference;
             }
 
-            private bool MoveNextBlock()
+            private bool MoveNextSegment()
             {
-                if (_remainingOtherBlocks == 0) return false;
+                if (_remainingOtherSegments == 0) return false;
 
-                var span = _nextBlock.Memory.Span;
-                _nextBlock = _nextBlock.Next;
+                var span = _nextSegment.Memory.Span;
+                _nextSegment = _nextSegment.Next;
 
-                if (_remainingOtherBlocks <= span.Length)
+                if (_remainingOtherSegments <= span.Length)
                 {   // we're at the end
-                    span = span.Slice(0, _remainingOtherBlocks);
-                    _remainingOtherBlocks = 0;
+                    span = span.Slice(0, _remainingOtherSegments);
+                    _remainingOtherSegments = 0;
                 }
                 else
                 {
-                    _remainingOtherBlocks -= span.Length;
+                    _remainingOtherSegments -= span.Length;
                 }
                 _span = span;
                 _remainingThisSpan = span.Length - 1; // because we're consuming one
@@ -617,34 +645,34 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Allows an allocation to be enumerated as spans
+        /// Allows a sequence to be enumerated as spans
         /// </summary>
         public ref struct SpanEnumerator
         {
             private int _offset, _remaining;
-            private Block<T> _nextBlock;
+            private SequenceSegment<T> _nextSegment;
             private Span<T> _current;
 
-            internal SpanEnumerator(Block<T> block, int offset, int length)
+            internal SpanEnumerator(SequenceSegment<T> segment, int offset, int length)
             {
-                _nextBlock = block;
+                _nextSegment = segment;
                 _offset = offset;
                 _remaining = length;
                 _current = default;
             }
 
             /// <summary>
-            /// Attempt to move the next block
+            /// Attempt to move the next segment
             /// </summary>
             public bool MoveNext()
             {
                 if (_remaining == 0) return false;
-                var span = _nextBlock.Memory.Span;
-                _nextBlock = _nextBlock.Next;
+                var span = _nextSegment.Memory.Span;
+                _nextSegment = _nextSegment.Next;
 
                 if (_remaining <= span.Length - _offset)
                 {
-                    // last block; need to trim end
+                    // last segment; need to trim end
                     span = span.Slice(_offset, _remaining);
                 }
                 else if (_offset != 0)
@@ -660,40 +688,49 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
 
             /// <summary>
-            /// Obtain the current block
+            /// Asserts that another span is available, and returns then next span
+            /// </summary>
+            public Span<T> GetNext()
+            {
+                if (!MoveNext()) Throw.EnumeratorOutOfRange();
+                return Current;
+            }
+
+            /// <summary>
+            /// Obtain the current segment
             /// </summary>
             public Span<T> Current => _current;
         }
 
         /// <summary>
-        /// Allows an allocation to be enumerated as memory instances
+        /// Allows a sequence to be enumerated as memory instances
         /// </summary>
         public struct MemoryEnumerator
         {
             private int _offset, _remaining;
-            private Block<T> _nextBlock;
+            private SequenceSegment<T> _nextSegment;
             private Memory<T> _current;
 
-            internal MemoryEnumerator(Block<T> block, int offset, int length)
+            internal MemoryEnumerator(SequenceSegment<T> segment, int offset, int length)
             {
-                _nextBlock = block;
+                _nextSegment = segment;
                 _offset = offset;
                 _remaining = length;
                 _current = default;
             }
 
             /// <summary>
-            /// Attempt to move the next block
+            /// Attempt to move the next segment
             /// </summary>
             public bool MoveNext()
             {
                 if (_remaining == 0) return false;
-                var memory = _nextBlock.Memory;
-                _nextBlock = _nextBlock.Next;
+                var memory = _nextSegment.Memory;
+                _nextSegment = _nextSegment.Next;
 
                 if (_remaining <= memory.Length - _offset)
                 {
-                    // last block; need to trim end
+                    // last segment; need to trim end
                     memory = memory.Slice(_offset, _remaining);
                 }
                 else if (_offset != 0)
@@ -709,9 +746,18 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
 
             /// <summary>
-            /// Obtain the current block
+            /// Obtain the current segment
             /// </summary>
             public Memory<T> Current => _current;
+
+            /// <summary>
+            /// Asserts that another span is available, and returns then next span
+            /// </summary>
+            public Memory<T> GetNext()
+            {
+                if (!MoveNext()) Throw.EnumeratorOutOfRange();
+                return Current;
+            }
         }
     }
 }

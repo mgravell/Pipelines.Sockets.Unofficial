@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
@@ -155,9 +156,8 @@ namespace Pipelines.Sockets.Unofficial
         }
         internal static void AssertDependencies()
         {
-            void Throw(string msg) => throw new InvalidOperationException(msg);
             string err = GetAssemblyFailureMessage();
-            if (!string.IsNullOrEmpty(err)) Throw(err);
+            if (!string.IsNullOrEmpty(err)) Throw.InvalidOperation(err);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -171,7 +171,7 @@ namespace Pipelines.Sockets.Unofficial
         internal static ArraySegment<byte> GetArray(this ReadOnlyMemory<byte> buffer)
 #pragma warning restore RCS1231 // Make parameter ref read-only.
         {
-            if (!MemoryMarshal.TryGetArray<byte>(buffer, out var segment)) throw new InvalidOperationException("MemoryMarshal.TryGetArray<byte> could not provide an array");
+            if (!MemoryMarshal.TryGetArray<byte>(buffer, out var segment)) Throw.InvalidOperation("MemoryMarshal.TryGetArray<byte> could not provide an array");
             return segment;
         }
 

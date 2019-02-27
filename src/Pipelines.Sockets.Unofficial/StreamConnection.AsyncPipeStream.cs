@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.IO;
@@ -38,7 +39,7 @@ namespace Pipelines.Sockets.Unofficial
             internal AsyncPipeStream(PipeReader reader, PipeWriter writer, string name)
             {
                 if (reader == null && writer == null)
-                    throw new ArgumentNullException("At least one of reader/writer must be provided");
+                    Throw.ArgumentNull("At least one of reader/writer must be provided");
                 _reader = reader;
                 _writer = writer;
 
@@ -64,26 +65,26 @@ namespace Pipelines.Sockets.Unofficial
             /// <summary>
             /// Change the position of the stream
             /// </summary>
-            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+            public override long Seek(long offset, SeekOrigin origin) { Throw.NotSupported(); return default; }
             /// <summary>
             /// Query the length of the stream
             /// </summary>
-            public override long Length => throw new NotSupportedException();
+            public override long Length { get { Throw.NotSupported(); return default; } }
             /// <summary>
             /// Get or set the position of the stream
             /// </summary>
             public override long Position
             {
-                get => throw new NotSupportedException();
-                set => throw new NotSupportedException();
+                get { Throw.NotSupported(); return default; }
+                set => Throw.NotSupported();
             }
             /// <summary>
             /// Specify the length of the stream
             /// </summary>
-            public override void SetLength(long value) => throw new NotSupportedException();
+            public override void SetLength(long value) => Throw.NotSupported();
 
-            private void AssertCanRead() { if (_reader == null) throw new InvalidOperationException("Cannot read"); }
-            private void AssertCanWrite() { if (_writer == null) throw new InvalidOperationException("Cannot write"); }
+            private void AssertCanRead() { if (_reader == null) Throw.InvalidOperation("Cannot read"); }
+            private void AssertCanWrite() { if (_writer == null) Throw.InvalidOperation("Cannot write"); }
 
             [Conditional("VERBOSE")]
             private void DebugLog(string message = null, [CallerMemberName] string caller = null) => Helpers.DebugLog(Name, message, caller);
@@ -551,7 +552,7 @@ namespace Pipelines.Sockets.Unofficial
                 internal void AssertAvailable()
                 {
                     if (AsyncMode != PendingAsyncMode.None)
-                        throw new InvalidOperationException($"A {AsyncMode} operation is already in progress");
+                        Throw.InvalidOperation($"A {AsyncMode} operation is already in progress");
                 }
                 internal void ExecuteCallback()
                 {
@@ -570,7 +571,7 @@ namespace Pipelines.Sockets.Unofficial
                 {
                     if (AsyncMode == PendingAsyncMode.None)
                     {
-                        throw new InvalidOperationException("No read in progress");
+                        Throw.InvalidOperation("No read in progress");
                     }
                     AsyncMode = PendingAsyncMode.None;
                     _waitHandle?.Reset();

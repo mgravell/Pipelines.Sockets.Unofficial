@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.IO;
@@ -26,8 +27,9 @@ namespace Pipelines.Sockets.Unofficial
             {
                 if (sendPipeOptions == null) sendPipeOptions = PipeOptions.Default;
                 if (receivePipeOptions == null) receivePipeOptions = PipeOptions.Default;
-                _inner = stream ?? throw new ArgumentNullException(nameof(stream));
-                if (!(read || write)) throw new ArgumentException("At least one of read/write must be set");
+                if (stream == null) Throw.ArgumentNull(nameof(stream));
+                _inner = stream;
+                if (!(read || write)) Throw.Argument("At least one of read/write must be set");
                 if (read && write)
                 {
                     string preamble = "";
@@ -39,7 +41,8 @@ namespace Pipelines.Sockets.Unofficial
                         case FileStream fs:
                             // others here?
                             ThrowNonDuplexStream:
-                            throw new ArgumentException(preamble + $"`{stream.GetType().Name}` is not a duplex stream and cannot be used in this context (you can still create a reader/writer).", nameof(stream));
+                            Throw.Argument(preamble + $"`{stream.GetType().Name}` is not a duplex stream and cannot be used in this context (you can still create a reader/writer).", nameof(stream));
+                            return;
                     }
                 }
 
@@ -47,20 +50,36 @@ namespace Pipelines.Sockets.Unofficial
                 Name = name ?? GetType().Name;
                 if (read)
                 {
-                    if (!stream.CanRead) throw new InvalidOperationException("Cannot create a read pipe over a non-readable stream");
+                    if (!stream.CanRead) Throw.InvalidOperation("Cannot create a read pipe over a non-readable stream");
                     _readPipe = new Pipe(receivePipeOptions);
                     receivePipeOptions.ReaderScheduler.Schedule(obj => ((AsyncStreamPipe)obj).CopyFromStreamToReadPipe().PipelinesFireAndForget(), this);
                 }
                 if (write)
                 {
-                    if (!stream.CanWrite) throw new InvalidOperationException("Cannot create a write pipe over a non-writable stream");
+                    if (!stream.CanWrite) Throw.InvalidOperation("Cannot create a write pipe over a non-writable stream");
                     _writePipe = new Pipe(sendPipeOptions);
                     sendPipeOptions.WriterScheduler.Schedule(obj => ((AsyncStreamPipe)obj).CopyFromWritePipeToStream().PipelinesFireAndForget(), this);
                 }
             }
 
-            public PipeWriter Output => _writePipe?.Writer ?? throw new InvalidOperationException("Cannot write to this pipe");
-            public PipeReader Input => _readPipe?.Reader ?? throw new InvalidOperationException("Cannot read from this pipe");
+            public PipeWriter Output
+            {
+                get
+                {
+                    var result = _writePipe?.Writer;
+                    if (result == null) Throw.InvalidOperation("Cannot write to this pipe");
+                    return result;
+                }
+            }
+            public PipeReader Input
+            {
+                get
+                {
+                    var result = _readPipe?.Reader;
+                    if (result == null) Throw.InvalidOperation("Cannot read from this pipe");
+                    return result;
+                }
+            }
 
             private async Task CopyFromStreamToReadPipe()
             {

@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.IO;
@@ -59,9 +60,10 @@ namespace Pipelines.Sockets.Unofficial
         }
         private MemoryMappedPipeReader(MemoryMappedFile file, long length, int pageSize = DEFAULT_PAGE_SIZE, string name = null)
         {
-            _file = file ?? throw new ArgumentNullException(nameof(file));
-            if (pageSize <= 0) throw new ArgumentOutOfRangeException(nameof(pageSize));
-            if (length < 0) throw new ArgumentOutOfRangeException(nameof(length));
+            if (file == null) Throw.ArgumentNull(nameof(file));
+            _file = file;
+            if (pageSize <= 0) Throw.ArgumentOutOfRange(nameof(pageSize));
+            if (length < 0) Throw.ArgumentOutOfRange(nameof(length));
 
             if (string.IsNullOrWhiteSpace(name)) name = GetType().Name;
             Name = name;
@@ -77,9 +79,9 @@ namespace Pipelines.Sockets.Unofficial
         {
             if (IsAvailable)
             {
-                if (pageSize <= 0) throw new ArgumentOutOfRangeException(nameof(pageSize));
+                if (pageSize <= 0) Throw.ArgumentOutOfRange(nameof(pageSize));
                 var file = new FileInfo(path);
-                if (!file.Exists) throw new FileNotFoundException("File not found", path);
+                if (!file.Exists) Throw.FileNotFound("File not found", path);
 
                 var mmap = MemoryMappedFile.CreateFromFile(path, FileMode.Open, null, file.Length, MemoryMappedFileAccess.Read);
                 return new MemoryMappedPipeReader(mmap, file.Length, pageSize, path);
@@ -137,7 +139,7 @@ namespace Pipelines.Sockets.Unofficial
             if (cPage == null || ePage == null)
             {
                 if (_first == null) return; // that's fine - means they called Advance on an empty EOF
-                throw new ArgumentException("Invalid position; consumed/examined must remain inside the buffer");
+                Throw.Argument("Invalid position; consumed/examined must remain inside the buffer");
             }
 
             Debug.Assert(ePage != null, "No examined page");
@@ -268,10 +270,12 @@ namespace Pipelines.Sockets.Unofficial
             public int Consumed { get; set; }
             public unsafe MappedPage(MemoryMappedViewAccessor accessor, long offset, int capacity)
             {
-                _accessor = accessor ?? throw new ArgumentNullException(nameof(accessor));
-                _buffer = s_safeBufferField.GetValue(_accessor) as SafeBuffer ?? throw new InvalidOperationException();
+                if (accessor == null) Throw.ArgumentNull(nameof(accessor));
+                _accessor = accessor;
+                _buffer = s_safeBufferField.GetValue(_accessor) as SafeBuffer;
+                if (_buffer == null) Throw.InvalidOperation();
                 // note that the *actual* capacity isn't necessarily the same - system page size (rounding up), etc
-                if (capacity < 0 || capacity > accessor.Capacity) throw new ArgumentOutOfRangeException(nameof(capacity));
+                if (capacity < 0 || capacity > accessor.Capacity) Throw.ArgumentOutOfRange(nameof(capacity));
                 RunningIndex = offset;
                 byte* ptr = null;
                 _buffer.AcquirePointer(ref ptr);

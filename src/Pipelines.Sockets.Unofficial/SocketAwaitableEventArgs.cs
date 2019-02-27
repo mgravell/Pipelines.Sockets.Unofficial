@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Net.Sockets;
@@ -23,7 +24,7 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public void Abort(SocketError error = SocketError.OperationAborted)
         {
-            if (error == SocketError.Success) throw new ArgumentException(nameof(error));
+            if (error == SocketError.Success) Throw.Argument(nameof(error));
             _forcedError = error;
             OnCompleted(this);
         }
@@ -82,7 +83,7 @@ namespace Pipelines.Sockets.Unofficial
 
             void ThrowSocketException(SocketError e)
             {
-                throw new SocketException((int)e);
+                Throw.Socket((int)e);
             }
         }
 

@@ -65,7 +65,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public override IMemoryOwner<T> Allocate(int length)
             => new OwnedArray(_pool, _pool.Rent(length));
 
-        sealed class OwnedArray : IMemoryOwner<T>
+        private sealed class OwnedArray : IMemoryOwner<T>
         {
             private T[] _array;
             private readonly ArrayPool<T> _pool;
@@ -82,6 +82,63 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 var arr = _array;
                 _array = null;
                 if (arr != null) _pool.Return(arr);
+            }
+        }
+    }
+
+    internal sealed class PinnedArrayPoolAllocator<T> : Allocator<T> where T : unmanaged
+    {
+        private readonly ArrayPool<T> _pool;
+
+        /// <summary>
+        /// An array-pool allocator that uses the shared array-pool
+        /// </summary>
+        public static PinnedArrayPoolAllocator<T> Shared { get; } = new PinnedArrayPoolAllocator<T>();
+
+        public PinnedArrayPoolAllocator(ArrayPool<T> pool = null) => _pool = pool ?? ArrayPool<T>.Shared;
+
+        public override IMemoryOwner<T> Allocate(int length)
+            => new PinnedArray(_pool, _pool.Rent(length));
+
+        private unsafe sealed class PinnedArray : IPinnedMemoryOwner<T>
+        {
+            private T[] _array;
+            private readonly ArrayPool<T> _pool;
+            private GCHandle _pin;
+            private T* _ptr;
+            public PinnedArray(ArrayPool<T> pool, T[] array)
+            {
+                _pool = pool;
+                _array = array;
+                _pin = GCHandle.Alloc(array, GCHandleType.Pinned);
+                _ptr = (T*)_pin.AddrOfPinnedObject().ToPointer();
+            }
+
+            public Memory<T> Memory => _array;
+
+            T* IPinnedMemoryOwner<T>.Root => _ptr;
+
+            private void Dispose(bool disposing)
+            {
+                if (disposing)
+                {
+                    var arr = _array;
+                    _array = null;
+                    if (arr != null) _pool.Return(arr);
+                }
+                if (_ptr != null)
+                {
+                    _ptr = null;
+                    try { _pin.Free(); } catch { } // best efforst
+                    _pin = default;
+                }
+            }
+            ~PinnedArray() => Dispose(false);
+
+            public void Dispose()
+            {
+                Dispose(true);
+                GC.SuppressFinalize(this);
             }
         }
     }
@@ -103,12 +160,14 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public override IMemoryOwner<T> Allocate(int length) => new OwnedPointer(length);
 
-        sealed class OwnedPointer : MemoryManager<T>
+        private sealed class OwnedPointer : MemoryManager<T>, IPinnedMemoryOwner<T>
         {
             ~OwnedPointer() => Dispose(false);
 
             private T* _ptr;
             private readonly int _length;
+
+            public T* Root => _ptr;
 
             public OwnedPointer(int length)
                 => _ptr = (T*)Marshal.AllocHGlobal((_length = length) * sizeof(T)).ToPointer();

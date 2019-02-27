@@ -1,197 +1,460 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
+using System.Buffers;
+using System.Collections;
+using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
+
     /// <summary>
-    /// Flags that impact behaviour of the arena
+    /// Options that configure the behahaviour of an arena
     /// </summary>
-    [Flags]
-    public enum ArenaOptions
+    public sealed class ArenaOptions
     {
         /// <summary>
-        /// None
+        /// The default arena configuration
         /// </summary>
-        None,
+        public static ArenaOptions Default { get; } = new ArenaOptions();
+
         /// <summary>
-        /// Allocations are cleared at each reset (and when initially allocated), so that they are always wiped before use
+        /// The flags that are enabled for the arena
         /// </summary>
-        ClearAtReset,
+        public ArenaFlags Flags { get; }
+
         /// <summary>
-        /// Allocations are cleared when the arean is disposed, so that the contents are not released back to the underlying allocator
+        /// Tests an individual flag
         /// </summary>
-        ClearAtDispose,
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal bool HasFlag(ArenaFlags flag) => (Flags & flag) != 0;
+
+        /// <summary>
+        /// The block-size to suggest for new allocations in the arena
+        /// </summary>
+        public int BlockSize { get; }
+        /// <summary>
+        /// The policy for retaining allocations when memory requirements decrease
+        /// </summary>
+        public Func<long, long, long> RetentionPolicy { get; }
+
+        /// <summary>
+        /// Create a new ArenaOptions instance
+        /// </summary>
+        public ArenaOptions(ArenaFlags flags = ArenaFlags.None, int blockSize = 0, Func<long, long, long> retentionPolicy = null)
+        {
+            Flags = flags;
+            BlockSize = blockSize;
+            RetentionPolicy = retentionPolicy;
+        }
     }
 
     /// <summary>
-    /// Represents a lifetime-bound allocator of multiple non-contiguous memory regions
+    /// Provides facilities to create new type-specific arenas inside a multi-type arena
     /// </summary>
-    public sealed class Arena<T> : IDisposable
+    public class ArenaFactory
     {
         /// <summary>
-        /// The number of elements allocated since the last reset
+        /// The default arena factory
         /// </summary>
-        public long Allocated => _allocatedTotal;
+        public static ArenaFactory Default { get; } = new ArenaFactory();
 
         /// <summary>
-        /// The current capacity of all regions tracked by the arena
+        /// Create a type-specific arena with the options suggested
         /// </summary>
-        public long Capacity => _capacityTotal;
-
-        private long _allocatedTotal, _capacityTotal;
-        private readonly ArenaOptions _options;
-        private readonly int _blockSize;
-        private int _allocatedCurrentBlock;
-        private Block<T> _first, _current;
-        private readonly Allocator<T> _allocator;
-        private readonly Func<long, long, long> _retentionPolicy;
-        private long _lastRetention;
-
-        /// <summary>
-        /// Create a new Arena
-        /// </summary>
-        public Arena(Allocator<T> allocator = null, ArenaOptions options = default, int blockSize = 0, Func<long,long, long> retentionPolicy = null)
+        public virtual Arena<T> CreateArena<T>(ArenaOptions options)
         {
-            _allocator = allocator ?? ArrayPoolAllocator<T>.Shared;
-            _blockSize = blockSize <= 0 ? _allocator.DefaultBlockSize : blockSize;
-            _options = options;
-            _first = _current = AllocateDetachedBlock();
-            _retentionPolicy = retentionPolicy ?? RetentionPolicy.Default;
-        }
-
-        private Block<T> AllocateDetachedBlock()
-        {
-            void ThrowAllocationFailure() => throw new InvalidOperationException("The allocator provided an empty range");
-            var allocation = _allocator.Allocate(_blockSize);
-            if (allocation == null) ThrowAllocationFailure();
-            if (allocation.Memory.IsEmpty)
-            {
-                try { allocation.Dispose(); } catch { } // best efforts
-                ThrowAllocationFailure();
+            Allocator<T> allocator = null; // use the implicit default
+            if(typeof(T) == typeof(byte))
+            {   // unless we're talking about bytes, in which case
+                // using a pinned alloctor gives us more direct access
+                // in the cast steps
+                allocator = (Allocator<T>)(object)PinnedArrayPoolAllocator<byte>.Shared;
             }
-            if (ClearAtReset) // this really means "before use", so...
-                _allocator.Clear(allocation, allocation.Memory.Length);
-            var block = new Block<T>(allocation, _capacityTotal);
-            _capacityTotal += block.Length;
-            return block;
+            return new Arena<T>(options, allocator); // use the default allocator, and the options provided
+        }
+            
+    }
+
+    /// <summary>
+    /// An arena allocator that can allocate sequences for multiple data types
+    /// </summary>
+    public sealed class Arena : IDisposable
+    {
+        private readonly ArenaOptions _options;
+        private ArenaFactory _factory;
+
+        /// <summary>
+        /// Create a new Arena instance
+        /// </summary>
+        public Arena(ArenaOptions options = null, ArenaFactory factory = null)
+        {
+            _options = options ?? ArenaOptions.Default;
+            _factory = factory ?? ArenaFactory.Default;
         }
 
         /// <summary>
-        /// Allocate a (possibly non-contiguous) region of memory from the arena
+        /// Release all resources associated with this arena
+        /// </summary>
+        public void Dispose()
+        {
+            _factory = null; // prevent any resurrections
+            try { _bytesArena?.Dispose(); } catch { } // best efforts
+            _bytesArena = null;
+            var typed = _typedArenas;
+            _typedArenas = null;
+            if (typed != null)
+            {
+                foreach (var pair in typed)
+                {
+                    try { pair.Value.Dispose(); } catch { } // best efforts
+                }
+                typed.Clear();
+            }
+            _mappedSegments.Clear();
+        }
+
+        /// <summary>
+        /// Reset the memory allocated by this arena
+        /// </summary>
+        public void Reset()
+        {
+            _bytesArena?.Reset();
+            var typed = _typedArenas;
+            if (typed != null)
+            {
+                foreach (var pair in _typedArenas)
+                {
+                    pair.Value.Reset();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Allocate a single instance as a reference
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Allocation<T> Allocate(int length)
+        public Reference<T> Allocate<T>() => Allocate<T>(1).GetReference(0);
+
+        /// <summary>
+        /// Allocate a block of data
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)] // aggressive mostly in the JIT-optimized cases!
+        public Sequence<T> Allocate<T>(int length)
         {
-            // note: even for zero-length blocks, we'd rather have them start
-            // at the start of the next block, for consistency
-            if(length > 0 & _allocatedCurrentBlock + length <= _current.Length)
+            // recall that the JIT will remove the unwanted versions of these
+            if (typeof(T) == typeof(byte)) return AllocateUnmanaged<byte>(length).DirectCast<T>();
+            else if (typeof(T) == typeof(sbyte)) return AllocateUnmanaged<sbyte>(length).DirectCast<T>();
+            else if (typeof(T) == typeof(int)) return AllocateUnmanaged<int>(length).DirectCast<T>();
+            else if (typeof(T) == typeof(short)) return AllocateUnmanaged<short>(length).DirectCast<T>();
+            else if (typeof(T) == typeof(ushort)) return AllocateUnmanaged<ushort>(length).DirectCast<T>();
+            else if (typeof(T) == typeof(long)) return AllocateUnmanaged<long>(length).DirectCast<T>();
+            else if (typeof(T) == typeof(uint)) return AllocateUnmanaged<uint>(length).DirectCast<T>();
+            else if (typeof(T) == typeof(ulong)) return AllocateUnmanaged<ulong>(length).DirectCast<T>();
+            else
             {
-                var offset = _allocatedCurrentBlock;
-                _allocatedCurrentBlock += length;
-                _allocatedTotal += length;
-                return new Allocation<T>(_current, offset, length);
+                Func<Arena, int, Sequence<T>> helper;
+                if (
+#if SOCKET_STREAM_BUFFERS // when this is available, we can check it here and the JIT will make magic happen
+                !RuntimeHelpers.IsReferenceOrContainsReferences<T>() &&
+#endif
+                (helper = PerTypeHelpers<T>.Allocate) != null)
+                {
+                    return helper(this, length);
+                }
+
+                return GetArena<T>().Allocate(length);
             }
-            return SlowAllocate(length);
         }
 
-        // this is when there wasn't enough space in the current block
-        private Allocation<T> SlowAllocate(int length)
+        private Dictionary<Type, IArena> _typedArenas = new Dictionary<Type, IArena>();
+        private Arena<byte> _bytesArena;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private Arena<byte> GetBytesArena() => _bytesArena ?? (_bytesArena = CreateNewArena<byte>());
+
+        private Arena<T> CreateNewArena<T>()
         {
-            void ThrowInvalidLength() => throw new ArgumentOutOfRangeException(nameof(length));
-            if (length < 0) ThrowInvalidLength();
-            void MoveNextBlock()
+            var factory = _factory;
+            if (factory == null) Throw.ObjectDisposed(ToString());
+            return factory.CreateArena<T>(_options);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private Arena<T> GetArena<T>()
+        {
+            if (typeof(T) == typeof(byte))
             {
-                _current = _current.Next ?? (_current.Next = AllocateDetachedBlock());
-                _allocatedCurrentBlock = 0;
+                return (Arena<T>)(object)GetBytesArena();
+            }
+            else
+            {
+                if (!_typedArenas.TryGetValue(typeof(T), out var arena))
+                {
+                    arena = CreateNewArena<T>();
+                    _typedArenas.Add(typeof(T), arena);
+                }
+                return (Arena<T>)arena;
+            }
+        }
+
+        /// <summary>
+        /// Allocate a single instance as a reference
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never), Browsable(false)]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Reference<T> AllocateUnmanaged<T>() where T : unmanaged => AllocateUnmanaged<T>(1).GetReference(0);
+
+        /// <summary>
+        /// Allocate a block of data
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never), Browsable(false)]
+        public Sequence<T> AllocateUnmanaged<T>(int length) where T : unmanaged
+        {
+            var arena = GetBytesArena();
+
+            // we need to think about padding/alignment; to allow proper
+            // interleaving, we'll always need to talk in alignments of <T>,
+            // so that a page of bytes can always be rooted from the same
+            // origin (so we only need to map the page once per T)
+            var overlap = arena.AllocatedCurrentBlock % Unsafe.SizeOf<T>();
+            if (overlap != 0)
+            {
+                var padding = Unsafe.SizeOf<T>() - overlap;
+
+                // burn the padding, or to the end of the page - whichever comes first
+                if (padding >= arena.RemainingCurrentBlock) arena.SkipToNextPage();
+                else arena.Allocate(padding); // and drop it on the floor
             }
 
-            // check to see if the first block is full (so we don't have an
-            // allocation that starts at the EOF of a block; it would work, but
-            // would be less efficient)
-            if (_current.Length <= _allocatedCurrentBlock) MoveNextBlock();
+            // do we at least have space for *one* item? this is because we
+            // want our root record to be on the correct starting page
+            if (arena.RemainingCurrentBlock < Unsafe.SizeOf<T>()) arena.SkipToNextPage();
 
-            var result = new Allocation<T>(_current, _allocatedCurrentBlock, length);
-            _allocatedTotal += length; // we're going to allocate everything
+            // create our result, since we know the details
+            Debug.Assert(arena.AllocatedCurrentBlock % Unsafe.SizeOf<T>() == 0, "should be aligned to T");
+            var mappedBlock = MapBlockFromRoot<T>(arena, arena.CurrentBlock);
+            var result = new Sequence<T>(arena.AllocatedCurrentBlock / Unsafe.SizeOf<T>(), length, mappedBlock);
 
-            // now make sure we actually have blocks to cover that promise
-            while (true)
+            // now we need to allocate and map the rest of the pages, taking care to
+            // allow for padding at the end of pages
+
+            while (length != 0)
             {
-                var remainingThisBlock = _current.Length - _allocatedCurrentBlock;
-                if (remainingThisBlock >= length)
+                int elementsThisPage = arena.RemainingCurrentBlock / Unsafe.SizeOf<T>();
+                if (elementsThisPage == 0) Throw.InvalidOperation($"Unable to fit {typeof(T).Name} on the block");
+
+                if (length == elementsThisPage)
                 {
-                    _allocatedCurrentBlock += length;
-                    break; // that's all we need, thanks
+                    // burn the rest of the page, to ensure End/Start handling; then we're done
+                    arena.SkipToNextPage();
+                    length = 0;
+                    break;
+                }
+                else if (length < elementsThisPage)
+                {
+                    // take what we need, and we're done
+                    arena.Allocate(length * Unsafe.SizeOf<T>());
+                    length = 0;
+                    break;
                 }
                 else
                 {
-                    length -= remainingThisBlock; // consume all of this block
-                    MoveNextBlock(); // and we're going to need another
+                    // not enough room on the current page; burn *all* of the
+                    // current page, and map in the next
+                    length -= elementsThisPage;
+                    arena.SkipToNextPage();
+                    // get the new mapped block, using the current block for chaining if needed
+                    mappedBlock = MapBlock<T>(mappedBlock, arena.CurrentBlock);
                 }
             }
+
+            Debug.Assert(length == 0);
 
             return result;
         }
 
-        bool ClearAtReset
+        sealed class MappedSegment<T> : SequenceSegment<T> where T : unmanaged
         {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => (_options & ArenaOptions.ClearAtReset) != 0;
-        }
+#if DEBUG
+            private readonly long _byteOffset;
+            private readonly int _byteCount;
+            protected override long ByteOffset => _byteOffset;
+#endif
 
-        /// <summary>
-        /// Resets the arena; all current allocations should be considered invalid - new allocations may overwrite them
-        /// </summary>
-        public void Reset()
-        {
-            long allocated = _allocatedTotal;
-            Reset(ClearAtReset);
-
-            var retain = _retentionPolicy(_lastRetention, allocated);
-            Trim(retain);
-            _lastRetention = retain;
-        }
-
-        private void Trim(long retain) { } // not yet implemented
-
-        private void Reset(bool clear)
-        {
-            if (clear)
+            public unsafe MappedSegment(MappedSegment<T> previous, Block<byte> original)
             {
-                var block = _first;
-                while (block != null)
+                MemoryManager<T> mapped;
+                if (original.Allocation is IPinnedMemoryOwner<byte> rooted && rooted.Root != null)
+                {   // in this case, we can just cheat like crazy
+                    mapped = new PinnedConvertingMemoryManager(rooted);
+                }
+                else
+                {   // need to do everything properly; slower, but it'll work
+                    mapped = new ConvertingMemoryManager(original.Allocation);
+                }
+                Memory = mapped.Memory;
+
+#if DEBUG
+                _byteCount = original.Length;
+#endif
+                if (previous != null)
                 {
-                    if (block == _current)
-                    {
-                        _allocator.Clear(block.Allocation, _allocatedCurrentBlock);
-                        block = null;
-                    }
-                    else
-                    {
-                        _allocator.Clear(block.Allocation, block.Length);
-                        block = block.Next;
-                    }
+                    RunningIndex = previous.RunningIndex + previous.Length;
+#if DEBUG
+                    _byteOffset = previous.ByteOffset + previous._byteCount;
+#endif
+                    previous.Next = this;
                 }
             }
-            _current = _first;
-            _allocatedCurrentBlock = 0;
-            _allocatedTotal = 0;
+
+            sealed unsafe class PinnedConvertingMemoryManager : MemoryManager<T>, IPinnedMemoryOwner<T>
+            {
+                private readonly T* _root;
+                private readonly int _length;
+                public PinnedConvertingMemoryManager(IPinnedMemoryOwner<byte> rooted)
+                {
+                    _root = (T*)rooted.Root;
+                    _length = MemoryMarshal.Cast<byte, T>(rooted.Memory.Span).Length;
+                }
+
+                public T* Root => _root;
+
+                public override Span<T> GetSpan() => new Span<T>(_root, _length);
+
+                public override MemoryHandle Pin(int elementIndex = 0) => new MemoryHandle(_root + elementIndex);
+
+                public override void Unpin() { }
+
+                protected override void Dispose(bool disposing) { } // not our memory
+            }
+            sealed class ConvertingMemoryManager : MemoryManager<T>
+            {
+                private readonly IMemoryOwner<byte> _unrooted;
+                public ConvertingMemoryManager(IMemoryOwner<byte> unrooted) => _unrooted = unrooted;
+
+                public override Span<T> GetSpan() => MemoryMarshal.Cast<byte, T>(_unrooted.Memory.Span);
+
+                public override MemoryHandle Pin(int elementIndex = 0) { Throw.NotSupported(); return default; }
+
+                public override void Unpin() => Throw.NotSupported();
+
+                protected override void Dispose(bool disposing) { } // not our memory
+            }
         }
 
-        /// <summary>
-        /// Releases all resources associated with the arena
-        /// </summary>
-        public void Dispose()
-        {
-            if ((_options & ArenaOptions.ClearAtDispose) != 0)
-                try { Reset(true); } catch { } // best effort only
+        readonly Dictionary<TypedBlockKey, ISegment> _mappedSegments = new Dictionary<TypedBlockKey, ISegment>();
 
-            var current = _first;
-            _first = _current = null;
+        private MappedSegment<T> MapBlockFromRoot<T>(Arena<byte> arena, Block<byte> original) where T : unmanaged
+        {
+            var key = new TypedBlockKey(typeof(T), original);
+            return _mappedSegments.TryGetValue(key, out var segment)
+                ? (MappedSegment<T>)segment : MapBlockFromRootImpl<T>(arena, original);
+        }
+
+        private MappedSegment<T> MapBlockFromRootImpl<T>(Arena<byte> arena, Block<byte> original) where T : unmanaged
+        {
+            var current = arena.FirstBlock;
+            MappedSegment<T> previous = null;
+
             while (current != null)
             {
-                current.Dispose();
+                var mapped = MapBlock<T>(previous, current);
+                if (ReferenceEquals(current, original)) return mapped;
+
+                previous = mapped;
                 current = current.Next;
+            }
+            Throw.InvalidOperation("The requested block was not found in the map-chain");
+            return default;
+        }
+
+        private MappedSegment<T> MapBlock<T>(MappedSegment<T> previous, Block<byte> original) where T : unmanaged
+        {
+            var key = new TypedBlockKey(typeof(T), original);
+            if (!_mappedSegments.TryGetValue(key, out var segment))
+            {
+                segment = new MappedSegment<T>(previous, original);
+                _mappedSegments.Add(key, segment);
+            }
+
+            return (MappedSegment<T>)segment;
+        }
+
+        readonly struct TypedBlockKey : IEquatable<TypedBlockKey>
+        {
+            public Type Type { get; }
+            public SequenceSegment<byte> Original { get; }
+
+            public override bool Equals(object obj) => obj is TypedBlockKey other && Equals(other);
+            public bool Equals(TypedBlockKey other) => ReferenceEquals(Type, other.Type) & ReferenceEquals(Original, other.Original);
+            public override string ToString() => $"{Type} - {Original}";
+            public override int GetHashCode() => RuntimeHelpers.GetHashCode(Type) ^ RuntimeHelpers.GetHashCode(Original);
+            public TypedBlockKey(Type type, SequenceSegment<byte> original)
+            {
+                Type = type;
+                Original = original;
+            }
+        }
+
+        private static readonly MethodInfo s_AllocateUnmanaged =
+            typeof(Arena).GetMethods(BindingFlags.Public | BindingFlags.Instance)
+            .Single(x => x.Name == nameof(Arena.AllocateUnmanaged)
+            && x.IsGenericMethodDefinition
+            && x.GetParameters().Length == 1);
+
+        private static class PerTypeHelpers<T>
+        {
+            public static readonly Func<Arena, int, Sequence<T>> Allocate
+                = IsReferenceOrContainsReferences() ? null : TryCreateHelper();
+
+            private static Func<Arena, int, Sequence<T>> TryCreateHelper()
+            {
+                try
+                {
+                    var arena = Expression.Parameter(typeof(Arena), "arena");
+                    var length = Expression.Parameter(typeof(int), "length");
+                    Expression body = Expression.Call(
+                        instance: arena,
+                        method: s_AllocateUnmanaged.MakeGenericMethod(typeof(T)),
+                        arguments: new[] { length });                    
+                    return Expression.Lambda<Func<Arena, int, Sequence<T>>>(
+                        body, arena, length).Compile();
+                }
+                catch (Exception ex)
+                {   
+                    Debug.Fail(ex.Message);
+                    return null; // swallow in prod
+                }
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static bool IsReferenceOrContainsReferences()
+            {
+#if SOCKET_STREAM_BUFFERS
+                return RuntimeHelpers.IsReferenceOrContainsReferences<T>();
+#else
+                if (typeof(T).IsValueType)
+                {
+                    try
+                    {
+                        unsafe
+                        {
+                            byte* ptr = stackalloc byte[Unsafe.SizeOf<T>()];
+                            var span = new Span<T>(ptr, 1); // this will throw if not legal
+                            return span.Length != 1; // we expect 1; treat anything else as failure
+                        }
+                    }
+                    catch { } // swallow, this is an expected failure
+                }
+                return true;
+#endif
             }
         }
     }

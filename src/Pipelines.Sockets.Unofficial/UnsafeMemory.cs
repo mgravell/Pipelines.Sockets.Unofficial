@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Buffers;
 using System.Runtime.InteropServices;
 
@@ -31,7 +32,7 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public UnmanagedMemoryManager(T* pointer, int length)
         {
-            if (length < 0) throw new ArgumentOutOfRangeException(nameof(length));
+            if (length < 0) Throw.ArgumentOutOfRange(nameof(length));
             _pointer = pointer;
             _length = length;
         }
@@ -46,7 +47,7 @@ namespace Pipelines.Sockets.Unofficial
         public override MemoryHandle Pin(int elementIndex = 0)
         {
             if (elementIndex < 0 || elementIndex >= _length)
-                throw new ArgumentOutOfRangeException(nameof(elementIndex));
+                Throw.ArgumentOutOfRange(nameof(elementIndex));
             return new MemoryHandle(_pointer + elementIndex);
         }
         /// <summary>

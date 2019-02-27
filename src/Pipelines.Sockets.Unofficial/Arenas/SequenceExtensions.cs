@@ -1,5 +1,7 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Buffers;
+using System.Runtime.CompilerServices;
 
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
@@ -13,14 +15,14 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     public delegate TResult Projection<T1, T2, out TResult>(in T1 x1, in T2 x2);
 
     /// <summary>
-    /// Provides utility methods for working with allocations
+    /// Provides utility methods for working with sequences
     /// </summary>
-    public static class AllocationExtensions
+    public static class SequenceExtensions
     {
         /// <summary>
-        /// Create an array with the contents of the allocation
+        /// Create an array with the contents of the sequence
         /// </summary>
-        public static T[] ToArray<T>(this in Allocation<T> source)
+        public static T[] ToArray<T>(this in Sequence<T> source)
         {
             if (source.IsEmpty) return Array.Empty<T>();
             var arr = new T[source.Length];
@@ -29,9 +31,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Create an array with the contents of the allocation, applying a projection
+        /// Create an array with the contents of the sequence, applying a projection
         /// </summary>
-        public static TTo[] ToArray<TFrom, TTo>(this in Allocation<TFrom> source, Projection<TFrom, TTo> projection)
+        public static TTo[] ToArray<TFrom, TTo>(this in Sequence<TFrom> source, Projection<TFrom, TTo> projection)
         {
             if (source.IsEmpty) return Array.Empty<TTo>();
             var arr = new TTo[source.Length];
@@ -40,9 +42,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Create an array with the contents of the allocation, applying a projection
+        /// Create an array with the contents of the sequence, applying a projection
         /// </summary>
-        public static TTo[] ToArray<TFrom, TState, TTo>(this in Allocation<TFrom> source, Projection<TFrom, TState, TTo> projection, in TState state)
+        public static TTo[] ToArray<TFrom, TState, TTo>(this in Sequence<TFrom> source, Projection<TFrom, TState, TTo> projection, in TState state)
         {
             if (source.IsEmpty) return Array.Empty<TTo>();
             var arr = new TTo[source.Length];
@@ -50,75 +52,82 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return arr;
         }
 
-        private static void ThrowInvalid() => throw new InvalidOperationException();
-
         /// <summary>
-        /// Copy the data from an allocation to a span, applying a projection
+        /// Copy the data from a sequence to a span, applying a projection
         /// </summary>
-        public static void CopyTo<TFrom, TTo>(this in Allocation<TFrom> source,
+        public static void CopyTo<TFrom, TTo>(this in Sequence<TFrom> source,
             Span<TTo> destination, Projection<TFrom, TTo> projection)
         {
             if (!TryCopyTo<TFrom, TTo>(in source, destination, projection))
-                ThrowInvalid();
+                Throw.InvalidOperation();
         }
 
         /// <summary>
-        /// Copy the data from an allocation to a span, applying a projection
+        /// Copy the data from a sequence to a span, applying a projection
         /// </summary>
-        public static void CopyTo<TFrom, TState, TTo>(this in Allocation<TFrom> source,
+        public static void CopyTo<TFrom, TState, TTo>(this in Sequence<TFrom> source,
             Span<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
         {
             if (!TryCopyTo<TFrom, TState, TTo>(in source, destination, projection, in state))
-                ThrowInvalid();
+                Throw.InvalidOperation();
         }
 
         /// <summary>
-        /// Copy the data from a span to an allocation, applying a projection
+        /// Copy the data from a span to a sequence
+        /// </summary>
+        public static void CopyTo<T>(this ReadOnlySpan<T> source, in Sequence<T> destination)
+        {
+            if (!TryCopyTo<T>(source, in destination))
+                Throw.InvalidOperation();
+        }
+
+        /// <summary>
+        /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
         public static void CopyTo<TFrom, TTo>(this Span<TFrom> source,
-            in Allocation<TTo> destination, Projection<TFrom, TTo> projection)
+            in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
             if (!TryCopyTo<TFrom, TTo>(source, in destination, projection))
-                ThrowInvalid();
+                Throw.InvalidOperation();
         }
 
         /// <summary>
-        /// Copy the data from a span to an allocation, applying a projection
+        /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
         public static void CopyTo<TFrom, TState, TTo>(this ReadOnlySpan<TFrom> source,
-            in Allocation<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
+            in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
         {
             if (!TryCopyTo<TFrom, TState, TTo>(source, in destination, projection, in state))
-                ThrowInvalid();
+                Throw.InvalidOperation();
         }
 
         /// <summary>
-        /// Copy the data from a span to an allocation, applying a projection
+        /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
         public static void CopyTo<TFrom, TTo>(this ReadOnlySpan<TFrom> source,
-            in Allocation<TTo> destination, Projection<TFrom, TTo> projection)
+            in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
             if (!TryCopyTo<TFrom, TTo>(source, in destination, projection))
-                ThrowInvalid();
+                Throw.InvalidOperation();
         }
 
         /// <summary>
-        /// Copy the data from a span to an allocation, applying a projection
+        /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
         public static void CopyTo<TFrom, TState, TTo>(this Span<TFrom> source,
-            in Allocation<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
+            in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
         {
             if (!TryCopyTo<TFrom, TState, TTo>(source, in destination, projection, in state))
-                ThrowInvalid();
+                Throw.InvalidOperation();
         }
 
         /// <summary>
-        /// Copy the data from an allocation to a span, applying a projection
+        /// Copy the data from a sequence to a span, applying a projection
         /// </summary>
-        public static bool TryCopyTo<TFrom, TTo>(this in Allocation<TFrom> source,
+        public static bool TryCopyTo<TFrom, TTo>(this in Sequence<TFrom> source,
             Span<TTo> destination, Projection<TFrom, TTo> projection)
         {
-            void ThrowNoProjection() => throw new ArgumentNullException(nameof(projection));
+            void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
             if (projection == null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
@@ -146,12 +155,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from an allocation to a span, applying a projection
+        /// Copy the data from a sequence to a span, applying a projection
         /// </summary>
-        public static bool TryCopyTo<TFrom, TState, TTo>(this in Allocation<TFrom> source,
+        public static bool TryCopyTo<TFrom, TState, TTo>(this in Sequence<TFrom> source,
                 Span<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
         {
-            void ThrowNoProjection() => throw new ArgumentNullException(nameof(projection));
+            void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
             if (projection == null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
@@ -179,12 +188,37 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from a span to an allocation, applying a projection
+        /// Copy the data from a span to a sequence
+        /// </summary>
+        public static bool TryCopyTo<T>(this ReadOnlySpan<T> source,
+            in Sequence<T> destination)
+        {
+            if (source.Length > destination.Length) return false;
+
+            if (destination.IsSingleSegment)
+            {
+                source.CopyTo(destination.FirstSpan);
+            }
+            else
+            {
+                var iter = destination.Spans.GetEnumerator();
+                while(!source.IsEmpty)
+                {
+                    var span = iter.GetNext();
+                    source.Slice(0, span.Length).CopyTo(span);
+                    source = source.Slice(span.Length);
+                }
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
         public static bool TryCopyTo<TFrom, TTo>(this Span<TFrom> source,
-            in Allocation<TTo> destination, Projection<TFrom, TTo> projection)
+            in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
-            void ThrowNoProjection() => throw new ArgumentNullException(nameof(projection));
+            void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
             if (projection == null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
@@ -212,12 +246,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from a span to an allocation, applying a projection
+        /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
         public static bool TryCopyTo<TFrom, TState, TTo>(this Span<TFrom> source,
-                in Allocation<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
+                in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
         {
-            void ThrowNoProjection() => throw new ArgumentNullException(nameof(projection));
+            void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
             if (projection == null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
@@ -245,12 +279,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from a span to an allocation, applying a projection
+        /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
         public static bool TryCopyTo<TFrom, TTo>(this ReadOnlySpan<TFrom> source,
-            in Allocation<TTo> destination, Projection<TFrom, TTo> projection)
+            in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
-            void ThrowNoProjection() => throw new ArgumentNullException(nameof(projection));
+            void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
             if (projection == null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
@@ -278,12 +312,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from a span to an allocation, applying a projection
+        /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
         public static bool TryCopyTo<TFrom, TState, TTo>(this ReadOnlySpan<TFrom> source,
-                in Allocation<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
+                in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
         {
-            void ThrowNoProjection() => throw new ArgumentNullException(nameof(projection));
+            void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
             if (projection == null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
@@ -311,9 +345,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from an allocation to a new allocation, applying a projection
+        /// Copy the data from a sequence to a newly allocated sequence, applying a projection
         /// </summary>
-        public static Allocation<TTo> Allocate<TFrom, TTo>(this Arena<TTo> arena, in Allocation<TFrom> source, Projection<TFrom, TTo> projection)
+        public static Sequence<TTo> Allocate<TFrom, TTo>(this Arena<TTo> arena, in Sequence<TFrom> source, Projection<TFrom, TTo> projection)
         {
             if (source.IsEmpty) return arena.Allocate(0); // retains position etc
 
@@ -323,9 +357,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from an allocation to a new allocation, applying a projection
+        /// Copy the data from a sequence to a newly allocated sequence, applying a projection
         /// </summary>
-        public static Allocation<TTo> Allocate<TFrom, TState, TTo>(this Arena<TTo> arena, in Allocation<TFrom> source,
+        public static Sequence<TTo> Allocate<TFrom, TState, TTo>(this Arena<TTo> arena, in Sequence<TFrom> source,
             Projection<TFrom, TState, TTo> projection, in TState state)
         {
             if (source.IsEmpty) return arena.Allocate(0); // retains position etc
@@ -336,17 +370,17 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from between two allocations, applying a projection
+        /// Copy the data from between two sequences, applying a projection
         /// </summary>
-        public static void CopyTo<T>(this in Allocation<T> source, in Allocation<T> destination)
+        public static void CopyTo<T>(this in Sequence<T> source, in Sequence<T> destination)
         {
-            if (!TryCopyTo<T>(source, destination)) ThrowInvalid();
+            if (!TryCopyTo<T>(source, destination)) Throw.InvalidOperation();
         }
 
         /// <summary>
-        /// Copy the data from between two allocations, applying a projection
+        /// Copy the data from between two sequences, applying a projection
         /// </summary>
-        public static bool TryCopyTo<T>(this in Allocation<T> source, in Allocation<T> destination)
+        public static bool TryCopyTo<T>(this in Sequence<T> source, in Sequence<T> destination)
         {
             if (source.Length > destination.Length) return false;
             if (source.IsSingleSegment & destination.IsSingleSegment) return source.FirstSpan.TryCopyTo(destination.FirstSpan);
@@ -354,7 +388,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return true; // we checked the lengths first
         }
 
-        static void SlowCopyTo<T>(in Allocation<T> source, in Allocation<T> destination)
+        static void SlowCopyTo<T>(in Sequence<T> source, in Sequence<T> destination)
         {
             var from = source.GetEnumerator();
             var to = destination.GetEnumerator();
@@ -365,17 +399,17 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from between two allocations, applying a projection
+        /// Copy the data from between two sequences, applying a projection
         /// </summary>
-        public static void CopyTo<T>(this in ReadOnlySequence<T> source, in Allocation<T> destination)
+        public static void CopyTo<T>(this in ReadOnlySequence<T> source, in Sequence<T> destination)
         {
-            if (!TryCopyTo<T>(source, destination)) ThrowInvalid();
+            if (!TryCopyTo<T>(source, destination)) Throw.InvalidOperation();
         }
 
         /// <summary>
-        /// Copy the data from between two allocations, applying a projection
+        /// Copy the data from between two sequences, applying a projection
         /// </summary>
-        public static bool TryCopyTo<T>(this in ReadOnlySequence<T> source, in Allocation<T> destination)
+        public static bool TryCopyTo<T>(this in ReadOnlySequence<T> source, in Sequence<T> destination)
         {
             if (source.Length > destination.Length) return false;
             if (source.IsSingleSegment & destination.IsSingleSegment) return source.First.Span.TryCopyTo(destination.FirstSpan);
@@ -383,7 +417,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return true; // we checked the lengths first
         }
 
-        static void SlowCopyTo<T>(in ReadOnlySequence<T> source, in Allocation<T> destination)
+        static void SlowCopyTo<T>(in ReadOnlySequence<T> source, in Sequence<T> destination)
         {
             var from = source.GetEnumerator();
             var to = destination.GetEnumerator();
@@ -398,17 +432,17 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from between two allocations, applying a projection
+        /// Copy the data from between two sequences, applying a projection
         /// </summary>
-        public static void CopyTo<TFrom, TTo>(this in Allocation<TFrom> source, in Allocation<TTo> destination, Projection<TFrom, TTo> projection)
+        public static void CopyTo<TFrom, TTo>(this in Sequence<TFrom> source, in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
-            if (!TryCopyTo<TFrom, TTo>(source, destination, projection)) ThrowInvalid();
+            if (!TryCopyTo<TFrom, TTo>(source, destination, projection)) Throw.InvalidOperation();
         }
 
         /// <summary>
-        /// Copy the data from between two allocations, applying a projection
+        /// Copy the data from between two sequences, applying a projection
         /// </summary>
-        public static bool TryCopyTo<TFrom, TTo>(this in Allocation<TFrom> source, in Allocation<TTo> destination, Projection<TFrom, TTo> projection)
+        public static bool TryCopyTo<TFrom, TTo>(this in Sequence<TFrom> source, in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
             if (source.Length > destination.Length) return false;
             if (source.IsSingleSegment) return source.FirstSpan.TryCopyTo(in destination, projection);
@@ -417,7 +451,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return true; // we checked the lengths first
         }
 
-        static void SlowCopyTo<TFrom, TTo>(in Allocation<TFrom> source, in Allocation<TTo> destination, Projection<TFrom, TTo> projection)
+        static void SlowCopyTo<TFrom, TTo>(in Sequence<TFrom> source, in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
             var from = source.GetEnumerator();
             var to = destination.GetEnumerator();
@@ -428,18 +462,18 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from between two allocations, applying a projection
+        /// Copy the data from between two sequences, applying a projection
         /// </summary>
-        public static void CopyTo<TFrom, TState, TTo>(this in Allocation<TFrom> source, in Allocation<TTo> destination,
+        public static void CopyTo<TFrom, TState, TTo>(this in Sequence<TFrom> source, in Sequence<TTo> destination,
             Projection<TFrom, TState, TTo> projection, in TState state)
         {
-            if (!TryCopyTo<TFrom, TState, TTo>(source, destination, projection, in state)) ThrowInvalid();
+            if (!TryCopyTo<TFrom, TState, TTo>(source, destination, projection, in state)) Throw.InvalidOperation();
         }
 
         /// <summary>
-        /// Copy the data from between two allocations, applying a projection
+        /// Copy the data from between two sequences, applying a projection
         /// </summary>
-        public static bool TryCopyTo<TFrom, TState, TTo>(this in Allocation<TFrom> source, in Allocation<TTo> destination,
+        public static bool TryCopyTo<TFrom, TState, TTo>(this in Sequence<TFrom> source, in Sequence<TTo> destination,
             Projection<TFrom, TState, TTo> projection, in TState state)
         {
             if (source.Length > destination.Length) return false;
@@ -449,7 +483,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return true; // we checked the lengths first
         }
 
-        static void SlowCopyTo<TFrom, TState, TTo>(in Allocation<TFrom> source, in Allocation<TTo> destination,
+        static void SlowCopyTo<TFrom, TState, TTo>(in Sequence<TFrom> source, in Sequence<TTo> destination,
             Projection<TFrom, TState, TTo> projection, in TState state)
         {
             var from = source.GetEnumerator();
@@ -467,10 +501,25 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             var obj = position.GetObject();
             var offset = position.GetInteger();
-            if (obj == null && offset == 0) return 0;
-            if (obj is IBlock block) return block.RunningIndex + offset;
+            if (obj == null) return offset;
+            if (obj is ISegment segment) return segment.RunningIndex + offset;
             return null; // nope!
         }
+
+#if DEBUG
+        /// <summary>
+        /// Attempt to calculate the net offset of a position
+        /// </summary>
+        internal static long? TryGetByteOffset<T>(this SequencePosition position)
+        {
+            var obj = position.GetObject();
+            var offset = position.GetInteger();
+            if (obj == null) return offset;
+
+            if (obj is ISegment segment) return segment.ByteOffset + (offset * Unsafe.SizeOf<T>());
+            return null; // nope!
+        }
+#endif
 
     }
 }
