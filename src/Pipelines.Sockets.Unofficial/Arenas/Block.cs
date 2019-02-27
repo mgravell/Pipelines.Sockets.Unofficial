@@ -5,27 +5,6 @@ using System.Runtime.InteropServices;
 
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
-    //internal interface IBlock : ISegment
-    //{
-    //    bool TryCopyTo(in Sequence allocation, Array destination, int offset);
-    //    void CopyTo(in Sequence allocation, Array destination, int offset);
-    //}
-
-    //internal abstract class NilSegment : ISegment
-    //{
-    //    Type ISegment.ElementType => ElementType;
-    //    protected abstract Type ElementType { get; }
-    //    //bool IBlock.TryCopyTo(in Sequence allocation, Array destination, int offset) => true;
-    //    //void IBlock.CopyTo(in Sequence allocation, Array destination, int offset) { }
-    //    long ISegment.RunningIndex => 0;
-    //}
-    //internal sealed class NilSegment<T> : NilSegment //, IBlock
-    //{   // this exists just so empty allocations (no block) can be untyped/cast correctly
-    //    public static ISegment Default { get; } = new NilSegment<T>();
-    //    protected override Type ElementType => typeof(T);
-    //    private NilSegment() { }
-    //}
-
     /// <summary>
     /// Represents an abstract chained segment of mutable memory
     /// </summary>
@@ -44,8 +23,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     /// <summary>
     /// Represents an abstract chained segment of mutable memory
     /// </summary>
-    public abstract class SequenceSegment<T> : ReadOnlySequenceSegment<T>, ISegment
+    public abstract class SequenceSegment<T> : ReadOnlySequenceSegment<T>, ISegment, IMemoryOwner<T>
     {
+        void IDisposable.Dispose() { } // just to satisfy IMemoryOwner<T>
+
         /// <summary>
         /// The length of the memory
         /// </summary>
@@ -101,20 +82,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             try { Allocation?.Dispose(); } catch { } // best efforts
             Allocation = null;
-        }
-
-        public bool TryCopyTo(in Sequence allocation, Array destination, int offset)
-        {
-            var span = (Span<T>)(T[])destination;
-            if (offset != 0) span = span.Slice(offset);
-            return allocation.Cast<T>().TryCopyTo(span);
-        }
-
-        public void CopyTo(in Sequence allocation, Array destination, int offset)
-        {
-            var span = (Span<T>)(T[])destination;
-            if (offset != 0) span = span.Slice(offset);
-            allocation.Cast<T>().CopyTo(span);
         }
     }
 }

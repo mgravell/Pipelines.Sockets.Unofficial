@@ -95,6 +95,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return SlowAllocate(length);
         }
 
+        /// <summary>
+        /// Allocate a reference to a new instance from the arena
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Reference<T> Allocate() => Allocate(1).GetReference(0);
+
         // this is when there wasn't enough space in the current block
         private Sequence<T> SlowAllocate(int length)
         {
@@ -152,7 +158,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             _lastRetention = retain;
         }
 
+#pragma warning disable IDE0060 // unused arg
         private void Trim(long retain) { } // not yet implemented
+#pragma warning restore IDE0060
 
         private void Reset(bool clear)
         {

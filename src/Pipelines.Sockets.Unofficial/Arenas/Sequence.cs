@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
     /// <summary>
-    /// Represents an Allocation-T without needing to know the T at compile-time
+    /// Represents a Sequence without needing to know the type at compile-time
     /// </summary>
     public readonly struct Sequence : IEquatable<Sequence>
     {
@@ -16,26 +16,26 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Returns an empty sequence of the supplied type
         /// </summary>
-        public static Sequence Empty<T>() => new Sequence(Array.Empty<T>(), 0, 0);
+        public static Sequence Empty<T>() => new Sequence(Sequence<T>.EmptySentinel, 0, 0);
 
         /// <summary>
-        /// Tests two allocations for equality
+        /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override bool Equals(object obj) => obj is Sequence other && Equals(in other);
 
         /// <summary>
-        /// Tests two allocations for equality
+        /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         bool IEquatable<Sequence>.Equals(Sequence other) => Equals(in other);
 
         /// <summary>
-        /// Tests two allocations for equality
+        /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Equals(in Sequence other)
-            => _length == 0 ? other.Length == 0 // all empty allocations are equal - in part because default is type-less
+            => _length == 0 ? other.Length == 0 // all empty sequences are equal - in part because default is type-less
                 : (_length == other.Length & _offset == other._offset & _obj == other._obj);
 
         /// <summary>
@@ -43,33 +43,33 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override int GetHashCode()
-            => _length == 0 ? 0 : (_length * -_offset) ^ _obj.GetHashCode();
+            => _length == 0 ? 0 : (_length * -_offset) ^ RuntimeHelpers.GetHashCode(_obj);
 
         /// <summary>
-        /// Summaries an allocation as a string
+        /// Summarizes a sequence as a string
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override string ToString() => $"{_length}×{ElementType.Name}";
 
         /// <summary>
-        /// Tests two allocations for equality
+        /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool operator ==(Sequence x, Sequence y) => x.Equals(in y);
 
         /// <summary>
-        /// Tests two allocations for equality
+        /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool operator !=(Sequence x, Sequence y) => !x.Equals(in y);
 
         /// <summary>
-        /// Indicates the number of elements in the allocation
+        /// Indicates the number of elements in the sequence
         /// </summary>
         public long Length => _length; // we currently only allow int, but technically we could support huge regions
 
         /// <summary>
-        /// Indicates whether the allocation is empty (zero elements)
+        /// Indicates whether the sequence is empty (zero elements)
         /// </summary>
         public bool IsEmpty
         {
@@ -78,7 +78,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Indicates the type of element defined the allocation
+        /// Indicates the type of element defined by the sequence
         /// </summary>
         public Type ElementType
         {
@@ -92,11 +92,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Converts an untyped allocation back to a typed allocation; the type must be correct
+        /// Converts an untyped sequence back to a typed sequence; the type must be correct
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Sequence<T> Cast<T>()
-            => _length == 0 &&_obj is T[]
+            => _length == 0 && _obj == Sequence<T>.EmptySentinel
             ? default
             : new Sequence<T>(_offset, _length, (SequenceSegment<T>)_obj);
 
@@ -107,21 +107,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             _offset = offset;
             _length = length;
         }
-
-        ///// <summary>
-        ///// If possible, copy the contents of the allocation into a contiguous region
-        ///// </summary>
-        //[MethodImpl(MethodImplOptions.AggressiveInlining)]
-        //public bool TryCopyTo(Array destination, int offset = 0) => _length == 0 ? true : _obj.TryCopyTo(this, destination, offset);
-
-        ///// <summary>
-        ///// Copy the contents of the allocation into a contiguous region
-        ///// </summary>
-        //[MethodImpl(MethodImplOptions.AggressiveInlining)]
-        //public void CopyTo(Array destination, int offset = 0)
-        //{
-        //    if (_length != 0) _obj.CopyTo(this, destination, offset);
-        //}
     }
 
     /// <summary>
@@ -133,37 +118,37 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private readonly SequenceSegment<T> _head;
 
         /// <summary>
-        /// Represents a typed allocation as an untyped allocation
+        /// Represents a typed sequence as an untyped sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static implicit operator Sequence(Sequence<T> allocation)
-            => allocation.Untyped();
+        public static implicit operator Sequence(Sequence<T> sequence)
+            => sequence.Untyped();
 
         /// <summary>
-        /// Converts an untyped allocation back to a typed allocation; the type must be correct
+        /// Converts an untyped sequence back to a typed sequence; the type must be correct
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static explicit operator Sequence<T>(Sequence allocation)
-            => allocation.Cast<T>();
+        public static explicit operator Sequence<T>(Sequence sequence)
+            => sequence.Cast<T>();
 
         /// <summary>
-        /// Tests two allocations for equality
+        /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override bool Equals(object obj) => obj is Sequence<T> other && Equals(in other);
 
         /// <summary>
-        /// Tests two allocations for equality
+        /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         bool IEquatable<Sequence<T>>.Equals(Sequence<T> other) => Equals(in other);
 
         /// <summary>
-        /// Tests two allocations for equality
+        /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Equals(in Sequence<T> other)
-            => _length == 0 ? other.Length == 0 // all empty allocations are equal - in part because default is type-less
+            => _length == 0 ? other.Length == 0 // all empty sequences are equal - in part because default is type-less
                 : (_length == other.Length & _offsetAndMultiSegmentFlag == other._offsetAndMultiSegmentFlag & _head == other._head);
 
         /// <summary>
@@ -171,40 +156,40 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override int GetHashCode()
-            => _length == 0 ? 0 : (_length * -_offsetAndMultiSegmentFlag) ^ _head.GetHashCode();
+            => _length == 0 ? 0 : (_length * -_offsetAndMultiSegmentFlag) ^ RuntimeHelpers.GetHashCode(_head);
 
         /// <summary>
-        /// Summaries an allocation as a string
+        /// Summaries a sequence as a string
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override string ToString() => $"{_length}×{typeof(T).Name}";
 
         /// <summary>
-        /// Tests two allocations for equality
+        /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool operator ==(Sequence<T> x, Sequence<T> y) => x.Equals(in y);
 
         /// <summary>
-        /// Tests two allocations for equality
+        /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool operator !=(Sequence<T> x, Sequence<T> y) => !x.Equals(in y);
 
         /// <summary>
-        /// Converts a typed allocation to a typed read-only-sequence
+        /// Converts a typed sequence to a typed read-only-sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static implicit operator ReadOnlySequence<T>(Sequence<T> allocation)
-            => allocation.AsReadOnly();
+        public static implicit operator ReadOnlySequence<T>(Sequence<T> sequence)
+            => sequence.AsReadOnly();
 
         /// <summary>
-        /// Converts a typed allocation to a typed read-only-sequence
+        /// Converts a typed sequence to a typed read-only-sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static explicit operator Sequence<T> (ReadOnlySequence<T> sequence)
+        public static explicit operator Sequence<T> (ReadOnlySequence<T> readOnlySequence)
         {
-            if (TryGetAllocation(sequence, out var allocation)) return allocation;
+            if (TryGetSequence(readOnlySequence, out var sequence)) return sequence;
             ThrowInvalidCast();
             return default; // to make compiler happy
 
@@ -212,13 +197,17 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Represents a typed allocation as an untyped allocation
+        /// Represents a typed sequence as an untyped sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Sequence Untyped() => new Sequence((object)_head ?? Array.Empty<T>(), Offset, _length);
+        public Sequence Untyped() => new Sequence((object)_head ?? EmptySentinel, Offset, _length);
+
+        // used to accurately identify a default instance (null _head) when
+        // using untyped sequences
+        internal static readonly object EmptySentinel = new object();
 
         /// <summary>
-        /// Converts a typed allocation to a typed read-only-sequence
+        /// Converts a typed sequence to a typed read-only-sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ReadOnlySequence<T> AsReadOnly()
@@ -226,19 +215,19 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             : IsSingleSegment ? new ReadOnlySequence<T>(_head, Offset, _head, Offset + _length) : MultiSegmentAsReadOnly();
 
         /// <summary>
-        /// Calculate the start position of the current allocation
+        /// Calculate the start position of the current sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public SequencePosition Start() => new SequencePosition(_head, Offset);
 
         /// <summary>
-        /// Calculate the end position of the current allocation
+        /// Calculate the end position of the current sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public SequencePosition End() => GetPosition(_length);
 
         /// <summary>
-        /// Calculate a position inside the current allocation
+        /// Calculate a position inside the current sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public SequencePosition GetPosition(long offset)
@@ -251,7 +240,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Obtains a sub-region of an allocation
+        /// Obtains a sub-region of a sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Sequence<T> Slice(int start)
@@ -264,7 +253,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Obtains a sub-region of an allocation
+        /// Obtains a sub-region of a sequence
         /// </summary>
         public Sequence<T> Slice(int start, int length)
         {
@@ -275,7 +264,18 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return SliceIntoLaterPage(start, length);
         }
 
-        private Sequence<T> SliceIntoLaterPage(int start, int length)
+        /// <summary>
+        /// Obtains a reference into the segment
+        /// </summary>
+        public Reference<T> GetReference(int offset)
+        {
+            int finalOffset;
+            if ((_length != 0 & offset >= 0) && (finalOffset = Offset + offset) < _head.Length)
+                return new Reference<T>(_head, finalOffset);
+            return SliceIntoLaterPage(offset, 1).GetReference(0);
+        }
+
+        private Sequence<T> SliceIntoLaterPage(long start, int length)
         {
             if (start < 0 | start > _length) ThrowArgumentOutOfRange(nameof(start));
             if (length < 0 | start + length > _length) ThrowArgumentOutOfRange(nameof(length));
@@ -300,24 +300,24 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 segment = segment.Next;
             }
 
-            return new Sequence<T>(start, length, segment);
+            return new Sequence<T>((int)start, length, segment);
 
             void ThrowArgumentOutOfRange(string paramName) => throw new ArgumentOutOfRangeException(paramName);
         }
 
         /// <summary>
-        /// Attempts to convert a typed read-only-sequence back to a typed allocation; the sequence must have originated from a valid typed allocation
+        /// Attempts to convert a typed read-only-sequence back to a typed sequence; the sequence must have originated from a valid typed sequence
         /// </summary>
-        public static bool TryGetAllocation(in ReadOnlySequence<T> sequence, out Sequence<T> allocation)
+        public static bool TryGetSequence(in ReadOnlySequence<T> readOnlySequence, out Sequence<T> sequence)
         {
-            SequencePosition start = sequence.Start;
-            if (start.GetObject() is SequenceSegment<T> segment && sequence.End.GetObject() is SequenceSegment<T>)
+            SequencePosition start = readOnlySequence.Start;
+            if (start.GetObject() is SequenceSegment<T> segment && readOnlySequence.End.GetObject() is SequenceSegment<T>)
             {
-                allocation = new Sequence<T>(start.GetInteger(), checked((int)sequence.Length), segment);
+                sequence = new Sequence<T>(start.GetInteger(), checked((int)readOnlySequence.Length), segment);
                 return true;
             }
-            allocation = default;
-            return sequence.IsEmpty; // empty sequences can be considered acceptable
+            sequence = default;
+            return readOnlySequence.IsEmpty; // empty sequences can be considered acceptable
         }
 
         private ReadOnlySequence<T> MultiSegmentAsReadOnly()
@@ -336,12 +336,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Indicates the number of elements in the allocation
+        /// Indicates the number of elements in the sequence
         /// </summary>
         public long Length => _length; // we currently only allow int, but technically we could support huge regions
 
         /// <summary>
-        /// Indicates whether the allocation involves multiple segments, vs whether all the data fits into the first segment
+        /// Indicates whether the sequence involves multiple segments, vs whether all the data fits into the first segment
         /// </summary>
         public bool IsSingleSegment
         {
@@ -358,7 +358,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Indicates whether the allocation is empty (zero elements)
+        /// Indicates whether the sequence is empty (zero elements)
         /// </summary>
         public bool IsEmpty
         {
@@ -386,7 +386,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the contents of the allocation into a contiguous region
+        /// Copy the contents of the sequence into a contiguous region
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void CopyTo(Span<T> destination)
@@ -402,7 +402,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// If possible, copy the contents of the allocation into a contiguous region
+        /// If possible, copy the contents of the sequence into a contiguous region
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool TryCopyTo(Span<T> destination)
@@ -461,17 +461,17 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Allows an allocation to be enumerated as spans
+        /// Allows a sequence to be enumerated as spans
         /// </summary>
         public SpanEnumerable Spans => new SpanEnumerable(this);
 
         /// <summary>
-        /// Allows an allocation to be enumerated as memory instances
+        /// Allows a sequence to be enumerated as memory instances
         /// </summary>
         public MemoryEnumerable Segments => new MemoryEnumerable(this);
 
         /// <summary>
-        /// Allows an allocation to be enumerated as spans
+        /// Allows a sequence to be enumerated as spans
         /// </summary>
         public readonly ref struct SpanEnumerable
         {
@@ -485,13 +485,13 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
 
             /// <summary>
-            /// Allows an allocation to be enumerated as spans
+            /// Allows a sequence to be enumerated as spans
             /// </summary>
             public SpanEnumerator GetEnumerator() => new SpanEnumerator(_segment, _offset, _length);
         }
 
         /// <summary>
-        /// Allows an allocation to be enumerated as memory instances
+        /// Allows a sequence to be enumerated as memory instances
         /// </summary>
         public readonly ref struct MemoryEnumerable
         {
@@ -505,19 +505,19 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
 
             /// <summary>
-            /// Allows an allocation to be enumerated as memory instances
+            /// Allows a sequence to be enumerated as memory instances
             /// </summary>
             public MemoryEnumerator GetEnumerator() => new MemoryEnumerator(_segment, _offset, _length);
         }
 
         /// <summary>
-        /// Allows an allocation to be enumerated as values
+        /// Allows a sequence to be enumerated as values
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Enumerator GetEnumerator() => new Enumerator(_head, Offset, _length);
 
         /// <summary>
-        /// Allows an allocation to be enumerated as values
+        /// Allows a sequence to be enumerated as values
         /// </summary>
         public ref struct Enumerator
         {
@@ -644,7 +644,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Allows an allocation to be enumerated as spans
+        /// Allows a sequence to be enumerated as spans
         /// </summary>
         public ref struct SpanEnumerator
         {
@@ -686,6 +686,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 return true;
             }
 
+            internal Span<T> GetNext()
+            {
+                if (!MoveNext()) throw new InvalidOperationException();
+                return Current;
+            }
+
             /// <summary>
             /// Obtain the current segment
             /// </summary>
@@ -693,7 +699,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Allows an allocation to be enumerated as memory instances
+        /// Allows a sequence to be enumerated as memory instances
         /// </summary>
         public struct MemoryEnumerator
         {

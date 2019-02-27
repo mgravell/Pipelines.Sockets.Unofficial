@@ -71,7 +71,7 @@ using(var arena = new Arena<SomeType>()) // note: options available on .ctor
 
 In the above, `block` and `anotherBlock` are `Allocation<SomeType>` values; these are the write-friendly cousins of `ReadOnlySequence<SomeType>` with all the features you'd expect - `.Length`, `.Slice(...)`, access to the internal data, etc. Importantly, an `Allocation<T>` is a `readonly struct` value-type (meaning: zero allocations). As with `ReadOnlySequence<T>`, using them is complicated slightly by the fact that it *may* (sometimes) involve non-contiguous memory, so just like with `ReadOnlySequence<T>`, *typically* you'd want to check `.IsSingleSegment` and access `.FirstSpan` (`Span<T>`) or `.FirstSegment` (`Memory<T>`) for an optimized simple fast path, falling back to multi-segment processing otherwise.
 
-## How to work with the values in an allocation
+## How to work with the values in a sequence
 
 Similarly to `ReadOnlySequence<T>` there is no *indexer* access to the entire block, but you can iterate over the individual segments (`Memory<T>`) if needed. You can also iterate over the spans (`Span<T>`) or even the individual elements (`T`):
 
@@ -258,7 +258,7 @@ So: on .NET Core in particular, there is *zero loss* (especially if you're using
 
 An `Arena<T>` is not thread-safe; normally, it is assumed that an individual batch will only be processed by a single thread, so we don't attempt to make it thread-safe. If you have a batch-processing scenario where you *can* process the data in parallel: that's fine, but you will need to add some kind of synchrnoization (usually via `lock`) around the calls to `Allocate()` and `Reset()`. Note that two *separate* concurrent batches should not usually use the same `Arena<T>`, unless you are happy that `Reset()` applies to both of them.
 
-### What if I keep hold of an allocation?
+### What if I keep hold of a sequence?
 
 If your code chooses to leak an `Allocation<T>` outside of a batch (more specifically: past a `Reset()` call, or past the arena's final `Dispose()` call), then: **that's on you**. What happens next is undefined, but commonly:
 

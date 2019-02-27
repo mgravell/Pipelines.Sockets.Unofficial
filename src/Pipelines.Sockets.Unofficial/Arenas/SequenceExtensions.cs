@@ -13,12 +13,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     public delegate TResult Projection<T1, T2, out TResult>(in T1 x1, in T2 x2);
 
     /// <summary>
-    /// Provides utility methods for working with allocations
+    /// Provides utility methods for working with sequences
     /// </summary>
     public static class SequenceExtensions
     {
         /// <summary>
-        /// Create an array with the contents of the allocation
+        /// Create an array with the contents of the sequence
         /// </summary>
         public static T[] ToArray<T>(this in Sequence<T> source)
         {
@@ -29,7 +29,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Create an array with the contents of the allocation, applying a projection
+        /// Create an array with the contents of the sequence, applying a projection
         /// </summary>
         public static TTo[] ToArray<TFrom, TTo>(this in Sequence<TFrom> source, Projection<TFrom, TTo> projection)
         {
@@ -40,7 +40,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Create an array with the contents of the allocation, applying a projection
+        /// Create an array with the contents of the sequence, applying a projection
         /// </summary>
         public static TTo[] ToArray<TFrom, TState, TTo>(this in Sequence<TFrom> source, Projection<TFrom, TState, TTo> projection, in TState state)
         {
@@ -53,7 +53,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private static void ThrowInvalid() => throw new InvalidOperationException();
 
         /// <summary>
-        /// Copy the data from an allocation to a span, applying a projection
+        /// Copy the data from a sequence to a span, applying a projection
         /// </summary>
         public static void CopyTo<TFrom, TTo>(this in Sequence<TFrom> source,
             Span<TTo> destination, Projection<TFrom, TTo> projection)
@@ -63,7 +63,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from an allocation to a span, applying a projection
+        /// Copy the data from a sequence to a span, applying a projection
         /// </summary>
         public static void CopyTo<TFrom, TState, TTo>(this in Sequence<TFrom> source,
             Span<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
@@ -73,7 +73,16 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from a span to an allocation, applying a projection
+        /// Copy the data from a span to a sequence
+        /// </summary>
+        public static void CopyTo<T>(this ReadOnlySpan<T> source, in Sequence<T> destination)
+        {
+            if (!TryCopyTo<T>(source, in destination))
+                ThrowInvalid();
+        }
+
+        /// <summary>
+        /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
         public static void CopyTo<TFrom, TTo>(this Span<TFrom> source,
             in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
@@ -83,7 +92,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from a span to an allocation, applying a projection
+        /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
         public static void CopyTo<TFrom, TState, TTo>(this ReadOnlySpan<TFrom> source,
             in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
@@ -93,7 +102,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from a span to an allocation, applying a projection
+        /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
         public static void CopyTo<TFrom, TTo>(this ReadOnlySpan<TFrom> source,
             in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
@@ -103,7 +112,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from a span to an allocation, applying a projection
+        /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
         public static void CopyTo<TFrom, TState, TTo>(this Span<TFrom> source,
             in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
@@ -113,7 +122,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from an allocation to a span, applying a projection
+        /// Copy the data from a sequence to a span, applying a projection
         /// </summary>
         public static bool TryCopyTo<TFrom, TTo>(this in Sequence<TFrom> source,
             Span<TTo> destination, Projection<TFrom, TTo> projection)
@@ -146,7 +155,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from an allocation to a span, applying a projection
+        /// Copy the data from a sequence to a span, applying a projection
         /// </summary>
         public static bool TryCopyTo<TFrom, TState, TTo>(this in Sequence<TFrom> source,
                 Span<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
@@ -179,7 +188,32 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from a span to an allocation, applying a projection
+        /// Copy the data from a span to a sequence
+        /// </summary>
+        public static bool TryCopyTo<T>(this ReadOnlySpan<T> source,
+            in Sequence<T> destination)
+        {
+            if (source.Length > destination.Length) return false;
+
+            if (destination.IsSingleSegment)
+            {
+                source.CopyTo(destination.FirstSpan);
+            }
+            else
+            {
+                var iter = destination.Spans.GetEnumerator();
+                while(!source.IsEmpty)
+                {
+                    var span = iter.GetNext();
+                    source.Slice(0, span.Length).CopyTo(span);
+                    source = source.Slice(span.Length);
+                }
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
         public static bool TryCopyTo<TFrom, TTo>(this Span<TFrom> source,
             in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
@@ -212,7 +246,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from a span to an allocation, applying a projection
+        /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
         public static bool TryCopyTo<TFrom, TState, TTo>(this Span<TFrom> source,
                 in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
@@ -245,7 +279,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from a span to an allocation, applying a projection
+        /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
         public static bool TryCopyTo<TFrom, TTo>(this ReadOnlySpan<TFrom> source,
             in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
@@ -278,7 +312,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from a span to an allocation, applying a projection
+        /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
         public static bool TryCopyTo<TFrom, TState, TTo>(this ReadOnlySpan<TFrom> source,
                 in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
@@ -311,7 +345,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from an allocation to a new allocation, applying a projection
+        /// Copy the data from a sequence to a newly allocated sequence, applying a projection
         /// </summary>
         public static Sequence<TTo> Allocate<TFrom, TTo>(this Arena<TTo> arena, in Sequence<TFrom> source, Projection<TFrom, TTo> projection)
         {
@@ -323,7 +357,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from an allocation to a new allocation, applying a projection
+        /// Copy the data from a sequence to a newly allocated sequence, applying a projection
         /// </summary>
         public static Sequence<TTo> Allocate<TFrom, TState, TTo>(this Arena<TTo> arena, in Sequence<TFrom> source,
             Projection<TFrom, TState, TTo> projection, in TState state)
@@ -336,7 +370,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from between two allocations, applying a projection
+        /// Copy the data from between two sequences, applying a projection
         /// </summary>
         public static void CopyTo<T>(this in Sequence<T> source, in Sequence<T> destination)
         {
@@ -344,7 +378,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from between two allocations, applying a projection
+        /// Copy the data from between two sequences, applying a projection
         /// </summary>
         public static bool TryCopyTo<T>(this in Sequence<T> source, in Sequence<T> destination)
         {
@@ -365,7 +399,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from between two allocations, applying a projection
+        /// Copy the data from between two sequences, applying a projection
         /// </summary>
         public static void CopyTo<T>(this in ReadOnlySequence<T> source, in Sequence<T> destination)
         {
@@ -373,7 +407,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from between two allocations, applying a projection
+        /// Copy the data from between two sequences, applying a projection
         /// </summary>
         public static bool TryCopyTo<T>(this in ReadOnlySequence<T> source, in Sequence<T> destination)
         {
@@ -398,7 +432,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from between two allocations, applying a projection
+        /// Copy the data from between two sequences, applying a projection
         /// </summary>
         public static void CopyTo<TFrom, TTo>(this in Sequence<TFrom> source, in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
@@ -406,7 +440,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from between two allocations, applying a projection
+        /// Copy the data from between two sequences, applying a projection
         /// </summary>
         public static bool TryCopyTo<TFrom, TTo>(this in Sequence<TFrom> source, in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
@@ -428,7 +462,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from between two allocations, applying a projection
+        /// Copy the data from between two sequences, applying a projection
         /// </summary>
         public static void CopyTo<TFrom, TState, TTo>(this in Sequence<TFrom> source, in Sequence<TTo> destination,
             Projection<TFrom, TState, TTo> projection, in TState state)
@@ -437,7 +471,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
-        /// Copy the data from between two allocations, applying a projection
+        /// Copy the data from between two sequences, applying a projection
         /// </summary>
         public static bool TryCopyTo<TFrom, TState, TTo>(this in Sequence<TFrom> source, in Sequence<TTo> destination,
             Projection<TFrom, TState, TTo> projection, in TState state)

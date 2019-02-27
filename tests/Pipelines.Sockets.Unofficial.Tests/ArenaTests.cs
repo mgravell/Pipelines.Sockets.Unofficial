@@ -9,25 +9,25 @@ namespace Pipelines.Sockets.Unofficial.Tests
     public class ArenaTests
     {
 #pragma warning disable CS0169, IDE0051 // unused fields
-        struct TwoPositions<T>
+        private struct TwoPositions<T>
         {
-            SequencePosition start, end;
+            private readonly SequencePosition start, end;
         }
-        struct TwoPair<T>
+        private struct TwoPair<T>
         {
-            object a,b;
-            int c, d;
+            private readonly object a,b;
+            private readonly int c, d;
         }
-        struct Len32<T>
+        private struct Len32<T>
         {
-            object x;
-            int offset, len;
+            private readonly object x;
+            private readonly int offset, len;
         }
-        struct Len64<T>
+        private struct Len64<T>
         {
-            long len;
-            object x;
-            int offse;
+            private readonly long len;
+            private readonly object x;
+            private readonly int offse;
         }
 #pragma warning restore CS0169
 
