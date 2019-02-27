@@ -81,7 +81,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Allocate a (possibly non-contiguous) region of memory from the arena
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Allocation<T> Allocate(int length)
+        public Sequence<T> Allocate(int length)
         {
             // note: even for zero-length blocks, we'd rather have them start
             // at the start of the next block, for consistency
@@ -90,13 +90,13 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 var offset = _allocatedCurrentBlock;
                 _allocatedCurrentBlock += length;
                 _allocatedTotal += length;
-                return new Allocation<T>(_current, offset, length);
+                return new Sequence<T>(offset, length, _current);
             }
             return SlowAllocate(length);
         }
 
         // this is when there wasn't enough space in the current block
-        private Allocation<T> SlowAllocate(int length)
+        private Sequence<T> SlowAllocate(int length)
         {
             void ThrowInvalidLength() => throw new ArgumentOutOfRangeException(nameof(length));
             if (length < 0) ThrowInvalidLength();
@@ -111,7 +111,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             // would be less efficient)
             if (_current.Length <= _allocatedCurrentBlock) MoveNextBlock();
 
-            var result = new Allocation<T>(_current, _allocatedCurrentBlock, length);
+            var result = new Sequence<T>(_allocatedCurrentBlock, length, _current);
             _allocatedTotal += length; // we're going to allocate everything
 
             // now make sure we actually have blocks to cover that promise

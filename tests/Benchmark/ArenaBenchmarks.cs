@@ -28,13 +28,13 @@ namespace Benchmark
             }
             _maxCount = _sizes.Max(x => x.Length);
 
-            _arenaAllocs = new List<Allocation<int>>(_maxCount);
+            _arenaAllocs = new List<Sequence<int>>(_maxCount);
             _arrayAllocs = new List<int[]>(_maxCount);
             _poolAllocs = new List<ArraySegment<int>>(_maxCount);
 
             var firstArray = _sizes[0];
             _arrayRW = new int[firstArray.Length][];
-            _arenaRW = new Allocation<int>[firstArray.Length];
+            _arenaRW = new Sequence<int>[firstArray.Length];
             _poolRW = new ArraySegment<int>[firstArray.Length];
             _rwArena = new Arena<int>();
 
@@ -63,12 +63,12 @@ namespace Benchmark
             ReadForeach(_poolRW).AssertIs(expected);
         }
         Arena<int> _rwArena;
-        List<Allocation<int>> _arenaAllocs;
+        List<Sequence<int>> _arenaAllocs;
         List<int[]> _arrayAllocs;
         List<ArraySegment<int>> _poolAllocs;
 
         int[][] _arrayRW;
-        Allocation<int>[] _arenaRW;
+        Sequence<int>[] _arenaRW;
         ArraySegment<int>[] _poolRW;
 
         static long Write(int[][] segments)
@@ -114,7 +114,7 @@ namespace Benchmark
             return total;
         }
 
-        static long WriteSpans(Allocation<int>[] segments)
+        static long WriteSpans(Sequence<int>[] segments)
         {
             long total = 0;
             int val = 0;
@@ -143,7 +143,7 @@ namespace Benchmark
             return total;
         }
 
-        static long WriteSegments(Allocation<int>[] segments)
+        static long WriteSegments(Sequence<int>[] segments)
         {
             long total = 0;
             int val = 0;
@@ -173,7 +173,7 @@ namespace Benchmark
             return total;
         }
 
-        static long ReadSpansFor(Allocation<int>[] segments)
+        static long ReadSpansFor(Sequence<int>[] segments)
         {
             long total = 0;
             for (int i = 0; i < segments.Length; i++)
@@ -201,7 +201,7 @@ namespace Benchmark
             return total;
         }
 
-        static long ReadSegmentsFor(Allocation<int>[] segments)
+        static long ReadSegmentsFor(Sequence<int>[] segments)
         {
             long total = 0;
             for (int i = 0; i < segments.Length; i++)
@@ -230,7 +230,7 @@ namespace Benchmark
             return total;
         }
 
-        static long ReadForeach(Allocation<int>[] segments)
+        static long ReadForeach(Sequence<int>[] segments)
         {
             long total = 0;
             for (int i = 0; i < segments.Length; i++)

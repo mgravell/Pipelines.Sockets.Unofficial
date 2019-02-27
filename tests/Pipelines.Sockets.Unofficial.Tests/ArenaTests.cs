@@ -1,12 +1,59 @@
 ﻿using Pipelines.Sockets.Unofficial.Arenas;
 using System;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace Pipelines.Sockets.Unofficial.Tests
 {
     public class ArenaTests
     {
+#pragma warning disable CS0169, IDE0051 // unused fields
+        struct TwoPositions<T>
+        {
+            SequencePosition start, end;
+        }
+        struct TwoPair<T>
+        {
+            object a,b;
+            int c, d;
+        }
+        struct Len32<T>
+        {
+            object x;
+            int offset, len;
+        }
+        struct Len64<T>
+        {
+            long len;
+            object x;
+            int offse;
+        }
+#pragma warning restore CS0169
+
+        [Fact]
+        public void AssertPossibleLayoutSizes()
+        {
+            if (IntPtr.Size == 8)
+            {
+                Assert.Equal(32, Unsafe.SizeOf<TwoPositions<int>>());
+                Assert.Equal(24, Unsafe.SizeOf<TwoPair<int>>());
+                Assert.Equal(16, Unsafe.SizeOf<Len32<int>>());
+                Assert.Equal(24, Unsafe.SizeOf<Len64<int>>());
+            }
+            else if (IntPtr.Size == 4)
+            {
+                Assert.Equal(16, Unsafe.SizeOf<TwoPositions<int>>());
+                Assert.Equal(16, Unsafe.SizeOf<TwoPair<int>>());
+                Assert.Equal(12, Unsafe.SizeOf<Len32<int>>());
+                Assert.Equal(16, Unsafe.SizeOf<Len64<int>>());
+            }
+            else
+            {
+                Assert.True(false, "unknown CPU size: " + IntPtr.Size);
+            }
+        }
+
         [Fact]
         public void SliceAndDice()
         {
@@ -15,7 +62,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 var alloc = arena.Allocate(2048);
 
                 int i = 0, spanCount = 0;
-                foreach(var span in alloc.Spans)
+                foreach (var span in alloc.Spans)
                 {
                     spanCount++;
                     for (int j = 0; j < span.Length; j++)
@@ -40,12 +87,12 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 Assert.Throws<ArgumentOutOfRangeException>(() => alloc.Slice(1, (int)alloc.Length));
             }
 
-            void Check(Allocation<int> range, int start)
+            void Check(Sequence<int> range, int start)
             {
                 int count = 0;
-                foreach(var span in range.Spans)
+                foreach (var span in range.Spans)
                 {
-                    for(int i = 0; i < span.Length; i++)
+                    for (int i = 0; i < span.Length; i++)
                     {
                         Assert.Equal(start++, span[i]);
                         count++;
@@ -61,7 +108,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             using (var arena = new Arena<int>(blockSize: 1024))
             {
                 var rand = new Random(43134114);
-                var arr = new Allocation<int>[100];
+                var arr = new Sequence<int>[100];
                 for (int i = 0; i < arr.Length; i++)
                 {
                     arr[i] = arena.Allocate(rand.Next(0, 512));
@@ -80,7 +127,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
         }
 
-        internal static long Write(Allocation<int>[] segments)
+        internal static long Write(Sequence<int>[] segments)
         {
             int val = 0;
             long total = 0;
@@ -109,7 +156,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             return total;
         }
 
-        internal static long ReadSpans(Allocation<int>[] segments)
+        internal static long ReadSpans(Sequence<int>[] segments)
         {
             long total = 0;
             for (int i = 0; i < segments.Length; i++)
@@ -137,7 +184,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             return total;
         }
 
-        internal static long ReadSegments(Allocation<int>[] segments)
+        internal static long ReadSegments(Sequence<int>[] segments)
         {
             long total = 0;
             for (int i = 0; i < segments.Length; i++)
@@ -166,12 +213,12 @@ namespace Pipelines.Sockets.Unofficial.Tests
             return total;
         }
 
-        internal static long ReadElements(Allocation<int>[] segments)
+        internal static long ReadElements(Sequence<int>[] segments)
         {
             long total = 0;
             for (int i = 0; i < segments.Length; i++)
             {
-                foreach(var val in segments[i])
+                foreach (var val in segments[i])
                 {
                     total += val;
                 }
