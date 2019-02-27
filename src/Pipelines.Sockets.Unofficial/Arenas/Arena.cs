@@ -68,16 +68,40 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Create a type-specific arena with the options suggested
         /// </summary>
-        public virtual Arena<T> CreateArena<T>(ArenaOptions options)
+        protected virtual Arena<T> CreateArena<T>(ArenaOptions options, Allocator<T> allocator)
+            => new Arena<T>(options, allocator);
+
+        /// <summary>
+        /// Suggest an allocator for any type
+        /// </summary>
+        protected virtual Allocator<T> SuggestAllocator<T>(ArenaOptions options) => null; // use defaults
+
+        /// <summary>
+        /// Suggest an allocator for a blittable type
+        /// </summary>
+        protected virtual Allocator<T> SuggestBlittableAllocator<T>(ArenaOptions options) where T : unmanaged
         {
-            Allocator<T> allocator = null; // use the implicit default
-            if(typeof(T) == typeof(byte))
-            {   // unless we're talking about bytes, in which case
-                // using a pinned alloctor gives us more direct access
-                // in the cast steps
-                allocator = (Allocator<T>)(object)PinnedArrayPoolAllocator<byte>.Shared;
+            // if we're talking about bytes, then we *might* want to switch to a pinned allocator;
+            // - we don't need to do this if unmanaged is being selected, since that will be pinned
+            // - we don't need to do this if memory sharing is disabled
+            if (typeof(T) == typeof(byte)
+                && (options.Flags & (ArenaFlags.PreferUnmanaged | ArenaFlags.DisableBlittableSharedMemory)) == 0)
+            {
+                return PinnedArrayPoolAllocator<T>.Shared;
             }
-            return new Arena<T>(options, allocator); // use the default allocator, and the options provided
+            return null;
+        }
+
+        internal Arena<T> CreateBlittableArena<T>(ArenaOptions options) where T : unmanaged
+        {
+            var allocator = SuggestBlittableAllocator<T>(options) ?? SuggestAllocator<T>(options);
+            return CreateArena<T>(options, allocator);
+        }
+
+        internal Arena<T> CreateNonBlittableArena<T>(ArenaOptions options)
+        {
+            var allocator = SuggestAllocator<T>(options);
+            return CreateArena<T>(options, allocator);
         }
             
     }
@@ -164,12 +188,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 #if SOCKET_STREAM_BUFFERS // when this is available, we can check it here and the JIT will make magic happen
                 !RuntimeHelpers.IsReferenceOrContainsReferences<T>() &&
 #endif
-                (helper = PerTypeHelpers<T>.Allocate) != null)
+                (helper = PerTypeHelpers<T>.AllocateUnmanaged) != null)
                 {
                     return helper(this, length);
                 }
 
-                return GetArena<T>().Allocate(length);
+                return GetNonBlittableArena<T>().Allocate(length);
             }
         }
 
@@ -177,17 +201,26 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private Arena<byte> _bytesArena;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private Arena<byte> GetBytesArena() => _bytesArena ?? (_bytesArena = CreateNewArena<byte>());
+        private Arena<byte> GetBytesArena() => _bytesArena ?? (_bytesArena = CreateBlittableArena<byte>());
 
-        private Arena<T> CreateNewArena<T>()
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private Arena<T> CreateNonBlittableArena<T>()
         {
             var factory = _factory;
             if (factory == null) Throw.ObjectDisposed(ToString());
-            return factory.CreateArena<T>(_options);
+            return factory.CreateNonBlittableArena<T>(_options);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private Arena<T> GetArena<T>()
+        private Arena<T> CreateBlittableArena<T>() where T : unmanaged
+        {
+            var factory = _factory;
+            if (factory == null) Throw.ObjectDisposed(ToString());
+            return factory.CreateBlittableArena<T>(_options);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private Arena<T> GetBlittableArena<T>() where T : unmanaged
         {
             if (typeof(T) == typeof(byte))
             {
@@ -197,11 +230,22 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 if (!_typedArenas.TryGetValue(typeof(T), out var arena))
                 {
-                    arena = CreateNewArena<T>();
+                    arena = CreateBlittableArena<T>();
                     _typedArenas.Add(typeof(T), arena);
                 }
                 return (Arena<T>)arena;
             }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private Arena<T> GetNonBlittableArena<T>()
+        {   
+            if (!_typedArenas.TryGetValue(typeof(T), out var arena))
+            {
+                arena = CreateNonBlittableArena<T>();
+                _typedArenas.Add(typeof(T), arena);
+            }
+            return (Arena<T>)arena;
         }
 
         /// <summary>
@@ -216,6 +260,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         [EditorBrowsable(EditorBrowsableState.Never), Browsable(false)]
         public Sequence<T> AllocateUnmanaged<T>(int length) where T : unmanaged
+        {
+            return _options.HasFlag(ArenaFlags.DisableBlittableSharedMemory)
+                ? GetNonBlittableArena<T>().Allocate(length)
+                : AllocateUnmanagedFromBytes<T>(length);
+        }
+        private Sequence<T> AllocateUnmanagedFromBytes<T>(int length) where T : unmanaged
         {
             var arena = GetBytesArena();
 
@@ -400,61 +450,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 Type = type;
                 Original = original;
-            }
-        }
-
-        private static readonly MethodInfo s_AllocateUnmanaged =
-            typeof(Arena).GetMethods(BindingFlags.Public | BindingFlags.Instance)
-            .Single(x => x.Name == nameof(Arena.AllocateUnmanaged)
-            && x.IsGenericMethodDefinition
-            && x.GetParameters().Length == 1);
-
-        private static class PerTypeHelpers<T>
-        {
-            public static readonly Func<Arena, int, Sequence<T>> Allocate
-                = IsReferenceOrContainsReferences() ? null : TryCreateHelper();
-
-            private static Func<Arena, int, Sequence<T>> TryCreateHelper()
-            {
-                try
-                {
-                    var arena = Expression.Parameter(typeof(Arena), "arena");
-                    var length = Expression.Parameter(typeof(int), "length");
-                    Expression body = Expression.Call(
-                        instance: arena,
-                        method: s_AllocateUnmanaged.MakeGenericMethod(typeof(T)),
-                        arguments: new[] { length });                    
-                    return Expression.Lambda<Func<Arena, int, Sequence<T>>>(
-                        body, arena, length).Compile();
-                }
-                catch (Exception ex)
-                {   
-                    Debug.Fail(ex.Message);
-                    return null; // swallow in prod
-                }
-            }
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            private static bool IsReferenceOrContainsReferences()
-            {
-#if SOCKET_STREAM_BUFFERS
-                return RuntimeHelpers.IsReferenceOrContainsReferences<T>();
-#else
-                if (typeof(T).IsValueType)
-                {
-                    try
-                    {
-                        unsafe
-                        {
-                            byte* ptr = stackalloc byte[Unsafe.SizeOf<T>()];
-                            var span = new Span<T>(ptr, 1); // this will throw if not legal
-                            return span.Length != 1; // we expect 1; treat anything else as failure
-                        }
-                    }
-                    catch { } // swallow, this is an expected failure
-                }
-                return true;
-#endif
             }
         }
     }

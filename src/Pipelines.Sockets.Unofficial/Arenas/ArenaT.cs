@@ -23,6 +23,14 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Allocations are cleared when the arean is disposed, so that the contents are not released back to the underlying allocator
         /// </summary>
         ClearAtDispose,
+        /// <summary>
+        /// When possible, and when no allocator is explicitly provided; prefer using unmanaged memory
+        /// </summary>
+        PreferUnmanaged,
+        /// <summary>
+        /// Disallow blittable types from using a single pool of memory
+        /// </summary>
+        DisableBlittableSharedMemory
     }
 
     internal interface IArena : IDisposable
@@ -80,10 +88,24 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public Arena(ArenaOptions options = null, Allocator<T> allocator = null)
         {
-            _allocator = allocator ?? ArrayPoolAllocator<T>.Shared;
+            
             if (options == null) options = ArenaOptions.Default;
-            _blockSize = options.BlockSize <= 0 ? _allocator.DefaultBlockSize : options.BlockSize;
             _flags = options.Flags;
+            if (!PerTypeHelpers<T>.IsBlittable)
+            {
+                _flags &= ~(ArenaFlags.DisableBlittableSharedMemory | ArenaFlags.PreferUnmanaged); // remove options that can't apply
+                _flags |= ArenaFlags.ClearAtDispose | ArenaFlags.ClearAtReset; // add options that *must* apply
+                // (in particular, we don't want references keeping objects alive; we won't be held to blame!)
+            }
+
+            if (allocator == null)
+            {
+                if ((_flags & ArenaFlags.PreferUnmanaged) != 0)
+                    allocator = PerTypeHelpers<T>.PreferUnmanaged();
+            }
+            _allocator = allocator ?? ArrayPoolAllocator<T>.Shared; // safest default for everything
+
+            _blockSize = options.BlockSize <= 0 ? _allocator.DefaultBlockSize : options.BlockSize;
             _first = _current = AllocateDetachedBlock();
             _retentionPolicy = options.RetentionPolicy ?? RetentionPolicy.Default;
         }

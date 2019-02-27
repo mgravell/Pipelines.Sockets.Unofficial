@@ -2,6 +2,7 @@
 using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
+using Pipelines.Sockets.Unofficial.Internal;
 
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
@@ -65,7 +66,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public override IMemoryOwner<T> Allocate(int length)
             => new OwnedArray(_pool, _pool.Rent(length));
 
-        private sealed class OwnedArray : IMemoryOwner<T>
+        private sealed class OwnedArray : MemoryManager<T>
         {
             private T[] _array;
             private readonly ArrayPool<T> _pool;
@@ -75,13 +76,34 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 _array = array;
             }
 
-            public Memory<T> Memory => _array;
-
-            public void Dispose()
+            protected override void Dispose(bool disposing)
             {
-                var arr = _array;
-                _array = null;
-                if (arr != null) _pool.Return(arr);
+                if (disposing)
+                {
+                    var arr = _array;
+                    _array = null;
+                    if (arr != null) _pool.Return(arr);
+                }
+            }
+
+            public override MemoryHandle Pin(int elementIndex = 0) { Throw.NotSupported(); return default; }
+
+            public override void Unpin() => Throw.NotSupported();
+
+            public override Span<T> GetSpan() => _array;
+
+            protected override bool TryGetArray(out ArraySegment<T> segment)
+            {
+                if (_array != null)
+                {
+                    segment = new ArraySegment<T>(_array);
+                    return true;
+                }
+                else
+                {
+                    segment = default;
+                    return false;
+                }
             }
         }
     }
@@ -100,9 +122,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public override IMemoryOwner<T> Allocate(int length)
             => new PinnedArray(_pool, _pool.Rent(length));
 
-        private unsafe sealed class PinnedArray : IPinnedMemoryOwner<T>
+        private unsafe sealed class PinnedArray : MemoryManager<T>, IPinnedMemoryOwner<T>
         {
             private T[] _array;
+            private readonly int _length;
             private readonly ArrayPool<T> _pool;
             private GCHandle _pin;
             private T* _ptr;
@@ -110,35 +133,56 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 _pool = pool;
                 _array = array;
+                _length = array.Length;
                 _pin = GCHandle.Alloc(array, GCHandleType.Pinned);
                 _ptr = (T*)_pin.AddrOfPinnedObject().ToPointer();
             }
 
-            public Memory<T> Memory => _array;
-
-            T* IPinnedMemoryOwner<T>.Root => _ptr;
-
-            private void Dispose(bool disposing)
+            protected override void Dispose(bool disposing)
             {
-                if (disposing)
-                {
-                    var arr = _array;
-                    _array = null;
-                    if (arr != null) _pool.Return(arr);
-                }
                 if (_ptr != null)
                 {
                     _ptr = null;
                     try { _pin.Free(); } catch { } // best efforst
                     _pin = default;
                 }
+                if (disposing)
+                {
+                    var arr = _array;
+                    _array = null;
+                    if (arr != null) _pool.Return(arr);
+                    GC.SuppressFinalize(this);
+                }
             }
+
+            public override Span<T> GetSpan() => new Span<T>(_ptr, _length);
+
+            public override MemoryHandle Pin(int elementIndex = 0) => new MemoryHandle(_ptr + elementIndex);
+
+            protected override bool TryGetArray(out ArraySegment<T> segment)
+            {
+                if (_array != null)
+                {
+                    segment = new ArraySegment<T>(_array);
+                    return true;
+                }
+                else
+                {
+                    segment = default;
+                    return false;
+                }
+            }
+
+            public override void Unpin() { }
+
+            T* IPinnedMemoryOwner<T>.Root => _ptr;
+
             ~PinnedArray() => Dispose(false);
 
             public void Dispose()
             {
                 Dispose(true);
-                GC.SuppressFinalize(this);
+                
             }
         }
     }
@@ -176,7 +220,14 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             public override MemoryHandle Pin(int elementIndex = 0)
                 => new MemoryHandle(_ptr + elementIndex);
+
             public override void Unpin() { } // nothing to do
+
+            protected override bool TryGetArray(out ArraySegment<T> segment)
+            {
+                segment = default;
+                return false;
+            }
 
             protected override void Dispose(bool disposing)
             {
