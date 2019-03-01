@@ -41,10 +41,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public Func<long, long, long> RetentionPolicy { get; }
 
+        private const ArenaFlags DefaultFlags = ArenaFlags.BlittableNonPaddedSharing; // good compromise betweeen perf and memory
+
         /// <summary>
         /// Create a new ArenaOptions instance
         /// </summary>
-        public ArenaOptions(ArenaFlags flags = ArenaFlags.None, int blockSizeBytes = 0, Func<long, long, long> retentionPolicy = null)
+        public ArenaOptions(ArenaFlags flags = DefaultFlags, int blockSizeBytes = 0, Func<long, long, long> retentionPolicy = null)
         {
             Flags = flags;
             BlockSizeBytes = blockSizeBytes;
@@ -77,13 +79,13 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             // if we're talking about bytes, then we *might* want to switch to a pinned allocator if
             // the user hasn't disabled padded blittables
-            if (typeof(T) == typeof(byte) && !options.HasFlag(ArenaFlags.DisableBlittablePaddedSharing))
+            if (typeof(T) == typeof(byte) && options.HasFlag(ArenaFlags.BlittablePaddedSharing))
             {
                 return PinnedArrayPoolAllocator<T>.Shared;
             }
 
             // and if the user hasn't disabled same-size shared blittables, again we should prefer pinned
-            if (!options.HasFlag(ArenaFlags.DisableBlittableNonPaddedSharing))
+            if (options.HasFlag(ArenaFlags.BlittableNonPaddedSharing))
             {
                 return PinnedArrayPoolAllocator<T>.Shared;
             }
@@ -373,7 +375,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                     if (PerTypeHelpers<T>.IsBlittable && Unsafe.SizeOf<T>() > 0) // we can do fun things for blittable types
                     {
                         // can we use a padded approach? (more complex/slower allocations due to padding, but better memory usage)
-                        if (!Options.HasFlag(ArenaFlags.DisableBlittablePaddedSharing) // if the caller wants
+                        if (Options.HasFlag(ArenaFlags.BlittablePaddedSharing) // if the caller wants
                             && Unsafe.SizeOf<T>() <= 256) // don't use too-large T because of excessive padding
                         {
                             if (typeof(T) == typeof(byte)) // for blittable scenarios, byte is the underlying type, so don't thunk it
@@ -391,7 +393,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                         }
 
                         // if we aren't using padded blittables; can we use a non-padded approach instead?
-                        if (Options.HasFlag(ArenaFlags.DisableBlittablePaddedSharing) && !Options.HasFlag(ArenaFlags.DisableBlittableNonPaddedSharing))
+                        if (!Options.HasFlag(ArenaFlags.BlittablePaddedSharing) && Options.HasFlag(ArenaFlags.BlittableNonPaddedSharing))
                         {
                             if(_blittableBySize.TryGetValue(Unsafe.SizeOf<T>(), out var existing))
                             {

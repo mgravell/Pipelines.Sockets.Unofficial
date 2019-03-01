@@ -32,13 +32,13 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         PreferPinned = 8,
         /// <summary>
-        /// Disallow blittable types from sharing pools of data with types of the same size (only applies to multi-type arenas)
+        /// Allow blittable types of the same size to share a pool of data (only applies to multi-type arenas)
         /// </summary>
-        DisableBlittableNonPaddedSharing = 16,
+        BlittableNonPaddedSharing = 16,
         /// <summary>
-        /// Prevent blittable types from all sharing a single pool of byte-data, using padding to align (only applies to multi-type arenas)
+        /// Allow blittable types to all share a single pool of byte-data, using padding to align (only applies to multi-type arenas, and for reasonably sized types)
         /// </summary>
-        DisableBlittablePaddedSharing = 32
+        BlittablePaddedSharing = 32
     }
 
     internal interface IArena : IDisposable
@@ -106,7 +106,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             _flags = options.Flags;
             if (!PerTypeHelpers<T>.IsBlittable)
             {
-                _flags &= ~(ArenaFlags.DisableBlittableNonPaddedSharing | ArenaFlags.PreferUnmanaged | ArenaFlags.PreferPinned); // remove options that can't apply
+                _flags &= ~(ArenaFlags.BlittableNonPaddedSharing | ArenaFlags.BlittablePaddedSharing | ArenaFlags.PreferUnmanaged | ArenaFlags.PreferPinned); // remove options that can't apply
                 _flags |= ArenaFlags.ClearAtDispose | ArenaFlags.ClearAtReset; // add options that *must* apply
                 // (in particular, we don't want references keeping objects alive; we won't be held to blame!)
             }

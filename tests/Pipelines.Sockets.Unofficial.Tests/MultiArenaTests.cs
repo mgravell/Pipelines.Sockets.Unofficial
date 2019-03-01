@@ -19,7 +19,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public void MultiArenaCanUseSharedMemory()
         {
-            using (var arena = new Arena())
+            using (var arena = new Arena(new ArenaOptions(ArenaFlags.BlittableNonPaddedSharing | ArenaFlags.BlittablePaddedSharing)))
             {
                 // simple values
                 Sequence<byte> bytes = arena.Allocate<byte>(41);
@@ -52,7 +52,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 Assert.IsType<PaddedBlittableOwnedArena<Foo>>(arena.GetArena<Foo>());
 
                 // ShowUnmanaged<Bar>(); // won't compile, not unmanaged
-                Sequence <Bar> bars = arena.Allocate<Bar>(20);
+                Sequence<Bar> bars = arena.Allocate<Bar>(20);
                 AssertPosition("segment: 0, offset: 0; byte-offset: 0; type: Bar", bars.Start()); // go into different block
                 AssertPosition("segment: 0, offset: 20; byte-offset: " + (20 * Unsafe.SizeOf<Bar>()) + "; type: Bar", bars.End());
                 Assert.IsType<ArrayPoolAllocator<Bar>>(arena.GetAllocator<Bar>());
@@ -63,7 +63,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public void MultiArenaCanUseNonSharedMemory()
         {
-            using (var arena = new Arena(new ArenaOptions(ArenaFlags.DisableBlittableNonPaddedSharing | ArenaFlags.DisableBlittablePaddedSharing)))
+            using (var arena = new Arena(new ArenaOptions(ArenaFlags.None)))
             {
                 // simple values
                 Sequence<byte> bytes = arena.Allocate<byte>(41);
@@ -106,7 +106,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public void MultiArenaCanUseNonPaddedMemory()
         {
-            using (var arena = new Arena(new ArenaOptions(ArenaFlags.DisableBlittablePaddedSharing)))
+            using (var arena = new Arena(new ArenaOptions(ArenaFlags.BlittableNonPaddedSharing)))
             {
                 // simple values
                 Sequence<byte> bytes = arena.Allocate<byte>(41);

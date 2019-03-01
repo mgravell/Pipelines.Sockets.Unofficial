@@ -125,12 +125,57 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         bool ICollection<T>.Remove(T item) { Throw.NotSupported(); return default; }
 
-        private IEnumerator<T> GetObjectEnumerator() => _sequence.IsSingleSegment ? GetSingleSegmentEnumerator() : GetMultiSegmentEnumerator();
-
-        private IEnumerator<T> GetSingleSegmentEnumerator()
+        private unsafe IEnumerator<T> GetObjectEnumerator()
         {
-            for (int i = 0; i < _sequence.Length; i++) // indexer will be sufficient
-                yield return _sequence[i];
+            if (_sequence.IsSingleSegment)
+            {
+                var segment = _sequence.GetSegmentAndOffset(out int start);
+                if (segment is IPinnedMemoryOwner<T> pinned && pinned.Origin != null)
+                {
+                    return new PointerBasedEnumerator(pinned.Origin, start, (int)_sequence.Length);
+                }
+                GetSingleSegmentEnumerator(segment.Memory.Slice(start, (int)_sequence.Length));
+            }
+            return GetMultiSegmentEnumerator();
+        }
+
+        private sealed unsafe class PointerBasedEnumerator : IEnumerator<T>
+        {
+            void* _ptr;
+            int _remaining;
+
+            public PointerBasedEnumerator(void* origin, int offset, int length)
+            {
+                _ptr = Unsafe.Add<T>(origin, offset);
+                _remaining = length;
+            }
+
+            public T Current { get; private set; }
+
+            object IEnumerator.Current => Current;
+
+            public void Dispose() { }
+
+            public bool MoveNext()
+            {
+                // if exhausted, give up
+                if (_remaining <= 0) return false;
+
+                // otherwise, we'll de-reference a value, increment the pointer, and indicate success
+                Current = Unsafe.AsRef<T>(_ptr);
+                _ptr = Unsafe.Add<T>(_ptr, 1);
+                _remaining--;
+                return true;
+            }
+
+            public void Reset() => Throw.NotSupported();
+        }
+
+        private IEnumerator<T> GetSingleSegmentEnumerator(Memory<T> memory)
+        {
+            var len = memory.Length;
+            for (int i = 0; i < len; i++)
+                yield return memory.Span[i];
         }
 
         private IEnumerator<T> GetMultiSegmentEnumerator()
