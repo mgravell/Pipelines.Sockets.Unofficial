@@ -1,32 +1,10 @@
 ﻿using System;
-using System.Diagnostics;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
-    internal static class PerTypeHelpers
-    {
-        internal static readonly MethodInfo AllocateUnmanaged =
-                    typeof(Arena).GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                    .Single(x => x.Name == nameof(Arena.AllocateUnmanaged)
-                    && x.IsGenericMethodDefinition
-                    && x.GetParameters().Length == 1);
-    }
-
     internal static class PerTypeHelpers<T>
     {
-        static PerTypeHelpers()
-        {
-            if (IsBlittable)
-            {
-                AllocateUnmanaged = TryCreateAllocate();
-            }
-        }
-        public static readonly Func<Arena, int, Sequence<T>> AllocateUnmanaged;
-
         private static Allocator<T> _preferUnmanaged, _preferPinned;
         public static Allocator<T> PreferUnmanaged()
         {
@@ -65,26 +43,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                     catch { }
                 }
                 return ArrayPoolAllocator<T>.Shared; // safe fallback
-            }
-        }
-
-        private static Func<Arena, int, Sequence<T>> TryCreateAllocate()
-        {
-            try
-            {
-                var arena = Expression.Parameter(typeof(Arena), "arena");
-                var length = Expression.Parameter(typeof(int), "length");
-                Expression body = Expression.Call(
-                    instance: arena,
-                    method: PerTypeHelpers.AllocateUnmanaged.MakeGenericMethod(typeof(T)),
-                    arguments: new[] { length });
-                return Expression.Lambda<Func<Arena, int, Sequence<T>>>(
-                    body, arena, length).Compile();
-            }
-            catch (Exception ex)
-            {
-                Debug.Fail(ex.Message);
-                return null; // swallow in prod
             }
         }
 

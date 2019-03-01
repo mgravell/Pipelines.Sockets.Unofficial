@@ -8,12 +8,21 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     /// <summary>
     /// Represents an abstract chained segment of mutable memory
     /// </summary>
-    internal interface ISegment
+    internal interface ISegment // this interface mostly helps debugging
     {
+        int ElementSize { get; }
+        /// <summary>
+        /// The segment index
+        /// </summary>
+        int Index { get; }
         /// <summary>
         /// The type of data represented by this segment
         /// </summary>
         Type ElementType { get; }
+        /// <summary>
+        /// The actual type of memory used for the storage
+        /// </summary>
+        Type UnderlyingType { get; }
         /// <summary>
         /// The offset of this segment in the chain
         /// </summary>
@@ -31,12 +40,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     /// <summary>
     /// A memory-owner that provides direct access to the root reference
     /// </summary>
-    public interface IPinnedMemoryOwner<T> : IMemoryOwner<T> where T : unmanaged
+    public interface IPinnedMemoryOwner<T> : IMemoryOwner<T>
     {
         /// <summary>
         /// The root reference of the block, or a null-pointer if the data should not be considered pinned
         /// </summary>
-        unsafe T* Root { get; }
+        unsafe void* Origin { get; } // expressed as an untyped pointer so that IPinnedMemoryOwner<T> can be used without needing the T : unmanaged constraint
     }
 
     /// <summary>
@@ -44,6 +53,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     /// </summary>
     public abstract class SequenceSegment<T> : ReadOnlySequenceSegment<T>, ISegment, IMemoryOwner<T>
     {
+        int ISegment.ElementSize => Unsafe.SizeOf<T>();
         void IDisposable.Dispose() { } // just to satisfy IMemoryOwner<T>
 
         /// <summary>
@@ -82,6 +92,20 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         Type ISegment.ElementType => typeof(T);
 
+        int ISegment.Index => GetSegmentIndex();
+
+        /// <summary>
+        /// Get the logical index of this segment
+        /// </summary>
+        protected virtual int GetSegmentIndex() => 0;
+
+        Type ISegment.UnderlyingType => GetUnderlyingType();
+
+        /// <summary>
+        /// Get the real type of data being used to hold this data
+        /// </summary>
+        protected virtual Type GetUnderlyingType() => typeof(T);
+
 #if DEBUG
         long ISegment.ByteOffset => ByteOffset;
 
@@ -89,13 +113,18 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 #endif
     }
 
-    internal sealed class Block<T> : SequenceSegment<T>, IDisposable // , IBlock
+    internal sealed class Block<T> : SequenceSegment<T>, IDisposable
     {
+        internal int SegmentIndex { get; }
+
+        protected override int GetSegmentIndex() => SegmentIndex;
+
         public IMemoryOwner<T> Allocation { get; private set; }
 
-        public Block(IMemoryOwner<T> allocation, long offset)
+        public Block(IMemoryOwner<T> allocation, int segmentIndex, long offset)
         {
             Allocation = allocation;
+            SegmentIndex = segmentIndex;
             base.Memory = Memory = Allocation.Memory;
             RunningIndex = offset;
         }

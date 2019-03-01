@@ -506,20 +506,25 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return null; // nope!
         }
 
-#if DEBUG
+
         /// <summary>
         /// Attempt to calculate the net offset of a position
         /// </summary>
-        internal static long? TryGetByteOffset<T>(this SequencePosition position)
+        internal static string TryGetSummary(this SequencePosition position)
         {
             var obj = position.GetObject();
             var offset = position.GetInteger();
-            if (obj == null) return offset;
-
-            if (obj is ISegment segment) return segment.ByteOffset + (offset * Unsafe.SizeOf<T>());
+            if (obj == null) return $"offset: {offset}";
+            if (obj is ISegment segment)
+            {
+#if DEBUG // byte offset only tracked in debug
+                return $"segment: {segment.Index}, offset: {offset}; byte-offset: {segment.ByteOffset + (offset * segment.ElementSize)}; type: {segment.UnderlyingType.Name}";
+#else
+                return $"segment: {segment.Index}, offset: {offset}; type: {segment.UnderlyingType.Name}";
+#endif
+            }
             return null; // nope!
         }
-#endif
 
     }
 }

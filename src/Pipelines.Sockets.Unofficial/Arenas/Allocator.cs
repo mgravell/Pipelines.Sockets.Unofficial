@@ -11,26 +11,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     /// </summary>
     public abstract class Allocator<T>
     {
-        static readonly int _defaultBlockSize = CalculateDefaultBlockSize();
-        static int CalculateDefaultBlockSize()
-        {
-            try
-            {
-                // try for 128k *memory* (not 128k elements) - this is so we get on the LOH by default (~85k)
-                int count = (128 * 1024) / Unsafe.SizeOf<T>();
-                return count <= 64 ? 64 : count; // avoid too small (only impacts **huge** types)
-            }
-            catch
-            {
-                return 32 * 1024; // arbitrary 32k elements if that fails
-            }
-        }
-
-        /// <summary>
-        /// The default block-size used by this allocate
-        /// </summary>
-        public virtual int DefaultBlockSize => _defaultBlockSize;
-
         /// <summary>
         /// Allocate a new block
         /// </summary>
@@ -175,7 +155,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             public override void Unpin() { }
 
-            T* IPinnedMemoryOwner<T>.Root => _ptr;
+            void* IPinnedMemoryOwner<T>.Origin => _ptr;
 
             ~PinnedArray() => Dispose(false);
 
@@ -211,7 +191,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             private T* _ptr;
             private readonly int _length;
 
-            public T* Root => _ptr;
+            void* IPinnedMemoryOwner<T>.Origin => _ptr;
 
             public OwnedPointer(int length)
                 => _ptr = (T*)Marshal.AllocHGlobal((_length = length) * sizeof(T)).ToPointer();

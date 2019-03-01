@@ -39,9 +39,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
     internal interface IArena : IDisposable
     {
-        long Allocated();
-        long Capacity { get; }
         void Reset();
+        Type ElementType { get; }
     }
 
     /// <summary>
@@ -49,6 +48,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     /// </summary>
     public sealed class Arena<T> : IDisposable, IArena
     {
+        Type IArena.ElementType => typeof(T);
+
         /// <summary>
         /// The number of elements allocated since the last reset
         /// </summary>
@@ -91,8 +92,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Create a new Arena
         /// </summary>
         public Arena(ArenaOptions options = null, Allocator<T> allocator = null)
+            : this(options, allocator, options?.BlockSizeBytes ?? 0) { }
+
+        internal Arena(ArenaOptions options, Allocator<T> allocator, int blockSizeBytes)
         {
-            
+            if (Unsafe.SizeOf<T>() == 0) Throw.InvalidOperation("Cannot create an arena of a type with no size");
+
             if (options == null) options = ArenaOptions.Default;
             _flags = options.Flags;
             if (!PerTypeHelpers<T>.IsBlittable)
@@ -109,12 +114,17 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             _allocator = allocator ?? ArrayPoolAllocator<T>.Shared; // safest default for everything
 
-            _blockSize = options.BlockSize <= 0 ? _allocator.DefaultBlockSize : options.BlockSize;
-            _first = _current = AllocateDetachedBlock();
+            const int DefaultBlockSizeBytes = 128 * 1024, // 128KiB - gives good memory locality, avoids lots of split pages, and ensures LOH for managed allocators
+                MinBlockSize = 1024;// aim for *at least* a 1KiB block; tiny arrays are a terrible idea in this context
+
+            int blockSize = (blockSizeBytes > 0 ? blockSizeBytes : DefaultBlockSizeBytes) / Unsafe.SizeOf<T>(); // calculate the preferred block size
+            _blockSize = Math.Max(blockSize, Math.Min(MinBlockSize / Unsafe.SizeOf<T>(), 1)); // calculate the *actual* size, after accounting for minimum sizes
+  
+            _first = _current = AllocateAndAttachBlock(previous: null);
             _retentionPolicy = options.RetentionPolicy ?? RetentionPolicy.Default;
         }
 
-        private Block<T> AllocateDetachedBlock()
+        private Block<T> AllocateAndAttachBlock(Block<T> previous)
         {
             var allocation = _allocator.Allocate(_blockSize);
             if (allocation == null) Throw.InvalidOperation("The allocator provided an empty range");
@@ -125,7 +135,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
             if (ClearAtReset) // this really means "before use", so...
                 _allocator.Clear(allocation, allocation.Memory.Length);
-            var block = new Block<T>(allocation, _capacityTotal);
+            var block = new Block<T>(allocation, previous == null ? 0 : previous.SegmentIndex + 1, _capacityTotal);
+            if (previous != null) previous.Next = block; // attach into forwards chain
             _capacityTotal += block.Length;
             return block;
         }
@@ -148,6 +159,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
             return SlowAllocate(length);
         }
+
+        internal object GetAllocator() => _allocator;
 
         internal int AllocatedCurrentBlock => _allocatedCurrentBlock;
 
@@ -184,7 +197,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             if (length < 0) Throw.ArgumentOutOfRange(nameof(length));
             void MoveNextBlock()
             {
-                _current = _current.Next ?? (_current.Next = AllocateDetachedBlock());
+                _current = _current.Next ?? AllocateAndAttachBlock(previous: _current);
                 _allocatedCurrentBlock = 0;
             }
 

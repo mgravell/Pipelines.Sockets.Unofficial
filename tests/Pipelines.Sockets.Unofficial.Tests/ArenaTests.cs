@@ -15,7 +15,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         }
         private struct TwoPair<T>
         {
-            private readonly object a,b;
+            private readonly object a, b;
             private readonly int c, d;
         }
         private struct Len32<T>
@@ -57,7 +57,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public void SliceAndDice()
         {
-            using (var arena = new Arena<int>(new ArenaOptions(blockSize: 16)))
+            using (var arena = new Arena<int>(new ArenaOptions(blockSizeBytes: 16 * sizeof(int))))
             {
                 var alloc = arena.Allocate(2048);
 
@@ -105,7 +105,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public void WriteAndRead()
         {
-            using (var arena = new Arena<int>(new ArenaOptions(blockSize: 1024)))
+            using (var arena = new Arena<int>(new ArenaOptions(blockSizeBytes: 1024 * sizeof(int))))
             {
                 var rand = new Random(43134114);
                 var arr = new Sequence<int>[100];
@@ -226,7 +226,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             return total;
         }
 
-        private readonly ArenaOptions _blockSizeFive = new ArenaOptions(blockSize: 5);
+        private readonly ArenaOptions _blockSizeFive = new ArenaOptions(blockSizeBytes: 5 * sizeof(int));
         [Fact]
         public void Copy()
         {
