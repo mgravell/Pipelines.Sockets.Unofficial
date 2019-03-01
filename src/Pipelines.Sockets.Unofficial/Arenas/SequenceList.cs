@@ -35,6 +35,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Sequence<T>.Enumerator GetEnumerator() => _sequence.GetEnumerator();
 
+        /// <summary>
+        /// Provide a reference to an element by index
+        /// </summary>
         public ref T this[int index]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
