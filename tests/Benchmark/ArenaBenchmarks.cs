@@ -16,6 +16,17 @@ namespace Benchmark
         private readonly int _maxCount;
         public ArenaBenchmarks()
         {
+            // allocate a uint on all 3 allocators, as
+            // we want to force thunking (we test with int later)
+            // (this actually only impacts "no padding", but ...
+            // let's be fair)
+            _multiArenaDefault.Allocate<uint>();
+            _multiArenaNoPadding.Allocate<uint>();
+            _multiArenaNoSharing.Allocate<uint>();
+            _multiArenaDefault.Reset();
+            _multiArenaNoPadding.Reset();
+            _multiArenaNoSharing.Reset();
+
             var rand = new Random(43134114);
             _sizes = new int[100][];
             for(int i = 0; i < _sizes.Length;i++)
@@ -376,8 +387,9 @@ namespace Benchmark
 
         readonly ArrayPool<int> _pool = ArrayPool<int>.Shared;
         readonly Arena<int> _arena = new Arena<int>();
-        readonly Arena _multiArenaPadding = new Arena();
-        readonly Arena _multiArenaNoPadding = new Arena(new ArenaOptions(ArenaFlags.DisableBlittableSharedMemory));
+        readonly Arena _multiArenaDefault = new Arena();
+        readonly Arena _multiArenaNoPadding = new Arena(new ArenaOptions(ArenaFlags.DisableBlittablePaddedSharing));
+        readonly Arena _multiArenaNoSharing = new Arena(new ArenaOptions(ArenaFlags.DisableBlittablePaddedSharing | ArenaFlags.DisableBlittableNonPaddedSharing));
 
         [BenchmarkCategory("allocate")]
         [Benchmark(Description = "Arena<int>.Allocate")]
@@ -397,24 +409,24 @@ namespace Benchmark
         }
 
         [BenchmarkCategory("allocate")]
-        [Benchmark(Description = "Arena.Allocate<int> (shared)")]
-        public void Alloc_Arena_Padding()
+        [Benchmark(Description = "Arena.Allocate<int> (default)")]
+        public void Alloc_Arena_Default()
         {
 
             for (int i = 0; i < _sizes.Length; i++)
             {
                 _arenaAllocs.Clear();
-                _multiArenaPadding.Reset();
+                _multiArenaDefault.Reset();
                 var arr = _sizes[i];
                 for (int j = 0; j < arr.Length; j++)
                 {
-                    _arenaAllocs.Add(_multiArenaPadding.Allocate<int>(arr[j]));
+                    _arenaAllocs.Add(_multiArenaDefault.Allocate<int>(arr[j]));
                 }
             }
         }
 
         [BenchmarkCategory("allocate")]
-        [Benchmark(Description = "Arena.Allocate<int> (non-shared)")]
+        [Benchmark(Description = "Arena.Allocate<int> (no padding)")]
         public void Alloc_Arena_NoPadding()
         {
             for (int i = 0; i < _sizes.Length; i++)
@@ -430,14 +442,30 @@ namespace Benchmark
         }
 
         [BenchmarkCategory("allocate")]
-        [Benchmark(Description = "OwnedArena<int>.Allocate (shared)")]
-        public void Alloc_Arena_Owned_Padding()
+        [Benchmark(Description = "Arena.Allocate<int> (no sharing)")]
+        public void Alloc_Arena_NoSharing()
         {
-            var owned = _multiArenaPadding.GetArena<int>();
             for (int i = 0; i < _sizes.Length; i++)
             {
                 _arenaAllocs.Clear();
-                _multiArenaPadding.Reset();
+                _multiArenaNoSharing.Reset();
+                var arr = _sizes[i];
+                for (int j = 0; j < arr.Length; j++)
+                {
+                    _arenaAllocs.Add(_multiArenaNoSharing.Allocate<int>(arr[j]));
+                }
+            }
+        }
+
+        [BenchmarkCategory("allocate")]
+        [Benchmark(Description = "OwnedArena<int>.Allocate (default)")]
+        public void Alloc_Arena_Owned_Default()
+        {
+            var owned = _multiArenaDefault.GetArena<int>();
+            for (int i = 0; i < _sizes.Length; i++)
+            {
+                _arenaAllocs.Clear();
+                _multiArenaDefault.Reset();
                 var arr = _sizes[i];
                 for (int j = 0; j < arr.Length; j++)
                 {
@@ -447,7 +475,7 @@ namespace Benchmark
         }
 
         [BenchmarkCategory("allocate")]
-        [Benchmark(Description = "OwnedArena<int>.Allocate (nonshared)")]
+        [Benchmark(Description = "OwnedArena<int>.Allocate (no padding)")]
         public void Alloc_Arena_Owned_NoPadding()
         {
             var owned = _multiArenaNoPadding.GetArena<int>();
@@ -455,6 +483,23 @@ namespace Benchmark
             {
                 _arenaAllocs.Clear();
                 _multiArenaNoPadding.Reset();
+                var arr = _sizes[i];
+                for (int j = 0; j < arr.Length; j++)
+                {
+                    _arenaAllocs.Add(owned.Allocate(arr[j]));
+                }
+            }
+        }
+
+        [BenchmarkCategory("allocate")]
+        [Benchmark(Description = "OwnedArena<int>.Allocate (no sharing)")]
+        public void Alloc_Arena_Owned_NoSharingg()
+        {
+            var owned = _multiArenaNoSharing.GetArena<int>();
+            for (int i = 0; i < _sizes.Length; i++)
+            {
+                _arenaAllocs.Clear();
+                _multiArenaNoSharing.Reset();
                 var arr = _sizes[i];
                 for (int j = 0; j < arr.Length; j++)
                 {

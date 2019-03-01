@@ -185,6 +185,40 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             => sequence.AsReadOnly();
 
         /// <summary>
+        /// Get a reference to an element by index; note that this *can* have
+        /// poor performance for multi-segment sequences, but it is usually satisfactory
+        /// </summary>
+        public ref T this[int index]
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                var first = FirstSpan;
+                if (index < first.Length) return ref first[index];
+                return ref GetByIndex(index);
+            }
+        }
+
+        private ref T GetByIndex(int index)
+        {
+            if (index < 0 | index >= _length) Throw.IndexOutOfRange();
+
+            foreach(var span in Spans)
+            {
+                if (index < span.Length) return ref span[index];
+                index -= span.Length;
+            }
+            Throw.IndexOutOfRange();
+            return ref FirstSpan[0]; // shouldn't get here, just to make compiler happy
+        }
+
+        internal SequenceSegment<T> GetSegmentAndOffset(out int offset)
+        {
+            offset = Offset;
+            return _head;
+        }
+
+        /// <summary>
         /// Converts a typed sequence to a typed read-only-sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

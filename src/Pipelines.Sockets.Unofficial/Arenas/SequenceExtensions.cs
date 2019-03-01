@@ -31,6 +31,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
+        /// Create a list-like object that provides access to the sequence
+        /// </summary>
+        public static SequenceList<T> ToList<T>(this in Sequence<T> source)
+            => SequenceList<T>.Create(source);
+
+        /// <summary>
         /// Create an array with the contents of the sequence, applying a projection
         /// </summary>
         public static TTo[] ToArray<TFrom, TTo>(this in Sequence<TFrom> source, Projection<TFrom, TTo> projection)

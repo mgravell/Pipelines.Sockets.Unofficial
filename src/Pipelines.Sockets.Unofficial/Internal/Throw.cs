@@ -60,5 +60,8 @@ namespace Pipelines.Sockets.Unofficial.Internal
 
         internal static void FileNotFound(string message, string path)
             => throw new FileNotFoundException(message, path);
+
+        internal static void IndexOutOfRange()
+            => throw new IndexOutOfRangeException();
     }
 }

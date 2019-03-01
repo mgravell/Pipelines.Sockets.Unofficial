@@ -3,6 +3,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -71,11 +72,18 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         protected internal virtual Allocator<T> SuggestBlittableAllocator<T>(ArenaOptions options) where T : unmanaged
         {
-            // if we're talking about bytes, then we *might* want to switch to a pinned allocator;
-            // - we don't need to do this if unmanaged is being selected, since that will be pinned
-            // - we don't need to do this if memory sharing is disabled
-            if (typeof(T) == typeof(byte)
-                && (options.Flags & (ArenaFlags.PreferUnmanaged | ArenaFlags.DisableBlittableSharedMemory)) == 0)
+            // if the user prefers unmanaged: we don't need to do anything - the arena will already select this
+            if (options.HasFlag(ArenaFlags.PreferUnmanaged)) return null;
+
+            // if we're talking about bytes, then we *might* want to switch to a pinned allocator if
+            // the user hasn't disabled padded blittables
+            if (typeof(T) == typeof(byte) && !options.HasFlag(ArenaFlags.DisableBlittablePaddedSharing))
+            {
+                return PinnedArrayPoolAllocator<T>.Shared;
+            }
+
+            // and if the user hasn't disabled same-size shared blittables, again we should prefer pinned
+            if (!options.HasFlag(ArenaFlags.DisableBlittableNonPaddedSharing))
             {
                 return PinnedArrayPoolAllocator<T>.Shared;
             }
@@ -119,13 +127,15 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     {
         internal Arena<T> Arena => _arena;
         private readonly Arena<T> _arena;
-        public SimpleOwnedArena(Arena parent)
+        public SimpleOwnedArena(Arena parent, Allocator<T> suggestedAllocator)
         {
             var factory = parent.Factory;
             var options = parent.Options;
+            
+            // create the arena
             _arena = new Arena<T>(
                 options: options,
-                allocator: factory.SuggestAllocator<T>(options),
+                allocator: suggestedAllocator ?? factory.SuggestAllocator<T>(options),
                 blockSizeBytes: factory.SuggestBlockSizeBytes<T>(options));
         }
         public override Sequence<T> Allocate(int length) => _arena.Allocate(length);
@@ -136,40 +146,63 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         internal override void Dispose() => _arena.Dispose();
     }
 
-    internal sealed class BlittableOwnedArena<T> : OwnedArena<T> where T : unmanaged
+    internal abstract class MappedBlittableOwnedArena<TFrom, TTo> : OwnedArena<TTo>
+        where TFrom : unmanaged
+        where TTo : unmanaged
     {
-        private readonly Arena<byte> _arena;
-        public BlittableOwnedArena(Arena parent)
+        protected readonly Arena<TFrom> _arena;
+        public MappedBlittableOwnedArena(Arena parent)
         {   // get the byte arena from the parent
-            _arena = ((SimpleOwnedArena<byte>)parent.GetArena<byte>()).Arena;
+            _arena = ((SimpleOwnedArena<TFrom>)parent.GetArena<TFrom>()).Arena;
         }
-
-        internal override void Reset() {} // the T allocator doesn't own the data
+        internal override void Reset() { } // the T allocator doesn't own the data
         internal override void Dispose() { } // the T allocator doesn't own the data
-
         internal override object GetAllocator() => _arena.GetAllocator();
 
-        private readonly List<Arena.MappedSegment<T>> _mappedSegments = new List<Arena.MappedSegment<T>>();
+        private readonly List<Arena.MappedSegment<TFrom, TTo>> _mappedSegments = new List<Arena.MappedSegment<TFrom, TTo>>();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private Arena.MappedSegment<T> MapBlock(Block<byte> block)
-            => _mappedSegments.Count > block.SegmentIndex ? _mappedSegments[block.SegmentIndex] : MapTo(block.SegmentIndex);
+        protected Arena.MappedSegment<TFrom, TTo> MapBlock(int index)
+            => _mappedSegments.Count > index ? _mappedSegments[index] : MapTo(index);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private Arena.MappedSegment<T> MapTo(int index)
+        private Arena.MappedSegment<TFrom, TTo> MapTo(int index)
         {
             int neededCount = index + 1;
-            Arena.MappedSegment<T> current = _mappedSegments.Count == 0 ? null : _mappedSegments[_mappedSegments.Count - 1];
+            Arena.MappedSegment<TFrom, TTo> current = _mappedSegments.Count == 0 ? null : _mappedSegments[_mappedSegments.Count - 1];
             while (_mappedSegments.Count < neededCount)
             {
                 var nextUnderlying = current == null ? _arena.FirstBlock : current.Underlying.Next;
-                var next = new Arena.MappedSegment<T>(current, nextUnderlying);
+                var next = new Arena.MappedSegment<TFrom, TTo>(current, nextUnderlying);
                 _mappedSegments.Add(next);
                 current = next;
             }
             return current;
         }
+    }
 
+    internal sealed class NonPaddedBlittableOwnedArena<TFrom, TTo> : MappedBlittableOwnedArena<TFrom, TTo>
+        where TFrom : unmanaged
+        where TTo : unmanaged 
+    {
+        public NonPaddedBlittableOwnedArena(Arena parent) : base(parent)
+        {
+            if (Unsafe.SizeOf<TFrom>() != Unsafe.SizeOf<TTo>()) Throw.InvalidOperation($"A non-padded arena requires the size of {typeof(TFrom).Name} ({Unsafe.SizeOf<TFrom>()}) and {typeof(TTo).Name} ({Unsafe.SizeOf<TTo>()}) to match");
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override Sequence<TTo> Allocate(int length)
+        {
+            var fromParent = _arena.Allocate(length);
+            var block = (Block<TFrom>)fromParent.GetSegmentAndOffset(out var offset);
+            return new Sequence<TTo>(offset, length, MapBlock(block.SegmentIndex));
+        }
+    }
+
+    internal sealed class PaddedBlittableOwnedArena<T> : MappedBlittableOwnedArena<byte, T>
+        where T : unmanaged
+    {
+        public PaddedBlittableOwnedArena(Arena parent) : base(parent) {}
         public override Sequence<T> Allocate(int length)
         {
             // we need to think about padding/alignment; to allow proper
@@ -193,7 +226,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             // create our result, since we know the details
             Debug.Assert(arena.AllocatedCurrentBlock % Unsafe.SizeOf<T>() == 0, "should be aligned to T");
-            var mappedBlock = MapBlock(arena.CurrentBlock);
+            var mappedBlock = MapBlock(arena.CurrentBlock.SegmentIndex);
             var result = new Sequence<T>(arena.AllocatedCurrentBlock / Unsafe.SizeOf<T>(), length, mappedBlock);
 
             // now we need to allocate and map the rest of the pages, taking care to
@@ -229,7 +262,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             // make sure that we've mapped as far as the end; we don't actually need the result - we
             // just need to know that it has happened, as this connects the chain
-            MapBlock(arena.CurrentBlock);
+            MapBlock(arena.CurrentBlock.SegmentIndex);
 
             Debug.Assert(length == 0);
 
@@ -260,6 +293,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public void Dispose()
         {
             Factory = null; // prevent any resurrections
+
             var owned = _ownedArenas;
             _ownedArenas = null;
             if (owned != null)
@@ -269,6 +303,13 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                     try { pair.Value.Dispose(); } catch { } // best efforts
                 }
                 owned.Clear();
+            }
+
+            var bySize = _blittableBySize;
+            _blittableBySize = null;
+            if (bySize != null)
+            {
+                bySize.Clear();
             }
         }
 
@@ -312,6 +353,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
         IArena _lastArena;
 
+        private Dictionary<int, IArena> _blittableBySize = new Dictionary<int, IArena>();
         private Dictionary<Type, IArena> _ownedArenas = new Dictionary<Type, IArena>();
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -324,28 +366,71 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             OwnedArena<T> Create()
             {
-                if (PerTypeHelpers<T>.IsBlittable // we can do fun things for blittable types
-                    && typeof(T) != typeof(byte) // for blittable scenarios, byte is the underlying type, so don't thunk it
-                    && !Options.HasFlag(ArenaFlags.DisableBlittableSharedMemory) // if the caller wants
-                    && Unsafe.SizeOf<T>() > 0 && Unsafe.SizeOf<T>() <= 256) // don't use too-large T because of excessive padding
+                Allocator<T> allocator = null;
+                bool addBySize = false;
+                try
                 {
-                    try
+                    if (PerTypeHelpers<T>.IsBlittable && Unsafe.SizeOf<T>() > 0) // we can do fun things for blittable types
                     {
-                        return (OwnedArena<T>)Activator.CreateInstance(
-                            typeof(BlittableOwnedArena<int>).GetGenericTypeDefinition().MakeGenericType(typeof(T)),
-                            args: new object[] { this });
+                        // can we use a padded approach? (more complex/slower allocations due to padding, but better memory usage)
+                        if (!Options.HasFlag(ArenaFlags.DisableBlittablePaddedSharing) // if the caller wants
+                            && Unsafe.SizeOf<T>() <= 256) // don't use too-large T because of excessive padding
+                        {
+                            if (typeof(T) == typeof(byte)) // for blittable scenarios, byte is the underlying type, so don't thunk it
+                            {
+                                // however, we still need to let the factory suggest a (hopefully pinned) blittable allocator
+                                allocator = (Allocator<T>)(object)Factory.SuggestBlittableAllocator<byte>(Options);
+                            }
+                            else
+                            {
+                                return (OwnedArena<T>)Activator.CreateInstance(
+                                    typeof(PaddedBlittableOwnedArena<int>).GetGenericTypeDefinition()
+                                        .MakeGenericType(typeof(T)),
+                                    args: new object[] { this });
+                            }
+                        }
+
+                        // if we aren't using padded blittables; can we use a non-padded approach instead?
+                        if (Options.HasFlag(ArenaFlags.DisableBlittablePaddedSharing) && !Options.HasFlag(ArenaFlags.DisableBlittableNonPaddedSharing))
+                        {
+                            if(_blittableBySize.TryGetValue(Unsafe.SizeOf<T>(), out var existing))
+                            {
+                                // one already exists for that size, yay!
+                                return (OwnedArena<T>)Activator.CreateInstance(
+                                    typeof(NonPaddedBlittableOwnedArena<int,uint>).GetGenericTypeDefinition()
+                                        .MakeGenericType(existing.ElementType, typeof(T)),
+                                    args: new object[] { this });
+                            }
+
+                            // and even if one doesn't already exist; we will want to create one, which
+                            // means we need a blittable allocator
+                            allocator = (Allocator<T>)typeof(AllocatorFactory).GetMethod(nameof(AllocatorFactory.SuggestBlittableAllocator),
+                                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                                .MakeGenericMethod(typeof(T)).Invoke(Factory, parameters: new object[] { Options });
+                            addBySize = true;
+                        }
                     }
-                    catch { } // if bad things happen; give up
                 }
-                return new SimpleOwnedArena<T>(this);
+                catch (Exception ex)
+                {
+                    // if bad things happen; give up
+                    Debug.WriteLine(ex.Message);
+                }
+                var newArena = new SimpleOwnedArena<T>(this, allocator);
+                if (addBySize) _blittableBySize.Add(Unsafe.SizeOf<T>(), newArena);
+                return newArena;
             }
         }
 
-        internal sealed class MappedSegment<T> : SequenceSegment<T> where T : unmanaged
-        {
-            public Block<byte> Underlying { get; }
+        internal object GetAllocator<T>() => GetArena<T>().GetAllocator();
 
-            protected override Type GetUnderlyingType() => typeof(byte);
+        internal sealed class MappedSegment<TFrom, TTo> : SequenceSegment<TTo>
+            where TFrom : unmanaged
+            where TTo : unmanaged
+        {
+            public Block<TFrom> Underlying { get; }
+
+            protected override Type GetUnderlyingType() => typeof(TFrom);
 
             protected override int GetSegmentIndex() => Underlying.SegmentIndex; // block index is always shared
 
@@ -355,11 +440,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             protected override long ByteOffset => _byteOffset;
 #endif
             
-            public unsafe MappedSegment(MappedSegment<T> previous, Block<byte> underlying)
+            public unsafe MappedSegment(MappedSegment<TFrom, TTo> previous, Block<TFrom> underlying)
             {
                 Underlying = underlying;
-                MemoryManager<T> mapped;
-                if (underlying.Allocation is IPinnedMemoryOwner<byte> rooted && rooted.Origin != null)
+                MemoryManager<TTo> mapped;
+                if (underlying.Allocation is IPinnedMemoryOwner<TFrom> rooted && rooted.Origin != null)
                 {   // in this case, we can just cheat like crazy
                     mapped = new PinnedConvertingMemoryManager(rooted);
                 }
@@ -370,7 +455,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 Memory = mapped.Memory;
 
 #if DEBUG
-                _byteCount = underlying.Length;
+                _byteCount = underlying.Length * Unsafe.SizeOf<TFrom>();
 #endif
                 if (previous != null)
                 {   // we can't use "underlying" for this, because of padding etc
@@ -382,19 +467,19 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 }
             }
 
-            sealed unsafe class PinnedConvertingMemoryManager : MemoryManager<T>, IPinnedMemoryOwner<T>
+            sealed unsafe class PinnedConvertingMemoryManager : MemoryManager<TTo>, IPinnedMemoryOwner<TTo>
             {
-                private readonly T* _origin;
+                private readonly TTo* _origin;
                 private readonly int _length;
-                public PinnedConvertingMemoryManager(IPinnedMemoryOwner<byte> rooted)
+                public PinnedConvertingMemoryManager(IPinnedMemoryOwner<TFrom> rooted)
                 {
-                    _origin = (T*)rooted.Origin;
-                    _length = MemoryMarshal.Cast<byte, T>(rooted.Memory.Span).Length;
+                    _origin = (TTo*)rooted.Origin;
+                    _length = MemoryMarshal.Cast<TFrom, TTo>(rooted.Memory.Span).Length;
                 }
 
-                void* IPinnedMemoryOwner<T>.Origin => _origin;
+                void* IPinnedMemoryOwner<TTo>.Origin => _origin;
 
-                public override Span<T> GetSpan() => new Span<T>(_origin, _length);
+                public override Span<TTo> GetSpan() => new Span<TTo>(_origin, _length);
 
                 public override MemoryHandle Pin(int elementIndex = 0) => new MemoryHandle(_origin + elementIndex);
 
@@ -402,12 +487,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
                 protected override void Dispose(bool disposing) { } // not our memory
             }
-            sealed class ConvertingMemoryManager : MemoryManager<T>
+            sealed class ConvertingMemoryManager : MemoryManager<TTo>
             {
-                private readonly IMemoryOwner<byte> _unrooted;
-                public ConvertingMemoryManager(IMemoryOwner<byte> unrooted) => _unrooted = unrooted;
+                private readonly IMemoryOwner<TFrom> _unrooted;
+                public ConvertingMemoryManager(IMemoryOwner<TFrom> unrooted) => _unrooted = unrooted;
 
-                public override Span<T> GetSpan() => MemoryMarshal.Cast<byte, T>(_unrooted.Memory.Span);
+                public override Span<TTo> GetSpan() => MemoryMarshal.Cast<TFrom, TTo>(_unrooted.Memory.Span);
 
                 public override MemoryHandle Pin(int elementIndex = 0) { Throw.NotSupported(); return default; }
 
