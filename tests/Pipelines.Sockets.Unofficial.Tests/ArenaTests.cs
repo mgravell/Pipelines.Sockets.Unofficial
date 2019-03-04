@@ -261,8 +261,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 Assert.Throws<ArgumentOutOfRangeException>(() => source.GetPosition(-1));
                 Assert.Throws<ArgumentOutOfRangeException>(() => source.GetPosition(101));
 
-                Assert.Equal(source.GetPosition(0), source.Start());
-                Assert.Equal(source.GetPosition(100), source.End());
+                Assert.Equal(source.GetPosition(0), source.Start);
+                Assert.Equal(source.GetPosition(100), source.End);
                 for (int i = 0; i <= 100; i++)
                 {
                     Assert.Equal(i + 42, source.GetPosition(i).TryGetOffset().Value);

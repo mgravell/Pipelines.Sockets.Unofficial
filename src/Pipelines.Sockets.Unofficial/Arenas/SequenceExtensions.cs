@@ -30,9 +30,14 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return arr;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe Span<T> GetSpan<T>(this IPinnedMemoryOwner<T> pinned)
+            => new Span<T>(pinned.Origin, pinned.Length);
+
         /// <summary>
         /// Create a list-like object that provides access to the sequence
         /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static SequenceList<T> ToList<T>(this in Sequence<T> source)
             => SequenceList<T>.Create(source);
 

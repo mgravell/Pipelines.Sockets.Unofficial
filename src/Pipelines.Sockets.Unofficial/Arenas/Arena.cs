@@ -195,9 +195,18 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override Sequence<TTo> Allocate(int length)
         {
-            var fromParent = _arena.Allocate(length);
-            var block = (Block<TFrom>)fromParent.GetSegmentAndOffset(out var offset);
-            return new Sequence<TTo>(offset, length, MapBlock(block.SegmentIndex));
+            var fromParent = _arena.Allocate(length, simplifyArrays: false); // don't simplify arrays - we want to get the actual block data
+
+            if (!fromParent.TryGetSegments(out var startSeq, out var endSeq, out var startOffset, out var endOffset))
+                Throw.InvalidOperation("The segment data was not available");
+
+            var startMapped = MapBlock(((Block<TFrom>)startSeq).SegmentIndex);
+            var endMapped = ReferenceEquals(startSeq, endSeq) ? startMapped : MapBlock(((Block<TFrom>)endSeq).SegmentIndex);
+            
+            return new Sequence<TTo>(
+                startMapped, endMapped,
+                startOffset, endOffset,
+                simplifyArrays: false); // no point checking for arrays: we know it can't be
         }
     }
 
@@ -229,7 +238,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             // create our result, since we know the details
             Debug.Assert(arena.AllocatedCurrentBlock % Unsafe.SizeOf<T>() == 0, "should be aligned to T");
             var mappedBlock = MapBlock(arena.CurrentBlock.SegmentIndex);
-            var result = new Sequence<T>(arena.AllocatedCurrentBlock / Unsafe.SizeOf<T>(), length, mappedBlock);
+
+            var startBlock = mappedBlock;
+            var startOffset = arena.AllocatedCurrentBlock / Unsafe.SizeOf<T>();
 
             // now we need to allocate and map the rest of the pages, taking care to
             // allow for padding at the end of pages
@@ -262,13 +273,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 }
             }
 
-            // make sure that we've mapped as far as the end; we don't actually need the result - we
-            // just need to know that it has happened, as this connects the chain
-            MapBlock(arena.CurrentBlock.SegmentIndex);
+            // make sure that we've mapped as far as the end
+            mappedBlock = MapBlock(arena.CurrentBlock.SegmentIndex);
 
             Debug.Assert(length == 0);
 
-            return result;
+            return new Sequence<T>(startBlock, mappedBlock, startOffset, arena.AllocatedCurrentBlock / Unsafe.SizeOf<T>(), simplifyArrays: true);
         }
     }
 
@@ -442,9 +452,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             protected override long ByteOffset => _byteOffset;
 #endif
             
-            public unsafe MappedSegment(MappedSegment<TFrom, TTo> previous, Block<TFrom> underlying)
+            static unsafe Memory<TTo> CreateMapped(Block<TFrom> underlying)
             {
-                Underlying = underlying;
                 MemoryManager<TTo> mapped;
                 if (underlying.Allocation is IPinnedMemoryOwner<TFrom> rooted && rooted.Origin != null)
                 {   // in this case, we can just cheat like crazy
@@ -454,34 +463,36 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 {   // need to do everything properly; slower, but it'll work
                     mapped = new ConvertingMemoryManager(underlying.Allocation);
                 }
-                Memory = mapped.Memory;
-
+                return mapped.Memory;
+            }
+            public MappedSegment(MappedSegment<TFrom, TTo> previous, Block<TFrom> underlying)
+                : base(CreateMapped(underlying), previous)
+            {
+                Underlying = underlying;
 #if DEBUG
                 _byteCount = underlying.Length * Unsafe.SizeOf<TFrom>();
-#endif
                 if (previous != null)
                 {   // we can't use "underlying" for this, because of padding etc
-                    RunningIndex = previous.RunningIndex + previous.Length;
-#if DEBUG
                     _byteOffset = previous.ByteOffset + previous._byteCount;
-#endif
-                    previous.Next = this;
                 }
+#endif
             }
 
             sealed unsafe class PinnedConvertingMemoryManager : MemoryManager<TTo>, IPinnedMemoryOwner<TTo>
             {
                 private readonly TTo* _origin;
-                private readonly int _length;
+
                 public PinnedConvertingMemoryManager(IPinnedMemoryOwner<TFrom> rooted)
                 {
                     _origin = (TTo*)rooted.Origin;
-                    _length = MemoryMarshal.Cast<TFrom, TTo>(rooted.Memory.Span).Length;
+                    Length = MemoryMarshal.Cast<TFrom, TTo>(rooted.Memory.Span).Length;
                 }
 
                 void* IPinnedMemoryOwner<TTo>.Origin => _origin;
 
-                public override Span<TTo> GetSpan() => new Span<TTo>(_origin, _length);
+                public override Span<TTo> GetSpan() => new Span<TTo>(_origin, Length);
+
+                public int Length { get; }
 
                 public override MemoryHandle Pin(int elementIndex = 0) => new MemoryHandle(_origin + elementIndex);
 

@@ -189,6 +189,21 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             _endObj={end segment}
             _startOffsetAndArrayFlag=[1]{start offset, 31 bits}
             _endOffsetOrLength=[0]{end offset, 31 bits}
+
+        Note that for multi-segment scenarios, there is a complication in that the
+        position *just past the end* of one segment is semantically identical to
+        the position *at the start* of the next segment; we want position equality
+        to work, but we also want single-segment chunks whenever possible, so in
+        this scenario (where a multi-segment has an end on the boundary):
+
+        - Sequence<T> will treat it as a single-segment, i.e. length based; this
+            includes detecting the second segment as "next, 0"
+        - but whenever returning a SequencePosition, we will roll *forwards*, and
+            give the position as "next, 0" whenever possible
+
+        The reason for position rolling forward is that it isn't a doubly-linked list,
+        so we can't ever roll backwards; so if we want position equality, it must
+        be forwards-based.
         */
 
         /// <summary>
@@ -272,7 +287,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
-                if (IsArray & index >= 0 & index < SingleSegmentLength)
+                if ((IsArray & index >= 0) && index < SingleSegmentLength)
                     return ref ((T[])_startObj)[index + StartOffset];
                 return ref GetReference(index).Value;
             }
@@ -287,7 +302,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get
             {
-                if (IsArray & index >= 0 & index < SingleSegmentLength)
+                if ((IsArray & index >= 0) && index < SingleSegmentLength)
                     return ref ((T[])_startObj)[(int)index + StartOffset];
                 return ref GetReference(index).Value;
             }
@@ -298,25 +313,20 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public Reference<T> GetReference(long index)
         {
-            long seqLength = Length;
-            if (index < 0 | index >= seqLength) Throw.IndexOutOfRange();
+            return (IsSingleSegment & index >= 0) && index < SingleSegmentLength // use the trusted .ctor here; we've checked
+                ? new Reference<T>((int)index + StartOffset, _startObj)
+                : SlowGetReference(in this, index);
 
-            if (IsSingleSegment) // use the trusted .ctor here; we've checked
-                return new Reference<T>((int)index + StartOffset, _startObj);
+            static Reference<T> SlowGetReference(in Sequence<T> sequence, long index)
+            {
+                if (index < 0 | index >= sequence.Length) Throw.IndexOutOfRange();
 
-            // is the index on the first page?
-            var firstSeg = (SequenceSegment<T>)_startObj;
-            var offsetIntoPage = index + StartOffset;
-            if (offsetIntoPage < firstSeg.Length)
-                return new Reference<T>((int)offsetIntoPage, firstSeg);
-
-            // fallback for multi-segment: slice and dice
-            return SlowSlice(index, 1).GetReference(0);
-        }
-
-        internal SequenceSegment<T> GetSegmentAndOffset(out int offset)
-        {
-            throw new NotImplementedException();
+                // find the actual segment
+                var segment = (SequenceSegment<T>)sequence._startObj;
+                var offset = SequenceSegment<T>.GetSegmentPosition(ref segment, index);
+                return new Reference<T>(segment, offset);
+            }
+            
         }
 
         /// <summary>
@@ -335,9 +345,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Sequence Untyped() => new Sequence(
-            _startObj, __startOffsetAndArrayFlag,
-            _endObj ?? typeof(T),
-            __endOffsetOrLength);
+            _startObj, _endObj ?? typeof(T),
+            __startOffsetAndArrayFlag, __endOffsetOrLength);
 
         /// <summary>
         /// Converts a typed sequence to a typed read-only-sequence
@@ -348,15 +357,27 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return IsArray ? new ReadOnlySequence<T>((T[])_startObj, StartOffset, SingleSegmentLength)
                 : FromSegments(this);
 
-            ReadOnlySequence<T> FromSegments(in Sequence<T> sequence)
+            static ReadOnlySequence<T> FromSegments(in Sequence<T> sequence)
             {
-                var start = (IMemoryOwner<T>)sequence._startObj;
-                if (start == null) return default;
-                var end = (IMemoryOwner<T>)sequence._endObj;
-                int offset = sequence.StartOffset;
-                return end == null // are we a single segment?
-                    ? new ReadOnlySequence<T>(start, offset, start, offset + sequence.MultiSegmentEndOffset)
-                    : new ReadOnlySequence<T>(start, offset, end, sequence.MultiSegmentEndOffset);
+                var startObj = sequence._startObj;
+                if (startObj == null) return default;
+                var startOffset = sequence.StartOffset;
+                if (startObj is SequenceSegment<T> startSegment)
+                {
+                    if (sequence.IsSingleSegment)
+                    {
+                        return new ReadOnlySequence<T>(startSegment, startOffset, startSegment, startOffset + sequence.SingleSegmentLength);
+                    }
+                    else
+                    {
+                        var endSegment = (SequenceSegment<T>)sequence._endObj;
+                        return new ReadOnlySequence<T>(startSegment, startOffset, endSegment, sequence.MultiSegmentEndOffset);
+                    }
+                }
+
+                // otherwise, for IMemoryOwner<T> based sequences, we'll have to rely on ROS's Memory<T> handling, post-slice
+                var memory = (((IMemoryOwner<T>)startObj).Memory).Slice(startOffset, sequence.SingleSegmentLength);
+                return new ReadOnlySequence<T>(memory);
             }
         }
 
@@ -405,7 +426,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             int RemainingFirstSegmentLength(in Sequence<T> sequence)
                 => ((SequenceSegment<T>)sequence._startObj).Length - sequence.StartOffset;
 
-            SequencePosition SlowGetPosition(in Sequence<T> sequence, long index)
+            static SequencePosition SlowGetPosition(in Sequence<T> sequence, long index)
             {
                 // note: already ruled out 0 and single-segment in-range
                 var len = sequence.Length;
@@ -429,10 +450,13 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             long seqLength = Length;
             if (IsSingleSegment & start >= 0 & start <= seqLength)
             {
-                return new Sequence<T>(_startObj, (int)(StartOffset + start) | (__startOffsetAndArrayFlag & Sequence.MSB),
-                    null, (int)(SingleSegmentLength - start));
+                // a single-segment can only ever slice into a single-segment; it *retains* the same array status
+                return new Sequence<T>(
+                    startObj: _startObj, endObj: null,
+                    startOffsetAndArrayFlag: (int)(StartOffset + start) | (__startOffsetAndArrayFlag & Sequence.MSB),
+                    endOffsetOrLength: (int)(SingleSegmentLength - start));
             }
-            return SlowSlice(start, seqLength - start);
+            return SlowSlice(start, seqLength - start, seqLength);
         }
 
         /// <summary>
@@ -443,30 +467,36 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             long seqLength = Length;
             if (IsSingleSegment & start >= 0 & length >= 0 & start + length <= seqLength)
             {
-                return new Sequence<T>(_startObj, (int)(StartOffset + start) | (__startOffsetAndArrayFlag & Sequence.MSB),
-                    null, (int)length);
+                // a single-segment can only ever slice into a single-segment; it *retains* the same array status
+                return new Sequence<T>(
+                    startObj: _startObj, endObj: null,
+                    startOffsetAndArrayFlag: (int)(StartOffset + start) | (__startOffsetAndArrayFlag & Sequence.MSB),
+                    endOffsetOrLength: (int)length);
             }
-            return SlowSlice(start, length);
+            return SlowSlice(start, length, seqLength);
         }
 
-        private Sequence<T> SlowSlice(long start, long length)
+        private Sequence<T> SlowSlice(long start, long length, long seqLength)
         {
-            long seqLength = Length;
             if (start < 0 | start > seqLength) Throw.ArgumentOutOfRange(nameof(start));
             if (length < 0 | start + length > seqLength) Throw.ArgumentOutOfRange(nameof(length));
 
             if (IsSingleSegment)
             {
-                return new Sequence<T>(_startObj, (int)(StartOffset + start) | (__startOffsetAndArrayFlag & Sequence.MSB),
-                    null, (int)(SingleSegmentLength - start));
+                // a single-segment can only ever slice into a single-segment; it *retains* the same array status
+                return new Sequence<T>(
+                    startObj: _startObj, endObj: null,
+                    startOffsetAndArrayFlag: (int)(StartOffset + start) | (__startOffsetAndArrayFlag & Sequence.MSB),
+                    endOffsetOrLength: (int)(SingleSegmentLength - start));
             }
-            var startSegment = (SequenceSegment<T>)_startObj;
 
+            var startSegment = (SequenceSegment<T>)_startObj;
             var startOffset = SequenceSegment<T>.GetSegmentPosition(ref startSegment, start + StartOffset);
-            var endSegment = startSegment;
+
+            var endSegment = startSegment; // we can resume where we got to from ^^^, and look another "length" items
             var endOffset = SequenceSegment<T>.GetSegmentPosition(ref endSegment, startOffset + length);
 
-            return Simplify(startSegment, startOffset, endSegment, endOffset);
+            return new Sequence<T>(startSegment, endSegment, startOffset, endOffset, simplifyArrays: false);
         }
 
         /// <summary>
@@ -481,7 +511,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             // need to test for sequences *before* IMemoryOwner<T> for non-sequence
             if (startObj is SequenceSegment<T> startSeq && endObj is SequenceSegment<T> endSeq)
             {
-                sequence = new Sequence<T>(startSeq, endSeq, startIndex, endIndex);
+                sequence = new Sequence<T>(startSeq, endSeq, startIndex, endIndex, simplifyArrays: false);
                 return true;
             }
 
@@ -517,7 +547,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             get {
                 return IsSingleSegment? SingleSegmentLength : MultiSegmentLength(this);
 
-                long MultiSegmentLength(in Sequence<T> sequence)
+                static long MultiSegmentLength(in Sequence<T> sequence)
                 {
                     // note that in the multi-segment case, the MSB will be set - as it isn't an array
                     return (((SequenceSegment<T>)sequence._endObj).RunningIndex + sequence.MultiSegmentEndOffset) // end index
@@ -616,7 +646,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             if (IsSingleSegment) FirstSpan.CopyTo(destination);
             else if (!TrySlowCopy(destination)) ThrowLengthError();
 
-            void ThrowLengthError()
+            static void ThrowLengthError()
             {
                 Span<int> one = stackalloc int[1];
                 one.CopyTo(default); // this should give use the CLR's error text (let's hope it doesn't mention sizes!)
@@ -643,9 +673,22 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
+        /// Create a new single-segment sequence from a memory
+        /// </summary>
+        public Sequence(Memory<T> memory)
+        {
+            // there's a lot of logic in ROS for this; let's just re-use that
+            if (!TryGetSequence(new ReadOnlySequence<T>(memory), out this))
+            {
+                Throw.Argument("It was not possible to create a Sequence from this Memory", nameof(memory));
+            }
+        }
+
+
+        /// <summary>
         /// Create a new single-segment sequence from a memory owner
         /// </summary>
-        public Sequence(IMemoryOwner<T> segment, int offset, int length)
+        internal Sequence(IMemoryOwner<T> segment, int offset, int length) // leaving this internal, to not expose a different API to ROS
         {
             // basica parameter check
             if (segment == null) Throw.ArgumentNull(nameof(segment));
@@ -698,11 +741,51 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return offset;
         }
 
+        internal unsafe bool TryGetPinned(out void* origin)
+        {
+            if (IsSingleSegment && _startObj is IPinnedMemoryOwner<T> pinned
+                && (origin = pinned.Origin) != null)
+            {
+                // apply the local offset, and we're good
+                origin = Unsafe.Add<T>(origin, StartOffset);
+                return true;
+            }
+            origin = null;
+            return false;
+        }
+
+        internal bool TryGetSegments(out SequenceSegment<T> startSeq, out SequenceSegment<T> endSeq, out int startOffset, out int endOffset)
+        {
+            if (_startObj is SequenceSegment<T> segment)
+            {
+                startSeq = segment;
+                startOffset = StartOffset;
+
+                if (IsSingleSegment)
+                {
+                    endSeq = segment;
+                    endOffset = startOffset + SingleSegmentLength;
+                }
+                else
+                {
+                    endSeq = (SequenceSegment<T>)_endObj;
+                    endOffset = MultiSegmentEndOffset;
+                }
+                return true;
+            }
+
+            startSeq = endSeq = null;
+            startOffset = endOffset = 0;
+            return false;
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal Sequence(
             SequenceSegment<T> startSegment, SequenceSegment<T> endSegment,
-            int startOffset, int endOffset, bool simplifyArrays = false)
-        {
+            int startOffset, int endOffset,
+            bool simplifyArrays) // simplifyArrays is used to reduce single-segment scenarios down to an array-based sequence;
+        {                        // this has the consequence that the Start/End may not be reconsilable to adjacent sequences, so
+                                 // should only be used when the sequence is standalone
             int endOffsetOrLength;
             T[] array = null;
             if (startSegment != null)
@@ -844,19 +927,13 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public readonly ref struct SpanEnumerable
         {
-            private readonly int _offset, _length;
-            private readonly SequenceSegment<T> _segment;
-            internal SpanEnumerable(in Sequence<T> sequence)
-            {
-                _offset = sequence.Offset;
-                _length = sequence._length;
-                _segment = sequence._head;
-            }
+            readonly Sequence<T> _sequence;
+            internal SpanEnumerable(in Sequence<T> sequence) => _sequence = sequence; // flat copy
 
             /// <summary>
             /// Allows a sequence to be enumerated as spans
             /// </summary>
-            public SpanEnumerator GetEnumerator() => new SpanEnumerator(_segment, _offset, _length);
+            public SpanEnumerator GetEnumerator() => new SpanEnumerator(in _sequence);
         }
 
         /// <summary>
@@ -864,54 +941,45 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public readonly ref struct MemoryEnumerable
         {
-            private readonly int _offset, _length;
-            private readonly SequenceSegment<T> _segment;
-            internal MemoryEnumerable(in Sequence<T> sequence)
-            {
-                _offset = sequence.Offset;
-                _length = sequence._length;
-                _segment = sequence._head;
-            }
+            readonly Sequence<T> _sequence;
+            internal MemoryEnumerable(in Sequence<T> sequence) => _sequence = sequence; // flat copy
 
             /// <summary>
             /// Allows a sequence to be enumerated as memory instances
             /// </summary>
-            public MemoryEnumerator GetEnumerator() => new MemoryEnumerator(_segment, _offset, _length);
+            public MemoryEnumerator GetEnumerator() => new MemoryEnumerator(in _sequence);
         }
 
         /// <summary>
         /// Allows a sequence to be enumerated as values
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Enumerator GetEnumerator() => new Enumerator(_head, Offset, _length);
+        public Enumerator GetEnumerator() => new Enumerator(in this);
 
         /// <summary>
         /// Allows a sequence to be enumerated as values
         /// </summary>
         public ref struct Enumerator
         {
-            private int _remainingThisSpan, _offsetThisSpan, _remainingOtherSegments;
+            private int _remainingThisSpan, _offsetThisSpan;
+            private long _remainingOtherSegments;
             private SequenceSegment<T> _nextSegment;
             private Span<T> _span;
 
-            internal Enumerator(SequenceSegment<T> segment, int offset, int length)
+            internal Enumerator(in Sequence<T> sequence)
             {
-                var firstSpan = segment.Memory.Span;
-                if (offset + length > firstSpan.Length)
+                _span = sequence.FirstSpan;
+                _remainingThisSpan = _span.Length;
+                _offsetThisSpan = -1;
+                if (sequence.IsSingleSegment)
                 {
-                    // multi-segment
-                    _nextSegment = segment.Next;
-                    _remainingThisSpan = firstSpan.Length - offset;
-                    _span = firstSpan.Slice(offset, _remainingThisSpan);
-                    _remainingOtherSegments = length - _remainingThisSpan;
+                    _remainingOtherSegments = 0;
+                    _nextSegment = null;
                 }
                 else
                 {
-                    // single-segment
-                    _nextSegment = null;
-                    _remainingThisSpan = length;
-                    _span = firstSpan.Slice(offset);
-                    _remainingOtherSegments = 0;
+                    _nextSegment = ((SequenceSegment<T>)sequence._startObj).Next;
+                    _remainingOtherSegments = sequence.Length - _span.Length;
                 }
                 _offsetThisSpan = -1;
             }
@@ -947,7 +1015,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
                 if (_remainingOtherSegments <= span.Length)
                 {   // we're at the end
-                    span = span.Slice(0, _remainingOtherSegments);
+                    span = span.Slice(0, (int)_remainingOtherSegments);
                     _remainingOtherSegments = 0;
                 }
                 else
@@ -1014,16 +1082,16 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public ref struct SpanEnumerator
         {
-            private int _offset, _remaining;
-            private SequenceSegment<T> _nextSegment;
-            private Span<T> _current;
+            private int _offset;
+            private long _remaining;
+            private object _next;
 
-            internal SpanEnumerator(SequenceSegment<T> segment, int offset, int length)
+            internal SpanEnumerator(in Sequence<T> sequence)
             {
-                _nextSegment = segment;
-                _offset = offset;
-                _remaining = length;
-                _current = default;
+                _next = sequence._startObj;
+                _offset = sequence.StartOffset;
+                _remaining = sequence.Length;
+                Current = default;
             }
 
             /// <summary>
@@ -1032,23 +1100,54 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             public bool MoveNext()
             {
                 if (_remaining == 0) return false;
-                var span = _nextSegment.Memory.Span;
-                _nextSegment = _nextSegment.Next;
 
-                if (_remaining <= span.Length - _offset)
+                Span<T> span;
+                if (_next is T[] arr)
                 {
-                    // last segment; need to trim end
-                    span = span.Slice(_offset, _remaining);
+                    span = new Span<T>(arr, _offset, (int)_remaining);
+                    _next = null;
                 }
-                else if (_offset != 0)
+                else if(_next is SequenceSegment<T> segment)
                 {
-                    // has offset (first only)
-                    span = span.Slice(_offset);
-                    _offset = 0;
+                    span = segment.Memory.Span;
+                    _next = segment.Next;
+
+                    // need to figure out whether this is the first, the last, or one in the middle
+                    if (_offset == 0)
+                    {
+                        if (_remaining < span.Length)
+                        {   // need to trim the end
+                            span = span.Slice(0, (int)_remaining);
+                        }
+                    }
+                    else
+                    {
+                        // first slice
+                        var usableThisSpan = span.Length - _offset;
+                        if (_remaining < usableThisSpan)
+                        {   // need to trim both ends
+                            span = span.Slice(_offset, (int)_remaining);
+                        }
+                        else
+                        {   // need to trim the start
+                            span = span.Slice(_offset);
+                        }
+                        _offset = 0; // subsequent spans always start at 0
+                    }
                 }
-                // otherwise we can take the entire thing
+                else if (_next is IPinnedMemoryOwner<T> pinned)
+                {
+                    span = pinned.GetSpan().Slice(_offset, (int)_remaining);
+                    _next = null;
+                }
+                else
+                {
+                    span = ((IMemoryOwner<T>)_next).Memory.Span.Slice(_offset, (int)_remaining);
+                    _next = null;
+                }
+
                 _remaining -= span.Length;
-                _current = span;
+                Current = span;
                 return true;
             }
 
@@ -1064,7 +1163,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             /// <summary>
             /// Obtain the current segment
             /// </summary>
-            public Span<T> Current => _current;
+            public Span<T> Current { get; private set; }
         }
 
         /// <summary>
@@ -1072,16 +1171,16 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public struct MemoryEnumerator
         {
-            private int _offset, _remaining;
-            private SequenceSegment<T> _nextSegment;
-            private Memory<T> _current;
+            private int _offset;
+            private long _remaining;
+            private object _next;
 
-            internal MemoryEnumerator(SequenceSegment<T> segment, int offset, int length)
+            internal MemoryEnumerator(in Sequence<T> sequence)
             {
-                _nextSegment = segment;
-                _offset = offset;
-                _remaining = length;
-                _current = default;
+                _next = sequence._startObj;
+                _offset = sequence.StartOffset;
+                _remaining = sequence.Length;
+                Current = default;
             }
 
             /// <summary>
@@ -1090,30 +1189,56 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             public bool MoveNext()
             {
                 if (_remaining == 0) return false;
-                var memory = _nextSegment.Memory;
-                _nextSegment = _nextSegment.Next;
 
-                if (_remaining <= memory.Length - _offset)
+                Memory<T> memory;
+                if (_next is T[] arr)
                 {
-                    // last segment; need to trim end
-                    memory = memory.Slice(_offset, _remaining);
+                    memory = new Memory<T>(arr, _offset, (int)_remaining);
+                    _next = null;
                 }
-                else if (_offset != 0)
+                else if (_next is SequenceSegment<T> segment)
                 {
-                    // has offset (first only)
-                    memory = memory.Slice(_offset);
-                    _offset = 0;
+                    memory = segment.Memory;
+                    _next = segment.Next;
+
+                    // need to figure out whether this is the first, the last, or one in the middle
+                    if (_offset == 0)
+                    {
+                        if (_remaining < memory.Length)
+                        {   // need to trim the end
+                            memory = memory.Slice(0, (int)_remaining);
+                        }
+                    }
+                    else
+                    {
+                        // first slice
+                        var usableThisSpan = memory.Length - _offset;
+                        if (_remaining < usableThisSpan)
+                        {   // need to trim both ends
+                            memory = memory.Slice(_offset, (int)_remaining);
+                        }
+                        else
+                        {   // need to trim the start
+                            memory = memory.Slice(_offset);
+                        }
+                        _offset = 0; // subsequent spans always start at 0
+                    }
                 }
-                // otherwise we can take the entire thing
+                else
+                {
+                    memory = ((IMemoryOwner<T>)_next).Memory.Slice(_offset, (int)_remaining);
+                    _next = null;
+                }
+
                 _remaining -= memory.Length;
-                _current = memory;
+                Current = memory;
                 return true;
             }
 
             /// <summary>
             /// Obtain the current segment
             /// </summary>
-            public Memory<T> Current => _current;
+            public Memory<T> Current { get; private set; }
 
             /// <summary>
             /// Asserts that another span is available, and returns then next span

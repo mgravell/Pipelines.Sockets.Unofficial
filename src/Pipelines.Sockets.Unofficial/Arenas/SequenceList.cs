@@ -129,12 +129,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             if (_sequence.IsSingleSegment)
             {
-                var segment = _sequence.GetSegmentAndOffset(out int start);
-                if (segment is IPinnedMemoryOwner<T> pinned && pinned.Origin != null)
+                if (_sequence.TryGetPinned(out var origin))
                 {
-                    return new PointerBasedEnumerator(pinned.Origin, start, (int)_sequence.Length);
+                    return new PointerBasedEnumerator(origin, (int)_sequence.Length);
                 }
-                GetSingleSegmentEnumerator(segment.Memory.Slice(start, (int)_sequence.Length));
+                GetSingleSegmentEnumerator(_sequence.FirstSegment);
             }
             return GetMultiSegmentEnumerator();
         }
@@ -144,9 +143,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             void* _ptr;
             int _remaining;
 
-            public PointerBasedEnumerator(void* origin, int offset, int length)
+            public PointerBasedEnumerator(void* origin, int length)
             {
-                _ptr = Unsafe.Add<T>(origin, offset);
+                _ptr = origin;
                 _remaining = length;
             }
 

@@ -78,12 +78,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
         
 
-        /// <summary>
-        /// The current capacity of all regions tracked by the arena
-        /// </summary>
-        public long Capacity => _capacityTotal;
-
-        private long _capacityTotal;
         private readonly ArenaFlags _flags;
         private readonly int _blockSize;
         private int _allocatedCurrentBlock;
@@ -139,9 +133,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
             if (ClearAtReset) // this really means "before use", so...
                 _allocator.Clear(allocation, allocation.Memory.Length);
-            var block = new Block<T>(allocation, previous == null ? 0 : previous.SegmentIndex + 1, _capacityTotal);
-            if (previous != null) previous.Next = block; // attach into forwards chain
-            _capacityTotal += block.Length;
+            var block = new Block<T>(allocation, previous == null ? 0 : previous.SegmentIndex + 1, previous);
             return block;
         }
 
@@ -149,7 +141,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Allocate a (possibly non-contiguous) region of memory from the arena
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Sequence<T> Allocate(int length)
+        public Sequence<T> Allocate(int length) => Allocate(length, true);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal Sequence<T> Allocate(int length, bool simplifyArrays)
         {
             // note: even for zero-length blocks, we'd rather have them start
             // at the start of the next block, for consistency; for consistent
@@ -159,7 +154,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 var offset = _allocatedCurrentBlock;
                 _allocatedCurrentBlock += length;
-                return new Sequence<T>(offset, length, _current);
+                return new Sequence<T>(_current, _current, offset, _allocatedCurrentBlock, simplifyArrays: simplifyArrays);
             }
             return SlowAllocate(length);
         }
@@ -210,7 +205,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             // would be less efficient)
             if (_current.Length <= _allocatedCurrentBlock) MoveNextBlock();
 
-            var result = new Sequence<T>(_allocatedCurrentBlock, length, _current);
+            var startBlock = _current;
+            int startOffset = _allocatedCurrentBlock;
 
             // now make sure we actually have blocks to cover that promise
             while (true)
@@ -233,7 +229,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 }
             }
 
-            return result;
+            return new Sequence<T>(startBlock, _current, startOffset, _allocatedCurrentBlock, simplifyArrays: true);
         }
 
         bool ClearAtReset

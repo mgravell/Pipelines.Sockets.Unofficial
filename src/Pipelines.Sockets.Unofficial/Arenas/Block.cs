@@ -47,6 +47,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// The root reference of the block, or a null-pointer if the data should not be considered pinned
         /// </summary>
         unsafe void* Origin { get; } // expressed as an untyped pointer so that IPinnedMemoryOwner<T> can be used without needing the T : unmanaged constraint
+
+        /// <summary>
+        /// Gets the size of the data
+        /// </summary>
+        int Length { get; }
     }
 
     /// <summary>
@@ -54,6 +59,21 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     /// </summary>
     public abstract class SequenceSegment<T> : ReadOnlySequenceSegment<T>, ISegment, IMemoryOwner<T>
     {
+        /// <summary>
+        /// Creates a new SequenceSegment, optionally attaching the segment to an existing chain
+        /// </summary>
+        protected SequenceSegment(Memory<T> memory, SequenceSegment<T> previous = null)
+        {
+            if (previous != null)
+            {
+                var oldNext = previous.Next;
+                if (oldNext != null) Throw.InvalidOperation("The previous segment already has an onwards chain");
+                previous.Next = this;
+                RunningIndex = previous.RunningIndex + previous.Length;
+            }
+            Memory = memory; // also sets Length
+        }
+
         int ISegment.ElementSize => Unsafe.SizeOf<T>();
         void IDisposable.Dispose() { } // just to satisfy IMemoryOwner<T>
 
@@ -89,6 +109,17 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
+        /// The logical position of the start of this segment
+        /// </summary>
+        public new long RunningIndex
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => base.RunningIndex;
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private set => base.RunningIndex = value;
+        }
+
+        /// <summary>
         /// The next segment in the chain
         /// </summary>
         public new SequenceSegment<T> Next
@@ -96,7 +127,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => (SequenceSegment<T>)base.Next;
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            protected set => base.Next = value;
+            private set => base.Next = value;
         }
 
         /// <summary>
@@ -107,7 +138,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => MemoryMarshal.AsMemory(base.Memory);
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            protected set
+            private set
             {
                 base.Memory = value;
                 Length = value.Length;
@@ -145,18 +176,18 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         public IMemoryOwner<T> Allocation { get; private set; }
 
-        public Block(IMemoryOwner<T> allocation, int segmentIndex, long offset)
+        public Block(IMemoryOwner<T> allocation, int segmentIndex, Block<T> previous)
+            : base(allocation.Memory, previous)
         {
             Allocation = allocation;
             SegmentIndex = segmentIndex;
-            base.Memory = Memory = Allocation.Memory;
-            RunningIndex = offset;
         }
 
-        public new Block<T> Next
+        public new Block<T> Next // just to expose the type a bit more clearly
         {
-            get => (Block<T>)base.Next;
-            set => base.Next = value;
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => (Block<T>)((ReadOnlySequenceSegment<T>)this).Next;
+            // no point in casting twice! (note: this is a no-op, since we inherit it)
         }
 
         public void Dispose()
