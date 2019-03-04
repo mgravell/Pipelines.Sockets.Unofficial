@@ -503,7 +503,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Attempt to calculate the net offset of a position
         /// </summary>
-        public static long? TryGetOffset(this SequencePosition position)
+        internal static long? TryGetOffset(this SequencePosition position)
         {
             var obj = position.GetObject();
             var offset = position.GetInteger();

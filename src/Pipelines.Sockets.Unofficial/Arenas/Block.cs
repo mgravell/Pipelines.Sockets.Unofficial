@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -62,6 +63,29 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public int Length
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)] get; private set;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static int GetSegmentPosition(ref SequenceSegment<T> segment, long index)
+            => (index >= 0 & segment != null) && (index < segment.Length)
+                ? (int)index
+                : SlowGetSegmentPosition(ref segment, index);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static int SlowGetSegmentPosition(ref SequenceSegment<T> segment, long index)
+        {
+            if (index < 0) Throw.IndexOutOfRange();
+            if (segment == null) Throw.ArgumentNull(nameof(segment));
+
+            do
+            {
+                if (index < segment.Length) return (int)index;
+                index -= segment.Length;
+                segment = segment.Next;
+            } while (segment != null);
+
+            Throw.IndexOutOfRange();
+            return default;
         }
 
         /// <summary>
