@@ -100,12 +100,17 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             do
             {
-                if (index < segment.Length) return (int)index;
+                if (index < segment.Length | // inside this segment
+                    (segment.Next == null & index == segment.Length)) // EOF in final segment
+                {
+                    return (int)index;
+                }
+
                 index -= segment.Length;
                 segment = segment.Next;
             } while (segment != null);
 
-            Throw.IndexOutOfRange();
+            Throw.IndexOutOfRange(); // not in the sequence at all
             return default;
         }
 

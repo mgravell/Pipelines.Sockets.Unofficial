@@ -195,18 +195,17 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override Sequence<TTo> Allocate(int length)
         {
-            var fromParent = _arena.Allocate(length, simplifyArrays: false); // don't simplify arrays - we want to get the actual block data
+            var fromParent = _arena.Allocate(length);
 
             if (!fromParent.TryGetSegments(out var startSeq, out var endSeq, out var startOffset, out var endOffset))
                 Throw.InvalidOperation("The segment data was not available");
 
             var startMapped = MapBlock(((Block<TFrom>)startSeq).SegmentIndex);
             var endMapped = ReferenceEquals(startSeq, endSeq) ? startMapped : MapBlock(((Block<TFrom>)endSeq).SegmentIndex);
-            
+
             return new Sequence<TTo>(
                 startMapped, endMapped,
-                startOffset, endOffset,
-                simplifyArrays: false); // no point checking for arrays: we know it can't be
+                startOffset, endOffset);
         }
     }
 
@@ -278,7 +277,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             Debug.Assert(length == 0);
 
-            return new Sequence<T>(startBlock, mappedBlock, startOffset, arena.AllocatedCurrentBlock / Unsafe.SizeOf<T>(), simplifyArrays: true);
+            return new Sequence<T>(startBlock, mappedBlock, startOffset, arena.AllocatedCurrentBlock / Unsafe.SizeOf<T>());
         }
     }
 

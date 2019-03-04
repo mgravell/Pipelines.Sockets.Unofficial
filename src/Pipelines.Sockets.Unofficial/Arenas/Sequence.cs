@@ -75,7 +75,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool operator !=(Sequence x, Sequence y) => !x.Equals(in y);
-        
+
         /// <summary>
         /// Indicates whether the sequence involves multiple segments, vs whether all the data fits into the first segment
         /// </summary>
@@ -329,7 +329,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 var offset = SequenceSegment<T>.GetSegmentPosition(ref segment, l_index);
                 return new Reference<T>(segment, offset);
             }
-            
+
         }
 
         /// <summary>
@@ -384,13 +384,39 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
         }
 
-        private static SequencePosition NormalizePosition(object @object, int integer)
+        private enum PositionKind
         {
-            if(@object is SequenceSegment<T> sequence && integer == sequence.Length)
+            Start, End, Other
+        }
+        private SequencePosition NormalizePosition(object @object, int integer, PositionKind kind)
+        {
+            if (@object is SequenceSegment<T> sequence && integer == sequence.Length)
             {
                 integer = NormalizeForwards(ref sequence, integer);
                 @object = sequence;
             }
+
+            // and for equivalence with ROS; look at the ROS source for what this all means
+            switch (kind)
+            {
+                case PositionKind.Start:
+                    // check for a memory-manager-backed owner
+                    if (IsSingleSegment && _startObj is IMemoryOwner<T> owner && !(_startObj is SequenceSegment<T>))
+                    {
+                        integer |= Sequence.MSB;
+                    }
+                    break;
+                case PositionKind.End:
+                    if (IsArray)
+                    {
+                        integer |= Sequence.MSB;
+                    }
+                    break;
+                default:
+
+                    break;
+            }
+
             return new SequencePosition(@object, integer);
         }
 
@@ -400,7 +426,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public SequencePosition Start
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => NormalizePosition(_startObj, StartOffset);
+            get => NormalizePosition(_startObj, StartOffset, PositionKind.Start);
         }
 
         /// <summary>
@@ -410,8 +436,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => IsSingleSegment
-                ? NormalizePosition(_startObj, StartOffset + SingleSegmentLength)
-                : NormalizePosition(_endObj, MultiSegmentEndOffset);
+                ? NormalizePosition(_startObj, StartOffset + SingleSegmentLength, PositionKind.End)
+                : NormalizePosition(_endObj, MultiSegmentEndOffset, PositionKind.End);
         }
         /// <summary>
         /// Calculate a position inside the current sequence
@@ -420,9 +446,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public SequencePosition GetPosition(long offset)
         {
 
-            if (offset >= 0 & offset <= (IsSingleSegment ? SingleSegmentLength : RemainingFirstSegmentLength(in this)))
+            if (offset > 0 & offset <= (IsSingleSegment ? SingleSegmentLength : RemainingFirstSegmentLength(in this)))
             {
-                return NormalizePosition(_startObj, StartOffset + (int)offset);
+                return NormalizePosition(_startObj, StartOffset + (int)offset, PositionKind.Other);
             }
             return SlowGetPosition(in this, offset);
 
@@ -431,7 +457,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             SequencePosition SlowGetPosition(in Sequence<T> sequence, long index)
             {
-                // note: already ruled out 0 and single-segment in-range
+                // note: already ruled out single-segment in-range
+                if (index == 0) return sequence.Start;
                 var len = sequence.Length;
                 if (index == len) return sequence.End;
                 if (index < 0 | index > len) Throw.IndexOutOfRange();
@@ -440,7 +467,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 Debug.Assert(!sequence.IsSingleSegment);
                 var segment = (SequenceSegment<T>)sequence._startObj;
                 var integer = SequenceSegment<T>.GetSegmentPosition(ref segment, sequence.StartOffset + index);
-                return NormalizePosition(segment, integer);
+                return sequence.NormalizePosition(segment, integer, PositionKind.Other);
             }
         }
 
@@ -499,7 +526,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             var endSegment = startSegment; // we can resume where we got to from ^^^, and look another "length" items
             var endOffset = SequenceSegment<T>.GetSegmentPosition(ref endSegment, startOffset + length);
 
-            return new Sequence<T>(startSegment, endSegment, startOffset, endOffset, simplifyArrays: false);
+            return new Sequence<T>(startSegment, endSegment, startOffset, endOffset);
         }
 
         /// <summary>
@@ -509,12 +536,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             SequencePosition start = readOnlySequence.Start, end = readOnlySequence.End;
             object startObj = start.GetObject(), endObj = end.GetObject();
-            int startIndex = start.GetInteger(), endIndex = end.GetInteger();
+            int startIndex = start.GetInteger() & ~Sequence.MSB, endIndex = end.GetInteger() & ~Sequence.MSB; // ROS uses the MSB internally
 
             // need to test for sequences *before* IMemoryOwner<T> for non-sequence
             if (startObj is SequenceSegment<T> startSeq && endObj is SequenceSegment<T> endSeq)
             {
-                sequence = new Sequence<T>(startSeq, endSeq, startIndex, endIndex, simplifyArrays: false);
+                sequence = new Sequence<T>(startSeq, endSeq, startIndex, endIndex);
                 return true;
             }
 
@@ -527,7 +554,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 }
                 if (startObj is IMemoryOwner<T> owner)
                 {
-                    sequence = new Sequence<T>(owner, startIndex, endIndex - startIndex);
+                    sequence = new Sequence<T>(owner, null, startIndex | Sequence.MSB, endIndex - startIndex);
                     return true;
                 }
                 if (startObj == null & endObj == null & startIndex == 0 & endIndex == 0)
@@ -547,8 +574,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public long Length
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get {
-                return IsSingleSegment? SingleSegmentLength : MultiSegmentLength(this);
+            get
+            {
+                return IsSingleSegment ? SingleSegmentLength : MultiSegmentLength(this);
 
                 long MultiSegmentLength(in Sequence<T> sequence)
                 {
@@ -589,7 +617,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             get => _endObj == null;
         }
 
-        private bool IsArray
+        internal bool IsArray
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => ((__startOffsetAndArrayFlag & Sequence.MSB) == 0) & (_startObj != null);
@@ -687,34 +715,24 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
         }
 
-
         /// <summary>
-        /// Create a new single-segment sequence from a memory owner
+        /// Create a new single-segment sequence from an array
         /// </summary>
-        internal Sequence(IMemoryOwner<T> segment, int offset, int length) // leaving this internal, to not expose a different API to ROS
-        {
-            // basica parameter check
-            if (segment == null) Throw.ArgumentNull(nameof(segment));
-            if (offset < 0) Throw.ArgumentOutOfRange(nameof(offset));
-            if (length < 0 | length > offset + segment.Memory.Length)
-                Throw.ArgumentOutOfRange(nameof(length));
+        public Sequence(T[] array) : this(array, 0, array?.Length ?? 0) { }
 
-            _startObj = segment;
-            _endObj = null;
-            __startOffsetAndArrayFlag = offset | Sequence.MSB;
-            __endOffsetOrLength = length;
-            AssertValid();
-        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static Sequence<T> TrustedSingleSegment(IMemoryOwner<T> owner, int offset, int length)
+            => new Sequence<T>(owner, null, offset | Sequence.MSB, length);
 
         /// <summary>
         /// Create a new single-segment sequence from an array
         /// </summary>
         public Sequence(T[] array, int offset, int length)
         {
-            // basica parameter check
+            // basic parameter check
             if (array == null) Throw.ArgumentNull(nameof(array));
             if (offset < 0) Throw.ArgumentOutOfRange(nameof(offset));
-            if (length < 0 | length > offset + array.Length)
+            if (length < 0 | (length + offset > array.Length))
                 Throw.ArgumentOutOfRange(nameof(length));
 
             _startObj = array;
@@ -738,7 +756,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 segment = next;
                 offset = 0;
                 // also, roll over any empty segments (extremely unlikely, but...)
-                while(segment.Length == 0 & (next = segment.Next) != null)
+                while (segment.Length == 0 & (next = segment.Next) != null)
                     segment = next;
             }
             return offset;
@@ -772,10 +790,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal Sequence(
             SequenceSegment<T> startSegment, SequenceSegment<T> endSegment,
-            int startOffset, int endOffset,
-            bool simplifyArrays) // simplifyArrays is used to reduce single-segment scenarios down to an array-based sequence;
-        {                        // this has the consequence that the Start/End may not be reconsilable to adjacent sequences, so
-                                 // should only be used when the sequence is standalone
+            int startOffset, int endOffset)
+        {
             int endOffsetOrLength;
             T[] array = null;
             if (startSegment != null)
@@ -801,13 +817,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 {
                     endSegment = null;
                     endOffsetOrLength = endOffset - startOffset;
-
-                    if (simplifyArrays && MemoryMarshal.TryGetArray<T>(startSegment.Memory, out var arrSegment))
-                    {
-                        array = arrSegment.Array;
-                        startOffset += arrSegment.Offset;
-                        Debug.Assert(startOffset + endOffsetOrLength <= arrSegment.Count);
-                    }
                 }
                 else
                 {

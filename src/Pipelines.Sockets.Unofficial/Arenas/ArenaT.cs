@@ -141,10 +141,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Allocate a (possibly non-contiguous) region of memory from the arena
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Sequence<T> Allocate(int length) => Allocate(length, true);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal Sequence<T> Allocate(int length, bool simplifyArrays)
+        public Sequence<T> Allocate(int length)
         {
             // note: even for zero-length blocks, we'd rather have them start
             // at the start of the next block, for consistency; for consistent
@@ -157,9 +154,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 var offset = _allocatedCurrentBlock;
                 _allocatedCurrentBlock += length;
-                return new Sequence<T>(_current, _current, offset, _allocatedCurrentBlock, simplifyArrays: simplifyArrays);
+                return Sequence<T>.TrustedSingleSegment(_current, offset, length);
             }
-            return SlowAllocate(length, simplifyArrays);
+            return SlowAllocate(length);
         }
 
         internal object GetAllocator() => _allocator;
@@ -180,11 +177,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             if (AllocatedCurrentBlock == 0) return; // we're already there
 
             // burn whatever is left, if any
-            if (RemainingCurrentBlock != 0) Allocate(RemainingCurrentBlock, simplifyArrays: false); // discard
+            if (RemainingCurrentBlock != 0) Allocate(RemainingCurrentBlock); // discard
 
             // now do a dummy zero-length allocation, which has the side-effect
             // of moving us to a new page
-            SlowAllocate(0, simplifyArrays: false); // discard
+            SlowAllocate(0); // discard
         }
 
         /// <summary>
@@ -194,7 +191,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public Reference<T> Allocate() => Allocate(1).GetReference(0);
 
         // this is when there wasn't enough space in the current block
-        private Sequence<T> SlowAllocate(int length, bool simplifyArrays)
+        private Sequence<T> SlowAllocate(int length)
         {
             if (length < 0) Throw.ArgumentOutOfRange(nameof(length));
             void MoveNextBlock()
@@ -232,7 +229,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 }
             }
 
-            return new Sequence<T>(startBlock, _current, startOffset, _allocatedCurrentBlock, simplifyArrays: simplifyArrays);
+            return new Sequence<T>(startBlock, _current, startOffset, _allocatedCurrentBlock);
         }
 
         bool ClearAtReset

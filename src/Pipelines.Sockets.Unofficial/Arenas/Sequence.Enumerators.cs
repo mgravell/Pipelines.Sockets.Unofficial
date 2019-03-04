@@ -175,7 +175,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool MoveNext()
             {
-                if (_remainingThisSpan == 0) return MoveNextSegment();
+                if (_remainingThisSpan == 0) return MoveNextNonEmptySegment();
                 _offsetThisSpan++;
                 _remainingThisSpan--;
                 return true;
@@ -191,22 +191,28 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 return ref CurrentReference;
             }
 
-            private bool MoveNextSegment()
+            private bool MoveNextNonEmptySegment()
             {
-                if (_remainingOtherSegments == 0) return false;
-
-                var span = _nextSegment.Memory.Span;
-                _nextSegment = _nextSegment.Next;
-
-                if (_remainingOtherSegments <= span.Length)
-                {   // we're at the end
-                    span = span.Slice(0, (int)_remainingOtherSegments);
-                    _remainingOtherSegments = 0;
-                }
-                else
+                Span<T> span;
+                do
                 {
-                    _remainingOtherSegments -= span.Length;
-                }
+                    if (_remainingOtherSegments == 0) return false;
+
+                    span = _nextSegment.Memory.Span;
+                    _nextSegment = _nextSegment.Next;
+
+                    if (_remainingOtherSegments <= span.Length)
+                    {   // we're at the end
+                        span = span.Slice(0, (int)_remainingOtherSegments);
+                        _remainingOtherSegments = 0;
+                    }
+                    else
+                    {
+                        _remainingOtherSegments -= span.Length;
+                    }
+
+                } while (span.IsEmpty); // check for empty segment
+
                 _span = span;
                 _remainingThisSpan = span.Length - 1; // because we're consuming one
                 _offsetThisSpan = 0;

@@ -275,10 +275,6 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 {
                     var pos = source.GetPosition(i);
                     var offset = pos.TryGetOffset().Value;
-                    if (offset != i + 42)
-                    {
-                        Debugger.Break();
-                    }
                     Assert.Equal(i + 42, offset);
                 }
             }
