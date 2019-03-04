@@ -125,69 +125,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         bool ICollection<T>.Remove(T item) { Throw.NotSupported(); return default; }
 
-        private unsafe IEnumerator<T> GetObjectEnumerator()
-        {
-            if (_sequence.IsSingleSegment)
-            {
-                if (_sequence.TryGetPinned(out var origin))
-                {
-                    return new PointerBasedEnumerator(origin, (int)_sequence.Length);
-                }
-                GetSingleSegmentEnumerator(_sequence.FirstSegment);
-            }
-            return GetMultiSegmentEnumerator();
-        }
+        private unsafe IEnumerator<T> GetObjectEnumerator() => _sequence.GetObjectEnumerator();
 
-        private sealed unsafe class PointerBasedEnumerator : IEnumerator<T>
-        {
-            void* _ptr;
-            int _remaining;
-
-            public PointerBasedEnumerator(void* origin, int length)
-            {
-                _ptr = origin;
-                _remaining = length;
-            }
-
-            public T Current { get; private set; }
-
-            object IEnumerator.Current => Current;
-
-            public void Dispose() { }
-
-            public bool MoveNext()
-            {
-                // if exhausted, give up
-                if (_remaining <= 0) return false;
-
-                // otherwise, we'll de-reference a value, increment the pointer, and indicate success
-                Current = Unsafe.AsRef<T>(_ptr);
-                _ptr = Unsafe.Add<T>(_ptr, 1);
-                _remaining--;
-                return true;
-            }
-
-            public void Reset() => Throw.NotSupported();
-        }
-
-        private IEnumerator<T> GetSingleSegmentEnumerator(Memory<T> memory)
-        {
-            var len = memory.Length;
-            for (int i = 0; i < len; i++)
-                yield return memory.Span[i];
-        }
-
-        private IEnumerator<T> GetMultiSegmentEnumerator()
-        {
-            foreach(var segment in _sequence.Segments)
-            {
-                int len = segment.Length;
-                for (int i = 0; i < len; i++)
-                    yield return segment.Span[i];
-            }
-        }
-
-        IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetObjectEnumerator();
+        IEnumerator<T> IEnumerable<T>.GetEnumerator() => _sequence.GetObjectEnumerator();
 
         IEnumerator IEnumerable.GetEnumerator() => GetObjectEnumerator();
 

@@ -66,8 +66,17 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             get
             {
                 if (_obj is T[] arr) return ref arr[_offset];
-                if (_obj is IPinnedMemoryOwner<T> pinned) return ref pinned.GetSpan()[_offset];
-                return ref ((IMemoryOwner<T>)_obj).Memory.Span[_offset]; // note that this will NRE correctly if _obj is null
+                return ref SlowValue(_obj, _offset);
+
+                unsafe ref T SlowValue(object obj, int offset)
+                {
+                    void* origin;
+                    if (obj is IPinnedMemoryOwner<T> pinned && (origin = pinned.Origin) != null)
+                    {
+                        return ref Unsafe.AsRef<T>(Unsafe.Add<T>(origin, offset));
+                    }
+                    return ref ((IMemoryOwner<T>)obj).Memory.Span[offset]; // note that this will NRE correctly if obj is null
+                }
             }
         }
 
