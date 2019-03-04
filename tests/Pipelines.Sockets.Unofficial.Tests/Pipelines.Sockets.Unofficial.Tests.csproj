@@ -7,6 +7,8 @@
     <SignAssembly>true</SignAssembly>
     <DelaySign>false</DelaySign>
     <AssemblyOriginatorKeyFile>Pipelines.Sockets.Unofficial.snk</AssemblyOriginatorKeyFile>
+    <DefineConstants>$(DefineConstants);NO_NITO</DefineConstants>
+    
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,6 +16,7 @@
     <PackageReference Include="xunit" Version="2.4.0-beta.1.build3958" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.4.0-beta.1.build3958" />
     <DotNetCliToolReference Include="dotnet-xunit" Version="2.4.0-beta.1.build3958" />
+    <PackageReference Include="BenchmarkDotNet" Version="0.11.4" />
   </ItemGroup>
     <PropertyGroup Condition="'$(Configuration)'=='Debug'">
     <!--<DefineConstants>$(DefineConstants);VERBOSE</DefineConstants>-->
@@ -22,6 +25,11 @@
     <None Include="..\somesite.pfx" Link="somesite.pfx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Benchmark\ArenaBenchmarks.cs" />
+    <Compile Include="..\Benchmark\LockBenchmarks.cs" />
+    <Compile Include="..\Benchmark\Utils.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Pipelines.Sockets.Unofficial\Pipelines.Sockets.Unofficial.csproj" />

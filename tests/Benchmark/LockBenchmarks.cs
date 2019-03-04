@@ -1,5 +1,4 @@
 ﻿using BenchmarkDotNet.Attributes;
-using Nito.AsyncEx;
 using Pipelines.Sockets.Unofficial.Threading;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,7 +11,9 @@ namespace Benchmark
         const int TIMEOUTMS = 2000;
         private readonly MutexSlim _mutexSlim = new MutexSlim(TIMEOUTMS);
         private readonly SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(1, 1);
-        private readonly AsyncSemaphore _asyncSemaphore = new AsyncSemaphore(1);
+#if !NO_NITO
+        private readonly Nito.AsyncEx.AsyncSemaphore _asyncSemaphore = new Nito.AsyncEx.AsyncSemaphore(1);
+#endif
         private readonly object _syncLock = new object();
 
         const int PER_TEST = 5 * 1024;
@@ -159,6 +160,7 @@ namespace Benchmark
             return count.AssertIs(PER_TEST);
         }
 
+#if !NO_NITO
         [Benchmark(OperationsPerInvoke = PER_TEST)]
         public int AsyncSemaphore_Sync()
         {
@@ -219,5 +221,6 @@ namespace Benchmark
             }
             return count.AssertIs(PER_TEST);
         }
+#endif
     }
 }
