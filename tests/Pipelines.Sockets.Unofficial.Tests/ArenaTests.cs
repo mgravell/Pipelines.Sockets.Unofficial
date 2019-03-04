@@ -1,5 +1,7 @@
 ﻿using Pipelines.Sockets.Unofficial.Arenas;
 using System;
+using System.Buffers;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Xunit;
@@ -33,9 +35,12 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
         [Fact]
         public void AssertPossibleLayoutSizes()
-        {
+        {   // this test is re proving out the layout of Sequence<T>
             if (IntPtr.Size == 8)
             {
+                Assert.Equal(32, Unsafe.SizeOf<ReadOnlySequence<int>>());
+                Assert.Equal(24, Unsafe.SizeOf<Sequence<int>>());
+
                 Assert.Equal(32, Unsafe.SizeOf<TwoPositions<int>>());
                 Assert.Equal(24, Unsafe.SizeOf<TwoPair<int>>());
                 Assert.Equal(16, Unsafe.SizeOf<Len32<int>>());
@@ -43,6 +48,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
             else if (IntPtr.Size == 4)
             {
+                Assert.Equal(16, Unsafe.SizeOf<ReadOnlySequence<int>>());
+                Assert.Equal(16, Unsafe.SizeOf<Sequence<int>>());
+
                 Assert.Equal(16, Unsafe.SizeOf<TwoPositions<int>>());
                 Assert.Equal(16, Unsafe.SizeOf<TwoPair<int>>());
                 Assert.Equal(12, Unsafe.SizeOf<Len32<int>>());
@@ -258,14 +266,20 @@ namespace Pipelines.Sockets.Unofficial.Tests
             {
                 from.Allocate(42); // just want an arbitrary offset here
                 var source = from.Allocate(100);
-                Assert.Throws<ArgumentOutOfRangeException>(() => source.GetPosition(-1));
-                Assert.Throws<ArgumentOutOfRangeException>(() => source.GetPosition(101));
+                Assert.Throws<IndexOutOfRangeException>(() => source.GetPosition(-1));
+                Assert.Throws<IndexOutOfRangeException>(() => source.GetPosition(101));
 
                 Assert.Equal(source.GetPosition(0), source.Start);
                 Assert.Equal(source.GetPosition(100), source.End);
                 for (int i = 0; i <= 100; i++)
                 {
-                    Assert.Equal(i + 42, source.GetPosition(i).TryGetOffset().Value);
+                    var pos = source.GetPosition(i);
+                    var offset = pos.TryGetOffset().Value;
+                    if (offset != i + 42)
+                    {
+                        Debugger.Break();
+                    }
+                    Assert.Equal(i + 42, offset);
                 }
             }
         }

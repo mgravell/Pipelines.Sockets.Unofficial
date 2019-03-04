@@ -525,7 +525,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             var obj = position.GetObject();
             var offset = position.GetInteger();
-            if (obj == null) return $"offset: {offset}";
+            if (obj == null && offset != 0) return $"offset: {offset}";
+            if (obj is Array arr) return $"{arr.GetType().GetElementType().Name}[]; offset: {offset}";
             if (obj is ISegment segment)
             {
 #if DEBUG // byte offset only tracked in debug
@@ -534,7 +535,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 return $"segment: {segment.Index}, offset: {offset}; type: {segment.UnderlyingType.Name}";
 #endif
             }
-            return null; // nope!
+
+            if (obj == null && offset == 0) return "(nil)";
+            return $"obj: {obj}; offset: {offset}";
         }
 
     }

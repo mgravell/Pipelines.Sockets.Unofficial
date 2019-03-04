@@ -436,7 +436,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 // so must be multi-segment
                 Debug.Assert(!sequence.IsSingleSegment);
                 var segment = (SequenceSegment<T>)sequence._startObj;
-                var integer = SequenceSegment<T>.GetSegmentPosition(ref segment, index);
+                var integer = SequenceSegment<T>.GetSegmentPosition(ref segment, sequence.StartOffset + index);
                 return NormalizePosition(segment, integer);
             }
         }
@@ -589,7 +589,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private bool IsArray
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => (__startOffsetAndArrayFlag & ~Sequence.MSB) == 0 & _startObj != null;
+            get => ((__startOffsetAndArrayFlag & Sequence.MSB) == 0) & (_startObj != null);
         }
 
         private int StartOffset
@@ -805,7 +805,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                     }
                 }
 
-                // detect single-semgent sequences (including the scenario where the seond sequence
+                // detect single-segment sequences (including the scenario where the seond sequence
                 // is index 0 of the next)
                 if (ReferenceEquals(startSegment, endSegment))
                 {
@@ -894,9 +894,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 // multi-segment
                 SequenceSegment<T> startSeg = _startObj as SequenceSegment<T>,
-                    endSeg = _startObj as SequenceSegment<T>;
+                    endSeg = _endObj as SequenceSegment<T>;
                 Debug.Assert(startSeg != null & endSeg != null, "start and end should be sequence segments");
-                Debug.Assert(startSeg != endSeg, "start and end should be different segments");
+                Debug.Assert(!ReferenceEquals(startSeg, endSeg), "start and end should be different segments");
                 Debug.Assert(startSeg.RunningIndex < endSeg.RunningIndex, "start segment should be earlier");
                 Debug.Assert(!IsArray, "array-flag set incorrectly");
                 Debug.Assert(StartOffset <= startSeg.Length, "start-offset exceeds length of end segment");

@@ -170,6 +170,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
     internal sealed class Block<T> : SequenceSegment<T>, IDisposable
     {
+        public override string ToString() => $"Block {SegmentIndex}, {Length}×{typeof(T).Name}";
         internal int SegmentIndex { get; }
 
         protected override int GetSegmentIndex() => SegmentIndex;
