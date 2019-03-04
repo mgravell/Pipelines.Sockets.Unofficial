@@ -75,7 +75,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool operator !=(Sequence x, Sequence y) => !x.Equals(in y);
-
+        
+        /// <summary>
+        /// Indicates whether the sequence involves multiple segments, vs whether all the data fits into the first segment
+        /// </summary>
         public bool IsSingleSegment
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
