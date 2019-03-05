@@ -171,7 +171,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         unsafe class MySegment : SequenceSegment<int>, IPinnedMemoryOwner<int>
         {
             public void* Origin { get; }
-            public MySegment(Memory<int> memory, MySegment previous = null) : base(memory, previous){}
+            public MySegment(Memory<int> memory, MySegment previous = null) : base(memory, previous) { }
             public MySegment(IMemoryOwner<int> owner, MySegment previous = null) : base(owner.Memory, previous)
             {
                 if (owner is IPinnedMemoryOwner<int> pinned) Origin = pinned.Origin;
@@ -222,7 +222,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             int length = sizes.Sum();
             var first = new MySegment(Create(sizes[0]));
             var last = first;
-            for(int i = 1; i < sizes.Length; i++)
+            for (int i = 1; i < sizes.Length; i++)
             {
                 last = new MySegment(Create(sizes[i]), last);
             }
@@ -234,7 +234,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             TestEveryWhichWay(seq, length);
         }
 
-        [Theory(Skip = "odd things afoot")]
+        [Theory]
         [InlineData(new int[] { 0 }, true)]
         [InlineData(new int[] { 1 }, true)]
         [InlineData(new int[] { 2 }, true)]
@@ -264,7 +264,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             IMemoryOwner<int> Create(int size)
             {
                 var mem = new MyUnsafeManager(ptr, size);
-                ptr += length;
+                ptr += size;
                 return mem;
             }
 
@@ -280,11 +280,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
             Assert.Equal(isSingleSegment, seq.IsSingleSegment);
             TestEveryWhichWay(seq, length);
-
-            Assert.False(true, "da fuk");
         }
 
-        [Theory(Skip = "odd things afoot")]
+        [Theory]
         [InlineData(new int[] { 0 }, true)]
         [InlineData(new int[] { 1 }, true)]
         [InlineData(new int[] { 2 }, true)]
@@ -301,7 +299,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [InlineData(new int[] { 2, 0 }, true)]
         [InlineData(new int[] { 42, 0 }, true)]
         [InlineData(new int[] { 1024, 0 }, true)]
-        // test non-trivial
+        //test non-trivial
         [InlineData(new int[] { 128, 128, 64 }, false)]
         [InlineData(new int[] { 128, 0, 64, 0, 12 }, false)] // zero length blocks in the middle
         [InlineData(new int[] { 0, 128, 0, 64, 0 }, false)] // zero length blocks at the ends
@@ -314,7 +312,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             IMemoryOwner<int> Create(int size)
             {
                 var mem = new MyUnsafePinnedManager(ptr, size);
-                ptr += length;
+                ptr += size;
                 return mem;
             }
 
@@ -573,9 +571,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 int ei = expected.GetInteger() & ~Sequence.IsArrayFlag,
                     ai = actual.GetInteger() & ~Sequence.IsArrayFlag;
 
-                Assert.Equal(ei , ai );
+                Assert.Equal(ei, ai);
                 Assert.Equal(eo, ao);
-                
+
             }
 
             // slice everything
@@ -604,7 +602,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 slice = sequence.Slice(i, 1);
                 Assert.Equal(1, slice.Length);
                 AssertEqualExceptMSB(pos, slice.Start);
-                AssertEqualExceptMSB(sequence.GetPosition(i+1), slice.End);
+                AssertEqualExceptMSB(sequence.GetPosition(i + 1), slice.End);
 
                 t += slice[0];
                 c += (int)slice.Length; // 1
@@ -612,7 +610,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
             Assert.Equal(count, c);
             Assert.Equal(total, t);
-            
+
 
             Assert.Throws<ArgumentOutOfRangeException>(() => sequence.Slice(-1, 0));
             Assert.Throws<ArgumentOutOfRangeException>(() => sequence.Slice(c, 1));
