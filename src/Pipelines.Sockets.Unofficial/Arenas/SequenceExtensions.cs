@@ -1,6 +1,7 @@
 ﻿using Pipelines.Sockets.Unofficial.Internal;
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 namespace Pipelines.Sockets.Unofficial.Arenas
@@ -20,14 +21,124 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     public static class SequenceExtensions
     {
         /// <summary>
-        /// Create an array with the contents of the sequence
+        /// Create an array with the contents of the sequence; if possible, an existing
+        /// wrapped array may be reused
         /// </summary>
         public static T[] ToArray<T>(this in Sequence<T> source)
         {
             if (source.IsEmpty) return Array.Empty<T>();
+            if (source.IsSingleSegment)
+            {
+                if (source.TryGetArray(out var segment)
+                    && segment.Offset == 0 && segment.Array != null && segment.Count == segment.Array.Length)
+                {
+                    return segment.Array; // the source was wrapping an array *exactly*
+                }
+            }
             var arr = new T[source.Length];
             source.CopyTo(arr);
             return arr;
+        }
+
+        /// <summary>
+        /// Obtain a Sequence from an enumerable; this may reuse existing sequence-compatible data if possible
+        /// </summary>
+        public static Sequence<T> ToSequence<T>(this IEnumerable<T> source)
+            => SequenceBuilder<T>.IsTrivial(source, out var seq)
+            ? seq : SlowToSequence<T>(source);
+
+        private static Sequence<T> SlowToSequence<T>(IEnumerable<T> source)
+        {
+            var builder = new SequenceBuilder<T>();
+            using (var iter = source.GetEnumerator())
+            {
+                if (!iter.MoveNext()) return default;
+
+                builder.PrepareSpace(source);
+                do
+                {
+                    builder.Add(iter.Current);
+                } while (iter.MoveNext());
+                builder.Complete();
+            }
+            return builder.Result;
+        }
+
+        // TODO: add IAsyncEnumerable<T> support
+
+        internal ref struct SequenceBuilder<T>
+        {
+            internal SequenceBuilder<T> Create() => default;
+            private int _offset;
+            private void Resize(int minimumCount)
+            {
+                var newArr = ArrayPool<T>.Shared.Rent(minimumCount);
+                if(!Result.IsEmpty)
+                {
+                    Result.CopyTo(newArr);
+                    Recycle();
+                }
+                Result = new Sequence<T>(newArr);
+            }
+            private void Recycle()
+            {
+                if (!Result.IsEmpty && Result.TryGetArray(out var segment))
+                {
+                    ArrayPool<T>.Shared.Return(segment.Array, clearArray: !PerTypeHelpers<T>.IsBlittable);
+                }
+            }
+            internal void PrepareSpace(IEnumerable<T> source)
+            {
+                int assumedCount = 16;
+                if (source is ICollection<T> collection)
+                {
+                    assumedCount = collection.Count;
+                }
+                Resize(assumedCount);
+            }
+            internal static bool IsTrivial(IEnumerable<T> source, out Sequence<T> sequence)
+            {
+                if (source == null) Throw.ArgumentNull(nameof(source));
+                if (source is SequenceList<T> list)
+                {
+                    sequence = list.ToSequence();
+                    return true;
+                }
+                if (source is T[] arr)
+                {
+                    sequence = new Sequence<T>(arr);
+                    return true;
+                }
+                if (source is ArraySegment<T> segment)
+                {
+                    sequence = new Sequence<T>(segment.Array, segment.Count, segment.Count);
+                    return true;
+                }
+                if (source is Sequence<T> seq)
+                {
+                    sequence = seq;
+                    return true;
+                }
+                sequence = default;
+                return false;
+            }
+
+            internal void Add(in T current)
+            {
+                if(_offset == Result.Length)
+                {
+                    Resize(_offset * 2);
+                }
+                Result[_offset++] = current;
+            }
+
+            internal void Complete()
+            {
+                if (_offset < Result.Length)
+                    Result = Result.Slice(0, _offset);
+            }
+
+            internal Sequence<T> Result { get; private set; }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -399,7 +510,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return true; // we checked the lengths first
         }
 
-        static void SlowCopyTo<T>(in Sequence<T> source, in Sequence<T> destination)
+        private static void SlowCopyTo<T>(in Sequence<T> source, in Sequence<T> destination)
         {
             var from = source.GetEnumerator();
             var to = destination.GetEnumerator();
@@ -428,7 +539,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return true; // we checked the lengths first
         }
 
-        static void SlowCopyTo<T>(in ReadOnlySequence<T> source, in Sequence<T> destination)
+        private static void SlowCopyTo<T>(in ReadOnlySequence<T> source, in Sequence<T> destination)
         {
             var from = source.GetEnumerator();
             var to = destination.GetEnumerator();
@@ -462,7 +573,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return true; // we checked the lengths first
         }
 
-        static void SlowCopyTo<TFrom, TTo>(in Sequence<TFrom> source, in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
+        private static void SlowCopyTo<TFrom, TTo>(in Sequence<TFrom> source, in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
             var from = source.GetEnumerator();
             var to = destination.GetEnumerator();
@@ -494,7 +605,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return true; // we checked the lengths first
         }
 
-        static void SlowCopyTo<TFrom, TState, TTo>(in Sequence<TFrom> source, in Sequence<TTo> destination,
+        private static void SlowCopyTo<TFrom, TState, TTo>(in Sequence<TFrom> source, in Sequence<TTo> destination,
             Projection<TFrom, TState, TTo> projection, in TState state)
         {
             var from = source.GetEnumerator();
@@ -517,7 +628,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return null; // nope!
         }
 
-
         /// <summary>
         /// Attempt to calculate the net offset of a position
         /// </summary>
@@ -539,6 +649,5 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             if (obj == null && offset == 0) return "(nil)";
             return $"obj: {obj}; offset: {offset}";
         }
-
     }
 }

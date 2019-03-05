@@ -63,5 +63,11 @@ namespace Pipelines.Sockets.Unofficial.Internal
 
         internal static void IndexOutOfRange()
             => throw new IndexOutOfRangeException();
+
+        internal static void SegmentDataUnavailable()
+            => Throw.InvalidOperation("The segment data was not available");
+
+        internal static void AllocationDuringEnumeration()
+            => Throw.InvalidOperation("Data was allocated while the enumerator was iterating");
     }
 }

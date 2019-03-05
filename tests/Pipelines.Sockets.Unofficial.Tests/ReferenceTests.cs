@@ -30,6 +30,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 c.CopyTo(arr);
                 var r = arr.GetReference(2);
 
+                Assert.Equal(5, arr.Length);
                 Assert.Equal('c', r.Value);
                 Assert.Equal('c', (char)r);
                 r.Value = 'q';

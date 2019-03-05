@@ -9,7 +9,6 @@ using System.Runtime.InteropServices;
 
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
-
     /// <summary>
     /// Options that configure the behahaviour of an arena
     /// </summary>
@@ -101,14 +100,14 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     /// <summary>
     /// Represents a typed subset of data within an arena
     /// </summary>
-    public abstract class OwnedArena<T> : IArena
+    public abstract class OwnedArena<T> : IArena<T>
     {
         Type IArena.ElementType => typeof(T);
 
         internal OwnedArena() { }
 
         /// <summary>
-        /// Allocate a block of data
+        /// Allocate a (possibly non-contiguous) region of memory from the arena
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public abstract Sequence<T> Allocate(int length);
@@ -119,7 +118,25 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Reference<T> Allocate() => Allocate(1).GetReference(0);
 
+        /// <summary>
+        /// Allocate a (possibly non-contiguous) region of memory from the arena
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Sequence<T> Allocate(IEnumerable<T> source)
+            => Arena.Allocate<T>(this, source);
+
+        SequencePosition IArena.GetPosition() => GetPosition();
+        internal abstract SequencePosition GetPosition();
+
+        long IArena.AllocatedBytes() => AllocatedBytes();
+        internal abstract long AllocatedBytes();
+
+        Sequence<T> IArena<T>.AllocateRetainingSegmentData(int length)
+            => AllocateRetainingSegmentData(length);
+        internal abstract Sequence<T> AllocateRetainingSegmentData(int length);
+
         internal abstract object GetAllocator();
+
         internal abstract void Reset();
         internal abstract void Dispose();
         void IArena.Reset() => Reset();
@@ -134,7 +151,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             var factory = parent.Factory;
             var options = parent.Options;
-            
+
             // create the arena
             _arena = new Arena<T>(
                 options: options,
@@ -147,6 +164,13 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         internal override void Reset() => _arena.Reset();
         internal override void Dispose() => _arena.Dispose();
+
+        internal override SequencePosition GetPosition() => _arena.GetPosition();
+
+        internal override long AllocatedBytes() => _arena.AllocatedBytes();
+
+        internal override Sequence<T> AllocateRetainingSegmentData(int length)
+            => _arena.AllocateRetainingSegmentData(length);
     }
 
     internal abstract class MappedBlittableOwnedArena<TFrom, TTo> : OwnedArena<TTo>
@@ -154,13 +178,20 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         where TTo : unmanaged
     {
         protected readonly Arena<TFrom> _arena;
-        public MappedBlittableOwnedArena(Arena parent)
+        protected MappedBlittableOwnedArena(Arena parent)
         {   // get the byte arena from the parent
             _arena = ((SimpleOwnedArena<TFrom>)parent.GetArena<TFrom>()).Arena;
         }
+        internal override long AllocatedBytes() => 0; // not our data
+
         internal override void Reset() { } // the T allocator doesn't own the data
         internal override void Dispose() { } // the T allocator doesn't own the data
         internal override object GetAllocator() => _arena.GetAllocator();
+
+        internal override SequencePosition GetPosition() => _arena.GetPosition();
+
+        internal override Sequence<TTo> AllocateRetainingSegmentData(int length)
+            => Allocate(length);
 
         private readonly List<Arena.MappedSegment<TFrom, TTo>> _mappedSegments = new List<Arena.MappedSegment<TFrom, TTo>>();
 
@@ -186,7 +217,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
     internal sealed class NonPaddedBlittableOwnedArena<TFrom, TTo> : MappedBlittableOwnedArena<TFrom, TTo>
         where TFrom : unmanaged
-        where TTo : unmanaged 
+        where TTo : unmanaged
     {
         public NonPaddedBlittableOwnedArena(Arena parent) : base(parent)
         {
@@ -199,7 +230,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             var fromParent = _arena.AllocateRetainingSegmentData(length);
 
             if (!fromParent.TryGetSegments(out var startSeq, out var endSeq, out var startOffset, out var endOffset))
-                Throw.InvalidOperation("The segment data was not available");
+                Throw.SegmentDataUnavailable();
 
             var startMapped = MapBlock(((Block<TFrom>)startSeq).SegmentIndex);
             var endMapped = ReferenceEquals(startSeq, endSeq) ? startMapped : MapBlock(((Block<TFrom>)endSeq).SegmentIndex);
@@ -269,7 +300,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                     // not enough room on the current page; burn *all* of the
                     // current page, and map in the next
                     length -= elementsThisPage;
-                    arena.SkipToNextPage();                    
+                    arena.SkipToNextPage();
                 }
             }
 
@@ -347,11 +378,16 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public Reference<T> Allocate<T>() => GetArena<T>().Allocate(1).GetReference(0);
 
         /// <summary>
-        /// Allocate a block of data
+        /// Allocate a (possibly non-contiguous) region of memory from the arena
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)] // aggressive mostly in the JIT-optimized cases!
         public Sequence<T> Allocate<T>(int length) => GetArena<T>().Allocate(length);
-        
+
+        /// <summary>
+        /// Allocate a (possibly non-contiguous) region of memory from the arena
+        /// </summary>
+        public Sequence<T> Allocate<T>(IEnumerable<T> source) => Allocate<T>(GetArena<T>(), source);
+
         /// <summary>
         /// Get a per-type arena inside a multi-type arena
         /// </summary>
@@ -360,10 +396,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             if (_lastArena?.ElementType == typeof(T)
                 || _ownedArenas.TryGetValue(typeof(T), out _lastArena))
+            {
                 return (OwnedArena<T>)_lastArena;
+            }
             return CreateAndAddArena<T>();
         }
-        IArena _lastArena;
+        private IArena _lastArena;
 
         private Dictionary<int, IArena> _blittableBySize = new Dictionary<int, IArena>();
         private Dictionary<Type, IArena> _ownedArenas = new Dictionary<Type, IArena>();
@@ -452,8 +490,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             private readonly int _byteCount;
             protected override long ByteOffset => _byteOffset;
 #endif
-            
-            static unsafe Memory<TTo> CreateMapped(Block<TFrom> underlying, out void* origin)
+
+            private static unsafe Memory<TTo> CreateMapped(Block<TFrom> underlying, out void* origin)
             {
                 MemoryManager<TTo> mapped;
                 origin = null;
@@ -483,7 +521,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 #endif
             }
 
-            sealed unsafe class PinnedConvertingMemoryManager : MemoryManager<TTo>, IPinnedMemoryOwner<TTo>
+            private sealed unsafe class PinnedConvertingMemoryManager : MemoryManager<TTo>, IPinnedMemoryOwner<TTo>
             {
                 private readonly TTo* _origin;
 
@@ -505,7 +543,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
                 protected override void Dispose(bool disposing) { } // not our memory
             }
-            sealed class ConvertingMemoryManager : MemoryManager<TTo>
+            private sealed class ConvertingMemoryManager : MemoryManager<TTo>
             {
                 private readonly IMemoryOwner<TFrom> _unrooted;
                 public ConvertingMemoryManager(IMemoryOwner<TFrom> unrooted) => _unrooted = unrooted;
@@ -518,6 +556,62 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
                 protected override void Dispose(bool disposing) { } // not our memory
             }
+        }
+
+        internal static Sequence<T> Allocate<T>(IArena<T> arena, IEnumerable<T> source)
+        {
+            Debug.Assert(arena != null, "null arena");
+            if (SequenceExtensions.SequenceBuilder<T>.IsTrivial(source, out var seq))
+            {   // we need it allocated in *this* arena, which we
+                // can't know unless we copy it
+                if (seq.IsEmpty) return default;
+                var len = seq.Length;
+                if (len <= int.MaxValue)
+                {
+                    var result = arena.Allocate((int)len);
+                    seq.CopyTo(result);
+                    return result;
+                }
+            }
+            return SlowAllocate<T>(arena, source);
+        }
+        private static Sequence<T> SlowAllocate<T>(IArena<T> arena, IEnumerable<T> source)
+        {
+            using (var iter = source.GetEnumerator())
+            {
+                if (!iter.MoveNext()) return default; // empty
+                Sequence<T> alloc = arena.AllocateRetainingSegmentData(1);
+                alloc[0] = iter.Current;
+
+                var pos = arena.GetPosition();
+                if (!iter.MoveNext()) return alloc; // exactly 1
+                if (!alloc.TryGetSegments(out var x, out _, out var i, out _))
+                    Throw.SegmentDataUnavailable();
+
+                do
+                {
+                    // check we didn't allocate during the MoveNext
+                    if (!pos.Equals(arena.GetPosition())) Throw.AllocationDuringEnumeration();
+                    alloc = arena.AllocateRetainingSegmentData(1);
+                    alloc[0] = iter.Current;
+                    pos = arena.GetPosition();
+                } while (iter.MoveNext());
+                // now get the segment data from the start and end, and combine them
+                if (!alloc.TryGetSegments(out _, out var y, out _, out var j))
+                    Throw.SegmentDataUnavailable();
+                return new Sequence<T>(x, y, i, j);
+            }
+        }
+
+        internal long AllocatedBytes()
+        {
+            long total = 0;
+            var owned = _ownedArenas;
+            if (owned != null)
+            {
+                foreach (var arena in owned) total += arena.Value.AllocatedBytes();
+            }
+            return total;
         }
     }
 }

@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
 {
-
     // HUGE caution; I *think* this approach is insurmountable given the current text decoding APIs; there exist multiple
     // places when we'd need to be able to either:
     // - rewind a decoder to a previous state
@@ -330,7 +329,7 @@ namespace Pipelines.Sockets.Unofficial
                         encoder.Reset();
                     }
                 }
-                
+
                 encoder.Convert(chars, bytes, false, out int charsUsed, out int bytesUsed, out completed);
                 Debug.Assert(bytesUsed > 0);
                 writer.Advance(bytesUsed);
@@ -345,7 +344,6 @@ namespace Pipelines.Sockets.Unofficial
                 Debug.Assert(completed);
                 writer.Advance(bytesUsed);
                 totalBytesUsed += bytesUsed;
-
             }
             return totalBytesUsed;
         }
@@ -367,8 +365,8 @@ namespace Pipelines.Sockets.Unofficial
             if (encoding == null) throw new ArgumentNullException(nameof(encoding));
             if (value.IsEmpty) return 0;
             return WriteImpl(writer, value, encoding, null);
-
         }
+
         /// <summary>
         /// Write a string to a pipe in the provided encoding
         /// </summary>

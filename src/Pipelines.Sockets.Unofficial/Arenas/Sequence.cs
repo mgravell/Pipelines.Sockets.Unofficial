@@ -94,8 +94,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             get => IsSingleSegment ? _endOffsetOrLength : MultiSegmentLength();
         }
 
-
-        long MultiSegmentLength()
+        private long MultiSegmentLength()
         {
             // note that in the multi-segment case, the MSB will be set - as it isn't an array
             return (((ISegment)_endObj).RunningIndex + (_endOffsetOrLength)) // start index
@@ -235,7 +234,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         bool IEquatable<Sequence<T>>.Equals(Sequence<T> other) => Equals(in other);
 
-
         /// <summary>
         /// Tests two sequences for equality
         /// </summary>
@@ -329,7 +327,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 var offset = SequenceSegment<T>.GetSegmentPosition(ref segment, sequence.StartOffset + l_index);
                 return new Reference<T>(offset, segment); // trusted .ctor
             }
-
         }
 
         /// <summary>
@@ -424,7 +421,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public SequencePosition GetPosition(long offset)
         {
-
             if (offset > 0 & offset <= (IsSingleSegment ? SingleSegmentLength : RemainingFirstSegmentLength(in this)))
             {
                 return NormalizePosition(_startObj, StartOffset + (int)offset);
@@ -448,6 +444,24 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 var integer = SequenceSegment<T>.GetSegmentPosition(ref segment, sequence.StartOffset + index);
                 return sequence.NormalizePosition(segment, integer);
             }
+        }
+
+        /// <summary>
+        /// Try to get the contents as an array
+        /// </summary>
+        public bool TryGetArray(out ArraySegment<T> segment)
+        {
+            if (IsSingleSegment)
+            {
+                if (IsArray)
+                {
+                    segment = new ArraySegment<T>((T[])_startObj, StartOffset, SingleSegmentLength);
+                    return true;
+                }
+                return MemoryMarshal.TryGetArray<T>(FirstSegment, out segment);
+            }
+            segment = default;
+            return false;
         }
 
         /// <summary>
@@ -584,8 +598,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 return __endOffsetOrLength;
             }
         }
-
-
 
         /// <summary>
         /// Indicates whether the sequence involves multiple segments, vs whether all the data fits into the first segment
@@ -736,7 +748,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static int NormalizeForwards(ref SequenceSegment<T> segment, int offset)
+        private static int NormalizeForwards(ref SequenceSegment<T> segment, int offset)
         {
             Debug.Assert(segment != null && offset >= 0 && offset <= segment.Length,
                 "invalid segment");

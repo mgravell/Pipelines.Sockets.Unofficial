@@ -46,6 +46,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         internal SequenceList(in Sequence<T> sequence) => _sequence = sequence;
 
+        /// <summary>
+        /// Get the sequence represented by this list
+        /// </summary>
+        public Sequence<T> ToSequence() => _sequence;
 
         // everything from here is to make the interfaces happy
 

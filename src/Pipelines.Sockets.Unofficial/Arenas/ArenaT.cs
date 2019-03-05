@@ -1,5 +1,6 @@
 ﻿using Pipelines.Sockets.Unofficial.Internal;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -46,14 +47,24 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     {
         void Reset();
         Type ElementType { get; }
+        SequencePosition GetPosition();
+        long AllocatedBytes();
+    }
+
+    internal interface IArena<T> : IArena
+    {
+        Sequence<T> Allocate(int length);
+        Sequence<T> AllocateRetainingSegmentData(int length);
     }
 
     /// <summary>
     /// Represents a lifetime-bound allocator of multiple non-contiguous memory regions
     /// </summary>
-    public sealed class Arena<T> : IDisposable, IArena
+    public sealed class Arena<T> : IDisposable, IArena<T>
     {
         Type IArena.ElementType => typeof(T);
+
+        long IArena.AllocatedBytes() => AllocatedBytes();
 
         /// <summary>
         /// The number of elements allocated since the last reset
@@ -89,7 +100,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
             return total * Unsafe.SizeOf<T>();
         }
-
 
         private readonly ArenaFlags _flags;
         private readonly int _blockSize;
@@ -156,7 +166,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             int blockSize = (blockSizeBytes > 0 ? blockSizeBytes : DefaultBlockSizeBytes) / Unsafe.SizeOf<T>(); // calculate the preferred block size
             _blockSize = Math.Max(blockSize, Math.Min(MinBlockSize / Unsafe.SizeOf<T>(), 1)); // calculate the *actual* size, after accounting for minimum sizes
-  
+
             _first = CurrentBlock = AllocateAndAttachBlock(previous: null);
             _retentionPolicy = options.RetentionPolicy ?? RetentionPolicy.Default;
         }
@@ -198,6 +208,40 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
             return SlowAllocate(length);
         }
+
+        /// <summary>
+        /// Allocate a (possibly non-contiguous) region of memory from the arena
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Sequence<T> Allocate(long length)
+        {
+            // note: even for zero-length blocks, we'd rather have them start
+            // at the start of the next block, for consistency; for consistent
+            // *End()*, we also want end-terminated blocks to create a new block,
+            // so that we always have first.End == second.Start
+            // (this would self-correct later, if another segment got added, but if .End
+            // is read *before* a new segment got added, it would never match
+            // .Start; so... take a punt and extend it now)
+            if (length > 0 & length <= RemainingCurrentBlock)
+            {
+                var offset = _allocatedCurrentBlock;
+                _allocatedCurrentBlock += (int)length;
+                return new Sequence<T>(startObj: _currentStartObj, endObj: null,
+                    startOffsetAndArrayFlag: offset | _currentArrayFlag, endOffsetOrLength: (int)length);
+            }
+            return SlowAllocate(length);
+        }
+
+        /// <summary>
+        /// Allocate a (possibly non-contiguous) region of memory from the arena
+        /// </summary>
+        public Sequence<T> Allocate(IEnumerable<T> source) => Arena.Allocate<T>(this, source);
+
+        SequencePosition IArena.GetPosition() => GetPosition();
+        internal SequencePosition GetPosition() => new SequencePosition(_currentStartObj, _allocatedCurrentBlock);
+
+        Sequence<T> IArena<T>.AllocateRetainingSegmentData(int length)
+            => AllocateRetainingSegmentData(length);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal Sequence<T> AllocateRetainingSegmentData(int length)
@@ -244,7 +288,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public Reference<T> Allocate() => Allocate(1).GetReference(0);
 
         // this is when there wasn't enough space in the current block
-        private Sequence<T> SlowAllocate(int length)
+        private Sequence<T> SlowAllocate(long length)
         {
             if (length < 0) Throw.ArgumentOutOfRange(nameof(length));
 
@@ -273,7 +317,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 }
                 else if (length < remainingThisBlock)
                 {
-                    _allocatedCurrentBlock += length;
+                    _allocatedCurrentBlock += (int)length;
                     break; // that's all we need, thanks
                 }
                 else
@@ -286,13 +330,13 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return new Sequence<T>(startBlock, CurrentBlock, startOffset, _allocatedCurrentBlock);
         }
 
-        bool ClearAtReset
+        private bool ClearAtReset
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => (_flags & ArenaFlags.ClearAtReset) != 0;
         }
 
-        bool ClearAtDispose
+        private bool ClearAtDispose
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => (_flags & ArenaFlags.ClearAtDispose) != 0;
@@ -303,8 +347,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public void Reset()
         {
-
-
             // if needed, wipe the blocks
             if (ClearAtReset) ClearAllocatedSpace();
 
@@ -360,7 +402,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
         }
 
-        void ReleaseChain(Block<T> block, bool wipeBlocks)
+        private void ReleaseChain(Block<T> block, bool wipeBlocks)
         {
             while (block != null)
             {

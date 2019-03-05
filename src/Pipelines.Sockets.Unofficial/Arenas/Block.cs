@@ -4,7 +4,6 @@ using System.Runtime.CompilerServices;
 
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
-
     internal sealed class Block<T> : SequenceSegment<T>, IDisposable, IPinnedMemoryOwner<T>
     {
         private readonly unsafe void* _origin;
