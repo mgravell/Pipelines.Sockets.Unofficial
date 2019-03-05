@@ -6,6 +6,7 @@
     <PackageLicenseUrl>https://raw.githubusercontent.com/mgravell/Pipelines.Sockets.Unofficial/master/LICENSE</PackageLicenseUrl>    
     <PackageProjectUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</RepositoryUrl>
+    <PackageReleaseNotes>https://mgravell.github.io/Pipelines.Sockets.Unofficial/docs/releasenotes</PackageReleaseNotes>
 
     <DebugSymbols>true</DebugSymbols>
     <DebugType>embedded</DebugType>
