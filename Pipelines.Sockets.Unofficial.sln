@@ -26,8 +26,8 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{3AC0FFD3-9F9A-4A22-89CF-5577FFEBF17C}"
 	ProjectSection(SolutionItems) = preProject
 		docs\arenas.md = docs\arenas.md
-		docs\index.md = docs\index.md
 		docs\performance.png = docs\performance.png
+		docs\releasenotes.md = docs\releasenotes.md
 	EndProjectSection
 EndProject
 Global

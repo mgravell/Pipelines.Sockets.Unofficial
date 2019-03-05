@@ -1,8 +1,3 @@
-# Pipelines.Sockets.Unofficial
-
-This utility library intended to provide useful additions for working with "pipelines". This includes additional features not *directly* tied to "pipelines",
-but likely to be useful in sceneraios where you would be interested in looking at "pipelines".
-
 # Release Notes
 
 ## 1.1.*
