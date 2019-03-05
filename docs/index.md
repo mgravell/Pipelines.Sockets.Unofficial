@@ -10,7 +10,7 @@ but likely to be useful in sceneraios where you would be interested in looking a
 Two big feature additions in 1.1
 
 - `MutexSlim` - works a lot like `new SemaphoreSlim(1,1)`, but optimized for mutex usage, and [fixes the sync+async problem in `SemaphoreSlim`](https://blog.marcgravell.com/2019/02/fun-with-spiral-of-death.html)
-- arena allocation, including `Arena<T>`, `Arena`, `Sequence<T>` and `Reference<T>`; [discussed in more detail here](arenas.md)
+- arena allocation, including `Arena<T>`, `Arena`, `Sequence<T>` and `Reference<T>`; [discussed in more detail here](docs/arenas.md)
 
 
 ## 1.0.*
