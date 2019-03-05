@@ -2,6 +2,7 @@
 using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
@@ -36,19 +37,34 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Create a new reference into an array
         /// </summary>
-        public Reference(T[] array, int offset) : this(offset, array)
+        public Reference(T[] array, int index) : this(index, array)
         {
             if (array == null) Throw.ArgumentNull(nameof(array));
-            if (offset < 0 | offset >= array.Length) Throw.ArgumentOutOfRange(nameof(offset));
+            if (index < 0 | index >= array.Length) Throw.ArgumentOutOfRange(nameof(index));
         }
 
         /// <summary>
         /// Create a new reference into a memory
         /// </summary>
-        public Reference(IMemoryOwner<T> memory, int offset) : this(offset, memory)
+        public Reference(Memory<T> memory, int index)
         {
-            if (memory == null) Throw.ArgumentNull(nameof(memory));
-            if (offset < 0 | offset >= memory.Memory.Length) Throw.ArgumentOutOfRange(nameof(offset));
+            if (MemoryMarshal.TryGetMemoryManager<T, MemoryManager<T>>(memory, out MemoryManager<T> manager, out int start, out int length))
+            {
+                if (index < 0 | index >= length) Throw.ArgumentOutOfRange(nameof(index));
+                _obj = manager;
+                _offset = start + index;
+            }
+            else if (MemoryMarshal.TryGetArray(memory, out ArraySegment<T> segment))
+            {
+                if (index < 0 | index >= segment.Count) Throw.ArgumentOutOfRange(nameof(index));
+                _obj = segment.Array;
+                _offset = segment.Offset + index;
+            }
+            else
+            {
+                Throw.Argument("The provided Memory instance cannot be used as a reference", nameof(memory));
+                this = default;
+            }
         }
 
         internal Reference(int offset, object obj) // trusted .ctor

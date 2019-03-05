@@ -178,14 +178,14 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             _startOffsetAndArrayFlag=[0]{offset, 31 bits}
             _endOffsetOrLength=[0]{length, 31 bits}
 
-        IMemoryOwner<T>
+        MemoryManager<T>
             _startObj={owner}
             _endObj=null
             _startOffsetAndArrayFlag=[1]{offset, 31 bits}
             _endOffsetOrLength=[0]{length, 31 bits}
 
-        SequenceSegment<T> - single-segment; this is the same as IMemoryOwner<T>
-                    (with {owner}==={segment}, since SequenceSegment<T> : IMemoryOwner<T>)
+        SequenceSegment<T> - single-segment; this is the same as MemoryManager<T> if
+                    we restrict ourselves to IMemoryOwner<T>, which both implement)
 
         SequenceSegment<T> - multi-segment
             _startObj={start segment}
@@ -326,8 +326,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
                 // find the actual segment
                 var segment = (SequenceSegment<T>)sequence._startObj;
-                var offset = SequenceSegment<T>.GetSegmentPosition(ref segment, l_index);
-                return new Reference<T>(segment, offset);
+                var offset = SequenceSegment<T>.GetSegmentPosition(ref segment, sequence.StartOffset + l_index);
+                return new Reference<T>(offset, segment); // trusted .ctor
             }
 
         }
@@ -388,33 +388,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             Start, End, Other
         }
-        private SequencePosition NormalizePosition(object @object, int integer, PositionKind kind)
+        private SequencePosition NormalizePosition(object @object, int integer)
         {
             if (@object is SequenceSegment<T> sequence && integer == sequence.Length)
             {
                 integer = NormalizeForwards(ref sequence, integer);
                 @object = sequence;
-            }
-
-            // and for equivalence with ROS; look at the ROS source for what this all means
-            switch (kind)
-            {
-                case PositionKind.Start:
-                    // check for a memory-manager-backed owner
-                    if (IsSingleSegment && _startObj is IMemoryOwner<T> owner && !(_startObj is SequenceSegment<T>))
-                    {
-                        integer |= Sequence.MSB;
-                    }
-                    break;
-                case PositionKind.End:
-                    if (IsArray)
-                    {
-                        integer |= Sequence.MSB;
-                    }
-                    break;
-                default:
-
-                    break;
             }
 
             return new SequencePosition(@object, integer);
@@ -426,7 +405,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public SequencePosition Start
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => NormalizePosition(_startObj, StartOffset, PositionKind.Start);
+            get => NormalizePosition(_startObj, StartOffset);
         }
 
         /// <summary>
@@ -436,8 +415,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => IsSingleSegment
-                ? NormalizePosition(_startObj, StartOffset + SingleSegmentLength, PositionKind.End)
-                : NormalizePosition(_endObj, MultiSegmentEndOffset, PositionKind.End);
+                ? NormalizePosition(_startObj, StartOffset + SingleSegmentLength)
+                : NormalizePosition(_endObj, MultiSegmentEndOffset);
         }
         /// <summary>
         /// Calculate a position inside the current sequence
@@ -448,7 +427,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             if (offset > 0 & offset <= (IsSingleSegment ? SingleSegmentLength : RemainingFirstSegmentLength(in this)))
             {
-                return NormalizePosition(_startObj, StartOffset + (int)offset, PositionKind.Other);
+                return NormalizePosition(_startObj, StartOffset + (int)offset);
             }
             return SlowGetPosition(in this, offset);
 
@@ -467,7 +446,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 Debug.Assert(!sequence.IsSingleSegment);
                 var segment = (SequenceSegment<T>)sequence._startObj;
                 var integer = SequenceSegment<T>.GetSegmentPosition(ref segment, sequence.StartOffset + index);
-                return sequence.NormalizePosition(segment, integer, PositionKind.Other);
+                return sequence.NormalizePosition(segment, integer);
             }
         }
 
@@ -708,11 +687,27 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public Sequence(Memory<T> memory)
         {
-            // there's a lot of logic in ROS for this; let's just re-use that
-            if (!TryGetSequence(new ReadOnlySequence<T>(memory), out this))
+            if (MemoryMarshal.TryGetMemoryManager<T, MemoryManager<T>>(memory, out var manager, out int index, out int length))
             {
-                Throw.Argument("It was not possible to create a Sequence from this Memory", nameof(memory));
+                _startObj = manager;
+                _endObj = null;
+                __startOffsetAndArrayFlag = index | Sequence.MSB;
+                __endOffsetOrLength = length;
             }
+            else if (MemoryMarshal.TryGetArray(memory, out ArraySegment<T> segment))
+            {
+                _startObj = segment.Array;
+                _endObj = null;
+                __startOffsetAndArrayFlag = segment.Offset;
+                __endOffsetOrLength = segment.Count;
+            }
+            else
+            {
+                Throw.Argument("The provided Memory instance cannot be used as a sequence", nameof(memory));
+                this = default;
+            }
+
+            AssertValid();
         }
 
         /// <summary>

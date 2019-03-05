@@ -180,10 +180,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
         private void TestEveryWhichWay(Sequence<int> sequence, int count)
         {
-            const int SEED = 12345;
-            Random rand = null;
-            int GetNextRandom() => rand.Next(0, 100);
-            void ResetRandom() => rand = new Random(SEED);
+            Random rand = null; //int _nextRandom = 0;
+            int GetNextRandom() => rand.Next(0, 100); //_nextRandom++; 
+            void ResetRandom() => rand = new Random(12345); // _nextRandom = 0;
 
 
             Assert.Equal(count, sequence.Length);
@@ -366,7 +365,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Assert.Throws<IndexOutOfRangeException>(() => sequence.GetReference(-1));
             Assert.Throws<IndexOutOfRangeException>(() => sequence.GetReference(c));
 
-            // check positions
+            // check positions are obtainable
             for (long index = 0; index <= count; index++)
             {
                 sequence.GetPosition(index);
@@ -377,8 +376,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
             // get ROS
             var ros = sequence.AsReadOnly();
             Assert.Equal(c, ros.Length);
-            Assert.Equal(ros.Start, sequence.Start);
-            Assert.Equal(ros.End, sequence.End);
+            AssertEqualExceptMSB(ros.Start, sequence.Start);
+            AssertEqualExceptMSB(ros.End, sequence.End);
             for (int i = 0; i <= count; i++)
             {
                 if (i == 0 || i == count)
@@ -392,8 +391,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
                 var roSlice = ros.Slice(i, 0);
                 var slice = sequence.Slice(i, 0);
-                Assert.Equal(roSlice.Start, slice.Start);
-                Assert.Equal(roSlice.End, slice.End);
+                AssertEqualExceptMSB(roSlice.Start, slice.Start);
+                AssertEqualExceptMSB(roSlice.End, slice.End);
             }
 
             // and get back again
