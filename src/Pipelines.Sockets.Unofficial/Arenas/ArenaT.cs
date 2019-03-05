@@ -168,10 +168,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Allocate a (possibly non-contiguous) region of memory from the arena
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Sequence<T> Allocate(int length) => Allocate(length, true);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal Sequence<T> Allocate(int length, bool optimized)
+        public Sequence<T> Allocate(int length)
         {
             // note: even for zero-length blocks, we'd rather have them start
             // at the start of the next block, for consistency; for consistent
@@ -184,9 +181,22 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 var offset = _allocatedCurrentBlock;
                 _allocatedCurrentBlock += length;
-                return optimized // should we remove the segment data? (makes access more efficient, but sometimes we need it)
-                    ? Sequence<T>.TrustedSingleSegment(_currentStartObj, offset | _currentArrayFlag, length)
-                    : Sequence<T>.TrustedSingleSegment(CurrentBlock, offset, length);
+                return new Sequence<T>(startObj: _currentStartObj, endObj: null,
+                    startOffsetAndArrayFlag: offset | _currentArrayFlag, endOffsetOrLength: length);
+            }
+            return SlowAllocate(length);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal Sequence<T> AllocateRetainingSegmentData(int length)
+        {
+            // like Allocate, but never removes segment data
+            if (length > 0 & length <= RemainingCurrentBlock)
+            {
+                var offset = _allocatedCurrentBlock;
+                _allocatedCurrentBlock += length;
+                return new Sequence<T>(startObj: CurrentBlock, endObj: null,
+                    startOffsetAndArrayFlag: offset, endOffsetOrLength: length);
             }
             return SlowAllocate(length);
         }
@@ -208,23 +218,24 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             if (AllocatedCurrentBlock == 0) return; // we're already there
 
             // burn whatever is left, if any
-            if (RemainingCurrentBlock != 0) Allocate(RemainingCurrentBlock, optimized: false); // discard
+            if (RemainingCurrentBlock != 0) Allocate(RemainingCurrentBlock); // discard
 
             // now do a dummy zero-length allocation, which has the side-effect
             // of moving us to a new page
-            SlowAllocate(0); // discard
+            Allocate(0); // discard
         }
 
         /// <summary>
         /// Allocate a reference to a new instance from the arena
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Reference<T> Allocate() => Allocate(1, false).GetReference(0);
+        public Reference<T> Allocate() => Allocate(1).GetReference(0);
 
         // this is when there wasn't enough space in the current block
         private Sequence<T> SlowAllocate(int length)
         {
             if (length < 0) Throw.ArgumentOutOfRange(nameof(length));
+
             void MoveNextBlock()
             {
                 CurrentBlock = CurrentBlock.Next ?? AllocateAndAttachBlock(previous: CurrentBlock);

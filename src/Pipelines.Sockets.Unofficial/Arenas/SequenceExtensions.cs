@@ -360,9 +360,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public static Sequence<TTo> Allocate<TFrom, TTo>(this Arena<TTo> arena, in Sequence<TFrom> source, Projection<TFrom, TTo> projection)
         {
-            if (source.IsEmpty) return arena.Allocate(0, optimized: true); // retains position etc
+            if (source.IsEmpty) return arena.Allocate(0); // retains position etc
 
-            var block = arena.Allocate(checked((int)source.Length), optimized: true);
+            var block = arena.Allocate(checked((int)source.Length));
             source.CopyTo(block, projection);
             return block;
         }
@@ -373,9 +373,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public static Sequence<TTo> Allocate<TFrom, TState, TTo>(this Arena<TTo> arena, in Sequence<TFrom> source,
             Projection<TFrom, TState, TTo> projection, in TState state)
         {
-            if (source.IsEmpty) return arena.Allocate(0, optimized: true); // retains position etc
+            if (source.IsEmpty) return arena.Allocate(0); // retains position etc
 
-            var block = arena.Allocate(checked((int)source.Length), optimized: true);
+            var block = arena.Allocate(checked((int)source.Length));
             source.CopyTo(block, projection, state);
             return block;
         }

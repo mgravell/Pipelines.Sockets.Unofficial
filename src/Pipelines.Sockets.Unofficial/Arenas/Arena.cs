@@ -111,15 +111,13 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Allocate a block of data
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Sequence<T> Allocate(int length) => Allocate(length, true);
-
-        internal abstract Sequence<T> Allocate(int length, bool optimized);
+        public abstract Sequence<T> Allocate(int length);
 
         /// <summary>
         /// Allocate a single instance as a reference
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Reference<T> Allocate() => Allocate(1, optimized: true).GetReference(0);
+        public Reference<T> Allocate() => Allocate(1).GetReference(0);
 
         internal abstract object GetAllocator();
         internal abstract void Reset();
@@ -143,7 +141,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 allocator: suggestedAllocator ?? factory.SuggestAllocator<T>(options),
                 blockSizeBytes: factory.SuggestBlockSizeBytes<T>(options));
         }
-        internal override Sequence<T> Allocate(int length, bool optimized) => _arena.Allocate(length, optimized);
+        public override Sequence<T> Allocate(int length) => _arena.Allocate(length);
 
         internal override object GetAllocator() => _arena.GetAllocator();
 
@@ -196,9 +194,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal override Sequence<TTo> Allocate(int length, bool optimized)
+        public override Sequence<TTo> Allocate(int length)
         {
-            var fromParent = _arena.Allocate(length, false); // don't ever optimize; that prevents segment data being fetchable
+            var fromParent = _arena.AllocateRetainingSegmentData(length);
 
             if (!fromParent.TryGetSegments(out var startSeq, out var endSeq, out var startOffset, out var endOffset))
                 Throw.InvalidOperation("The segment data was not available");
@@ -216,7 +214,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         where T : unmanaged
     {
         public PaddedBlittableOwnedArena(Arena parent) : base(parent) {}
-        internal override Sequence<T> Allocate(int length, bool optimized)
+        public override Sequence<T> Allocate(int length)
         {
             // we need to think about padding/alignment; to allow proper
             // interleaving, we'll always need to talk in alignments of <T>,
@@ -230,7 +228,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
                 // burn the padding, or to the end of the page - whichever comes first
                 if (padding >= arena.RemainingCurrentBlock) arena.SkipToNextPage();
-                else arena.Allocate(padding, optimized: false); // and drop it on the floor
+                else arena.Allocate(padding); // and drop it on the floor
             }
 
             // do we at least have space for *one* item? this is because we
@@ -262,7 +260,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 else if (length < elementsThisPage)
                 {
                     // take what we need, and we're done
-                    arena.Allocate(length * Unsafe.SizeOf<T>(), optimized: false);
+                    arena.Allocate(length * Unsafe.SizeOf<T>());
                     length = 0;
                     break;
                 }
@@ -346,13 +344,13 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Allocate a single instance as a reference
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Reference<T> Allocate<T>() => GetArena<T>().Allocate(1, optimized: true).GetReference(0);
+        public Reference<T> Allocate<T>() => GetArena<T>().Allocate(1).GetReference(0);
 
         /// <summary>
         /// Allocate a block of data
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)] // aggressive mostly in the JIT-optimized cases!
-        public Sequence<T> Allocate<T>(int length) => GetArena<T>().Allocate(length, optimized: true);
+        public Sequence<T> Allocate<T>(int length) => GetArena<T>().Allocate(length);
         
         /// <summary>
         /// Get a per-type arena inside a multi-type arena

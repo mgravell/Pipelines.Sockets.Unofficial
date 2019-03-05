@@ -717,10 +717,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public Sequence(T[] array) : this(array, 0, array?.Length ?? 0) { }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static Sequence<T> TrustedSingleSegment(object startObj, int startOffsetAndArrayFlag, int length)
-            => new Sequence<T>(startObj, null, startOffsetAndArrayFlag, length);
-
         /// <summary>
         /// Create a new single-segment sequence from an array
         /// </summary>
