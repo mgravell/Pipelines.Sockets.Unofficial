@@ -30,9 +30,14 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return arr;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static unsafe Span<T> GetSpan<T>(this IPinnedMemoryOwner<T> pinned)
+            => new Span<T>(pinned.Origin, pinned.Length);
+
         /// <summary>
         /// Create a list-like object that provides access to the sequence
         /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static SequenceList<T> ToList<T>(this in Sequence<T> source)
             => SequenceList<T>.Create(source);
 
@@ -503,7 +508,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Attempt to calculate the net offset of a position
         /// </summary>
-        public static long? TryGetOffset(this SequencePosition position)
+        internal static long? TryGetOffset(this SequencePosition position)
         {
             var obj = position.GetObject();
             var offset = position.GetInteger();
@@ -520,7 +525,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             var obj = position.GetObject();
             var offset = position.GetInteger();
-            if (obj == null) return $"offset: {offset}";
+            if (obj == null && offset != 0) return $"offset: {offset}";
+            if (obj is Array arr) return $"{arr.GetType().GetElementType().Name}[]; offset: {offset}";
             if (obj is ISegment segment)
             {
 #if DEBUG // byte offset only tracked in debug
@@ -529,7 +535,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 return $"segment: {segment.Index}, offset: {offset}; type: {segment.UnderlyingType.Name}";
 #endif
             }
-            return null; // nope!
+
+            if (obj == null && offset == 0) return "(nil)";
+            return $"obj: {obj}; offset: {offset}";
         }
 
     }

@@ -152,7 +152,8 @@ namespace Pipelines.Sockets.Unofficial
                 args.SetBuffer(null, 0, 0);
             }
 
-            args.BufferList = GetBufferList(args, buffer);
+            var bufferList = GetBufferList(args, buffer);
+            args.BufferList = bufferList;
 
             Helpers.DebugLog(name, $"## {nameof(socket.SendAsync)} {buffer.Length}");
             if (socket.SendAsync(args))
@@ -162,6 +163,7 @@ namespace Pipelines.Sockets.Unofficial
             else
             {
                 Helpers.Incr(Counter.SocketSendAsyncMultiSync);
+                RecycleSpareBuffer(bufferList);
                 args.Complete();
             }
         }

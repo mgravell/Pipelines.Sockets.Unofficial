@@ -20,7 +20,7 @@ namespace Pipelines.Sockets.Unofficial
         private readonly PipeReader _reader;
         private readonly Decoder _decoder;
         private readonly Encoding _encoding;
-        private readonly int _maxBytesPerChar;
+        // private readonly int _maxBytesPerChar;
         private readonly ReadOnlyMemory<byte> _lineFeed;
 #if !SOCKET_STREAM_BUFFERS
         private readonly ReadOnlyMemory<byte> _preamble;
@@ -75,7 +75,7 @@ namespace Pipelines.Sockets.Unofficial
                 _crLen = encoding.GetByteCount("\r");
                 _lfLen = _lineFeed.Length;
             }
-            _maxBytesPerChar = encoding.GetMaxByteCount(1); // over-reports, but... meh
+            // _maxBytesPerChar = encoding.GetMaxByteCount(1); // over-reports, but... meh
 
 
 #if SOCKET_STREAM_BUFFERS
@@ -542,7 +542,7 @@ namespace Pipelines.Sockets.Unofficial
             var decoder = GetDecoder();
             if(buffer.IsSingleSegment)
             {
-                decoder.Convert(buffer.First.Span, chars, false, out int bytesUsed, out int charsUsed, out bool completed);
+                decoder.Convert(buffer.First.Span, chars, false, out int bytesUsed, out int charsUsed, out _);
                 if(charsUsed == 1)
                 {
                     _reader.AdvanceTo(peek ? buffer.Start : buffer.GetPosition(bytesUsed), buffer.End);
@@ -554,7 +554,7 @@ namespace Pipelines.Sockets.Unofficial
                 int totalBytes = 0;
                 foreach(var segment in buffer)
                 {
-                    decoder.Convert(segment.Span, chars, false, out int bytesUsed, out int charsUsed, out bool completed);
+                    decoder.Convert(segment.Span, chars, false, out int bytesUsed, out int charsUsed, out _);
                     totalBytes += bytesUsed;
                     if (charsUsed == 1)
                     {

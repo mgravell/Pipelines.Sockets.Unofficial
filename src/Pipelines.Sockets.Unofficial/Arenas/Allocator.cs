@@ -105,7 +105,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private unsafe sealed class PinnedArray : MemoryManager<T>, IPinnedMemoryOwner<T>
         {
             private T[] _array;
-            private readonly int _length;
             private readonly ArrayPool<T> _pool;
             private GCHandle _pin;
             private T* _ptr;
@@ -113,7 +112,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 _pool = pool;
                 _array = array;
-                _length = array.Length;
+                Length = array.Length;
                 _pin = GCHandle.Alloc(array, GCHandleType.Pinned);
                 _ptr = (T*)_pin.AddrOfPinnedObject().ToPointer();
             }
@@ -135,7 +134,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 }
             }
 
-            public override Span<T> GetSpan() => new Span<T>(_ptr, _length);
+
+            public int Length { get; }
+            public override Span<T> GetSpan() => new Span<T>(_ptr, Length);
 
             public override MemoryHandle Pin(int elementIndex = 0) => new MemoryHandle(_ptr + elementIndex);
 
@@ -189,14 +190,14 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             ~OwnedPointer() => Dispose(false);
 
             private T* _ptr;
-            private readonly int _length;
 
+            public int Length { get; }
             void* IPinnedMemoryOwner<T>.Origin => _ptr;
 
             public OwnedPointer(int length)
-                => _ptr = (T*)Marshal.AllocHGlobal((_length = length) * sizeof(T)).ToPointer();
+                => _ptr = (T*)Marshal.AllocHGlobal((Length = length) * sizeof(T)).ToPointer();
 
-            public override Span<T> GetSpan() => new Span<T>(_ptr, _length);
+            public override Span<T> GetSpan() => new Span<T>(_ptr, Length);
 
             public override MemoryHandle Pin(int elementIndex = 0)
                 => new MemoryHandle(_ptr + elementIndex);

@@ -266,7 +266,7 @@ namespace Pipelines.Sockets.Unofficial
             }
 
             private MemoryMappedViewAccessor _accessor;
-            private SafeBuffer _buffer;
+            private readonly SafeBuffer _buffer;
             public int Consumed { get; set; }
             public unsafe MappedPage(MemoryMappedViewAccessor accessor, long offset, int capacity)
             {
