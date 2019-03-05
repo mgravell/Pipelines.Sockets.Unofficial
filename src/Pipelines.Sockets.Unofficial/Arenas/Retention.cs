@@ -7,10 +7,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     /// </summary>
     public static class RetentionPolicy
     {
+        private const float DefaultFactor = 0.9F;
+
         /// <summary>
         /// The default retention policy
         /// </summary>
-        public static Func<long, long, long> Default { get; } = Decay(0.9F);
+        public static Func<long, long, long> Default { get; } = Decay(DefaultFactor);
 
         /// <summary>
         /// Retain the space required by the previous operation (trim to the size of the last usage)
@@ -34,6 +36,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             if (factor <= 0) return Recent;
             if (factor >= 1) return Everything;
+            if (factor == DefaultFactor & Default != null) return Default;
             return (old, current) => Math.Max((long)(old * factor), current);
         }
     }

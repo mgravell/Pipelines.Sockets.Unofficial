@@ -21,7 +21,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         ClearAtReset = 1,
         /// <summary>
-        /// Allocations are cleared when the arean is disposed, so that the contents are not released back to the underlying allocator
+        /// Allocations are cleared when the arena is disposed (or when data is released in line with the retention policy), so that the contents are not released back to the underlying allocator
         /// </summary>
         ClearAtDispose = 2,
         /// <summary>
@@ -58,7 +58,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// The number of elements allocated since the last reset
         /// </summary>
-        public long Allocated()
+        internal long AllocatedBytes()
         {
             var current = _first;
             long total = 0;
@@ -75,7 +75,19 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                     current = current.Next;
                 }
             }
-            return total;
+            return total * Unsafe.SizeOf<T>();
+        }
+
+        internal long CapacityBytes()
+        {
+            long total = 0;
+            var current = _first;
+            while (current != null)
+            {
+                total += current.Length;
+                current = current.Next;
+            }
+            return total * Unsafe.SizeOf<T>();
         }
 
 
@@ -111,7 +123,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
         private readonly Allocator<T> _allocator;
         private readonly Func<long, long, long> _retentionPolicy;
-        private long _lastRetention;
+        private long _lastRetentionBytes;
 
         /// <summary>
         /// Create a new Arena
@@ -280,44 +292,86 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             get => (_flags & ArenaFlags.ClearAtReset) != 0;
         }
 
+        bool ClearAtDispose
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => (_flags & ArenaFlags.ClearAtDispose) != 0;
+        }
+
         /// <summary>
         /// Resets the arena; all current allocations should be considered invalid - new allocations may overwrite them
         /// </summary>
         public void Reset()
         {
-            long allocated = Allocated();
-            Reset(ClearAtReset);
 
-            var retain = _retentionPolicy(_lastRetention, allocated);
-            Trim(retain);
-            _lastRetention = retain;
-        }
 
-#pragma warning disable IDE0060 // unused arg
-        private void Trim(long retain) { } // not yet implemented
-#pragma warning restore IDE0060
+            // if needed, wipe the blocks
+            if (ClearAtReset) ClearAllocatedSpace();
 
-        private void Reset(bool clear)
-        {
-            if (clear)
-            {
-                var block = _first;
-                while (block != null)
-                {
-                    if (block == CurrentBlock)
-                    {
-                        _allocator.Clear(block.Allocation, _allocatedCurrentBlock);
-                        block = null;
-                    }
-                    else
-                    {
-                        _allocator.Clear(block.Allocation, block.Length);
-                        block = block.Next;
-                    }
-                }
-            }
+            // capture the allocated bytes, so we can check retention
+            long allocatedBytes = AllocatedBytes();
             CurrentBlock = _first;
             _allocatedCurrentBlock = 0;
+
+            if (Unsafe.SizeOf<T>() != 0)
+            {
+                // apply retention policy; note that retention policy is expressed in bytes
+                var retainBytes = _retentionPolicy(_lastRetentionBytes, allocatedBytes);
+                Trim(retainBytes / Unsafe.SizeOf<T>());
+                _lastRetentionBytes = retainBytes;
+            }
+        }
+
+        private void ClearAllocatedSpace()
+        {
+            var block = _first;
+            while (block != null)
+            {
+                if (block == CurrentBlock)
+                {
+                    _allocator.Clear(block.Allocation, _allocatedCurrentBlock);
+                    block = null;
+                }
+                else
+                {
+                    _allocator.Clear(block.Allocation, block.Length);
+                    block = block.Next;
+                }
+            }
+        }
+
+        private void Trim(long retain)
+        {
+            var block = _first; // note that trim never removes the first node; this is deliberate
+            long found = 0;
+            while (block != null)
+            {
+                found += block.Length;
+                if (found > retain)
+                {
+                    // do we need to wipe? note: if ClearAtReset is specified,
+                    // then we will have *already* wiped, so we don't need
+                    // to do it a second time
+                    bool wipeBlocks = ClearAtDispose & !ClearAtReset;
+                    ReleaseChain(block.DetachNext(), wipeBlocks); // detach and release everything *after* this
+                    Debug.Assert(block.Next == null, "onward chain should be absent after detach");
+                }
+                block = block.Next;
+            }
+        }
+
+        void ReleaseChain(Block<T> block, bool wipeBlocks)
+        {
+            while (block != null)
+            {
+                if (wipeBlocks)
+                {
+                    try { _allocator.Clear(block.Allocation, block.Length); }
+                    catch { } // best efforts
+                }
+                block.Dispose();
+                block = block.Next;
+            }
         }
 
         /// <summary>
@@ -325,17 +379,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public void Dispose()
         {
-            if ((_flags & ArenaFlags.ClearAtDispose) != 0)
-                try { Reset(true); } catch { } // best effort only
-
-            var current = _first;
+            var first = _first;
             _first = CurrentBlock = null;
             _currentStartObj = null;
-            while (current != null)
-            {
-                current.Dispose();
-                current = current.Next;
-            }
+
+            ReleaseChain(first, ClearAtDispose);
         }
     }
 }

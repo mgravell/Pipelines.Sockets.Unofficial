@@ -40,5 +40,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             try { Allocation?.Dispose(); } catch { } // best efforts
             Allocation = null;
         }
+
+        internal new Block<T> DetachNext() => (Block<T>)base.DetachNext();
     }
 }

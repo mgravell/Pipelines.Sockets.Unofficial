@@ -167,6 +167,16 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         protected virtual Type GetUnderlyingType() => typeof(T);
 
+        /// <summary>
+        /// Remove the Next node in this chain, terminating the chain - returning the detached segment
+        /// </summary>
+        protected SequenceSegment<T> DetachNext()
+        {
+            var next = Next;
+            Next = null;
+            return next;
+        }
+
 #if DEBUG
         long ISegment.ByteOffset => ByteOffset;
 
