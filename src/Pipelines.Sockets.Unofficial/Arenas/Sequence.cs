@@ -19,7 +19,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private readonly object _startObj, _endObj;
         private readonly int _startOffsetAndArrayFlag, _endOffsetOrLength;
 
-        internal const int MSB = unchecked((int)(uint)0x80000000);
+        internal const int IsArrayFlag = unchecked((int)(uint)0x80000000);
 
         /// <summary>
         /// Returns an empty sequence of the supplied type
@@ -99,7 +99,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             // note that in the multi-segment case, the MSB will be set - as it isn't an array
             return (((ISegment)_endObj).RunningIndex + (_endOffsetOrLength)) // start index
-                - (((ISegment)_startObj).RunningIndex + (_startOffsetAndArrayFlag & ~MSB)); // start index
+                - (((ISegment)_startObj).RunningIndex + (_startOffsetAndArrayFlag & ~IsArrayFlag)); // start index
         }
 
         /// <summary>
@@ -175,13 +175,13 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         T[]
             _startObj={array}
             _endObj=null
-            _startOffsetAndArrayFlag=[0]{offset, 31 bits}
+            _startOffsetAndArrayFlag=[1]{offset, 31 bits}
             _endOffsetOrLength=[0]{length, 31 bits}
 
         MemoryManager<T>
             _startObj={owner}
             _endObj=null
-            _startOffsetAndArrayFlag=[1]{offset, 31 bits}
+            _startOffsetAndArrayFlag=[0]{offset, 31 bits}
             _endOffsetOrLength=[0]{length, 31 bits}
 
         SequenceSegment<T> - single-segment; this is the same as MemoryManager<T> if
@@ -190,7 +190,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         SequenceSegment<T> - multi-segment
             _startObj={start segment}
             _endObj={end segment}
-            _startOffsetAndArrayFlag=[1]{start offset, 31 bits}
+            _startOffsetAndArrayFlag=[0]{start offset, 31 bits}
             _endOffsetOrLength=[0]{end offset, 31 bits}
 
         Note that for multi-segment scenarios, there is a complication in that the
@@ -462,7 +462,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 // a single-segment can only ever slice into a single-segment; it *retains* the same array status
                 return new Sequence<T>(
                     startObj: _startObj, endObj: null,
-                    startOffsetAndArrayFlag: (int)(StartOffset + start) | (__startOffsetAndArrayFlag & Sequence.MSB),
+                    startOffsetAndArrayFlag: (int)(StartOffset + start) | (__startOffsetAndArrayFlag & Sequence.IsArrayFlag),
                     endOffsetOrLength: (int)(SingleSegmentLength - start));
             }
             return SlowSlice(start, seqLength - start, seqLength);
@@ -479,7 +479,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 // a single-segment can only ever slice into a single-segment; it *retains* the same array status
                 return new Sequence<T>(
                     startObj: _startObj, endObj: null,
-                    startOffsetAndArrayFlag: (int)(StartOffset + start) | (__startOffsetAndArrayFlag & Sequence.MSB),
+                    startOffsetAndArrayFlag: (int)(StartOffset + start) | (__startOffsetAndArrayFlag & Sequence.IsArrayFlag),
                     endOffsetOrLength: (int)length);
             }
             return SlowSlice(start, length, seqLength);
@@ -495,7 +495,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 // a single-segment can only ever slice into a single-segment; it *retains* the same array status
                 return new Sequence<T>(
                     startObj: _startObj, endObj: null,
-                    startOffsetAndArrayFlag: (int)(StartOffset + start) | (__startOffsetAndArrayFlag & Sequence.MSB),
+                    startOffsetAndArrayFlag: (int)(StartOffset + start) | (__startOffsetAndArrayFlag & Sequence.IsArrayFlag),
                     endOffsetOrLength: (int)(SingleSegmentLength - start));
             }
 
@@ -515,25 +515,25 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             SequencePosition start = readOnlySequence.Start, end = readOnlySequence.End;
             object startObj = start.GetObject(), endObj = end.GetObject();
-            int startIndex = start.GetInteger() & ~Sequence.MSB, endIndex = end.GetInteger() & ~Sequence.MSB; // ROS uses the MSB internally
+            int startIndex = start.GetInteger() & ~Sequence.IsArrayFlag, endIndex = end.GetInteger() & ~Sequence.IsArrayFlag; // ROS uses the MSB internally
 
             // need to test for sequences *before* IMemoryOwner<T> for non-sequence
             if (startObj is SequenceSegment<T> startSeq && endObj is SequenceSegment<T> endSeq)
             {
-                sequence = new Sequence<T>(startSeq, endSeq, startIndex, endIndex);
+                sequence = new Sequence<T>(startSeq, endSeq, startIndex, endIndex); // normalizes as needed
                 return true;
             }
 
-            if (startObj == endObj)
+            if (startObj == endObj & startIndex <= endIndex)
             {
                 if (startObj is T[] arr)
                 {
                     sequence = new Sequence<T>(arr, startIndex, endIndex - startIndex);
                     return true;
                 }
-                if (startObj is IMemoryOwner<T> owner)
+                if (startObj is MemoryManager<T> manager)
                 {
-                    sequence = new Sequence<T>(owner, null, startIndex | Sequence.MSB, endIndex - startIndex);
+                    sequence = new Sequence<T>(manager, null, startIndex, endIndex - startIndex);
                     return true;
                 }
                 if (startObj == null & endObj == null & startIndex == 0 & endIndex == 0)
@@ -599,13 +599,15 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         internal bool IsArray
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => ((__startOffsetAndArrayFlag & Sequence.MSB) == 0) & (_startObj != null);
+            get => (__startOffsetAndArrayFlag & Sequence.IsArrayFlag) != 0;
         }
+
+        internal unsafe bool IsPinned => _startObj is IPinnedMemoryOwner<T> pinned && pinned.Origin != null; // for tests
 
         private int StartOffset
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => __startOffsetAndArrayFlag & ~Sequence.MSB;
+            get => __startOffsetAndArrayFlag & ~Sequence.IsArrayFlag;
         }
 
         /// <summary>
@@ -691,14 +693,14 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 _startObj = manager;
                 _endObj = null;
-                __startOffsetAndArrayFlag = index | Sequence.MSB;
+                __startOffsetAndArrayFlag = index;
                 __endOffsetOrLength = length;
             }
             else if (MemoryMarshal.TryGetArray(memory, out ArraySegment<T> segment))
             {
                 _startObj = segment.Array;
                 _endObj = null;
-                __startOffsetAndArrayFlag = segment.Offset;
+                __startOffsetAndArrayFlag = segment.Offset | Sequence.IsArrayFlag;
                 __endOffsetOrLength = segment.Count;
             }
             else
@@ -716,8 +718,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public Sequence(T[] array) : this(array, 0, array?.Length ?? 0) { }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static Sequence<T> TrustedSingleSegment(IMemoryOwner<T> owner, int offset, int length)
-            => new Sequence<T>(owner, null, offset | Sequence.MSB, length);
+        internal static Sequence<T> TrustedSingleSegment(object startObj, int startOffsetAndArrayFlag, int length)
+            => new Sequence<T>(startObj, null, startOffsetAndArrayFlag, length);
 
         /// <summary>
         /// Create a new single-segment sequence from an array
@@ -732,7 +734,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             _startObj = array;
             _endObj = null;
-            __startOffsetAndArrayFlag = offset;
+            __startOffsetAndArrayFlag = offset | Sequence.IsArrayFlag;
             __endOffsetOrLength = length;
             AssertValid();
         }
@@ -826,12 +828,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             if (array == null)
             {
                 _startObj = startSegment;
-                __startOffsetAndArrayFlag = startOffset | Sequence.MSB;
+                __startOffsetAndArrayFlag = startOffset;
             }
             else
             {
                 _startObj = array;
-                __startOffsetAndArrayFlag = startOffset;
+                __startOffsetAndArrayFlag = startOffset | Sequence.IsArrayFlag;
             }
             _endObj = endSegment;
             __endOffsetOrLength = endOffsetOrLength;

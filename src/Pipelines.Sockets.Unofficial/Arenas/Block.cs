@@ -5,8 +5,11 @@ using System.Runtime.CompilerServices;
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
 
-    internal sealed class Block<T> : SequenceSegment<T>, IDisposable
+    internal sealed class Block<T> : SequenceSegment<T>, IDisposable, IPinnedMemoryOwner<T>
     {
+        private readonly unsafe void* _origin;
+        unsafe void* IPinnedMemoryOwner<T>.Origin => _origin;
+
         public override string ToString() => $"Block {SegmentIndex}, {Length}×{typeof(T).Name}";
         internal int SegmentIndex { get; }
 
@@ -19,6 +22,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             Allocation = allocation;
             SegmentIndex = segmentIndex;
+            if (allocation is IPinnedMemoryOwner<T> pinned)
+            {
+                unsafe { _origin = pinned.Origin; }
+            }
         }
 
         public new Block<T> Next // just to expose the type a bit more clearly

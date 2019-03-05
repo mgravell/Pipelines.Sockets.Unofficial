@@ -227,10 +227,10 @@ namespace Pipelines.Sockets.Unofficial
         public Socket Socket { get; }
 
         private readonly Pipe _sendToSocket, _receiveFromSocket;
-        // TODO: flagify
-#pragma warning disable CS0414, CS0649
+        // TODO: flagify and fully implement
+#pragma warning disable CS0414, CS0649, IDE0044, IDE0051, IDE0052
         private volatile bool _sendAborted, _receiveAborted;
-#pragma warning restore CS0414, CS0649
+#pragma warning restore CS0414, CS0649, IDE0044, IDE0051, IDE0052
 
         /// <summary>
         /// Create a SocketConnection instance over an existing socket

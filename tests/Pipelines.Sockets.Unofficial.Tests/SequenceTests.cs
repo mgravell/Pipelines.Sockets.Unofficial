@@ -17,26 +17,23 @@ namespace Pipelines.Sockets.Unofficial.Tests
             TestEveryWhichWay(seq, 0);
         }
 
-        [Fact]
-        public void CheckEmptyArray()
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(2)]
+        [InlineData(42)]
+        [InlineData(1024)]
+        public void CheckArray(int length)
         {
-            Sequence<int> seq = new Sequence<int>(Array.Empty<int>());
+            Sequence<int> seq = new Sequence<int>(new int[length]);
             Assert.True(seq.IsArray);
             Assert.True(seq.IsSingleSegment);
-            TestEveryWhichWay(seq, 0);
+            TestEveryWhichWay(seq, length);
         }
 
-        [Fact]
-        public void CheckNonEmptyArray()
-        {
-            Sequence<int> seq = new Sequence<int>(new int[42]);
-            Assert.True(seq.IsArray);
-            Assert.True(seq.IsSingleSegment);
-            TestEveryWhichWay(seq, 42);
-        }
 
         [Fact]
-        public void CheckEmptyMemory()
+        public void CheckDefaultMemory()
         {
             Memory<int> memory = default;
             Sequence<int> seq = new Sequence<int>(memory);
@@ -45,14 +42,19 @@ namespace Pipelines.Sockets.Unofficial.Tests
             TestEveryWhichWay(seq, 0);
         }
 
-        [Fact]
-        public void CheckNonEmptyMemory()
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(2)]
+        [InlineData(42)]
+        [InlineData(1024)]
+        public void CheckArrayBackedMemory(int length)
         {
-            Memory<int> memory = new int[42];
+            Memory<int> memory = new int[length];
             Sequence<int> seq = new Sequence<int>(memory);
             Assert.True(seq.IsArray);
             Assert.True(seq.IsSingleSegment);
-            TestEveryWhichWay(seq, 42);
+            TestEveryWhichWay(seq, length);
         }
 
         class MyManager : MemoryManager<int>
@@ -68,15 +70,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
             protected override void Dispose(bool disposing) { }
         }
 
-        class MyOwner : IMemoryOwner<int>
-        {
-            public MyOwner(Memory<int> memory) => Memory = memory;
-            public Memory<int> Memory { get; }
-            public void Dispose() { }
-        }
 
         [Fact]
-        public void CheckEmptyCustomManager()
+        public void CheckDefaultCustomManager()
         {
             Memory<int> memory = default;
             using (var owner = new MyManager(memory))
@@ -88,94 +84,252 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
         }
 
-        [Fact]
-        public void CheckNonEmptyCustomManager()
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(2)]
+        [InlineData(42)]
+        [InlineData(1024)]
+        public void CheckArrayBackedCustomManager(int length)
         {
-            Memory<int> memory = new int[42];
+            Memory<int> memory = new int[length];
             using (var owner = new MyManager(memory))
             {
                 Sequence<int> seq = new Sequence<int>(owner.Memory);
                 Assert.False(seq.IsArray);
                 Assert.True(seq.IsSingleSegment);
-                TestEveryWhichWay(seq, 42);
+                TestEveryWhichWay(seq, length);
             }
         }
 
-        [Fact]
-        public void CheckEmptyCustomOwner()
+
+        unsafe class MyUnsafeManager : MemoryManager<int>
         {
-            Memory<int> memory = default;
-            using (var owner = new MyOwner(memory))
+            protected readonly int* _ptr;
+            protected readonly int _length;
+            public MyUnsafeManager(int* ptr, int length)
+            {
+                _ptr = ptr;
+                _length = length;
+            }
+            public override Span<int> GetSpan() => new Span<int>(_ptr, _length);
+
+            public override MemoryHandle Pin(int elementIndex = 0) => default;
+
+            public override void Unpin() { }
+
+            protected override void Dispose(bool disposing) { }
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(2)]
+        [InlineData(42)]
+        [InlineData(1024)]
+        public unsafe void CheckUnsafeCustomManager(int length)
+        {
+            int* ptr = stackalloc int[length];
+            using (var owner = new MyUnsafeManager(ptr, length))
             {
                 Sequence<int> seq = new Sequence<int>(owner.Memory);
-                Assert.True(seq.IsArray);
+                Assert.False(seq.IsArray);
+                Assert.False(seq.IsPinned);
                 Assert.True(seq.IsSingleSegment);
-                TestEveryWhichWay(seq, 0);
+                TestEveryWhichWay(seq, length);
             }
         }
 
-        [Fact]
-        public void CheckNonEmptyCustomOwner()
+        unsafe class MyUnsafePinnedManager : MyUnsafeManager, IPinnedMemoryOwner<int>
         {
-            Memory<int> memory = new int[42];
-            using (var owner = new MyOwner(memory))
+            public MyUnsafePinnedManager(int* ptr, int length) : base(ptr, length) { }
+
+            public void* Origin => _ptr;
+
+            public int Length => _length;
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(2)]
+        [InlineData(42)]
+        [InlineData(1024)]
+        public unsafe void CheckUnsafePinnedCustomManager(int length)
+        {
+            int* ptr = stackalloc int[length + 1]; // extra to ensure never nil
+            using (var owner = new MyUnsafePinnedManager(ptr, length))
             {
                 Sequence<int> seq = new Sequence<int>(owner.Memory);
-                Assert.True(seq.IsArray);
+                Assert.False(seq.IsArray);
+                Assert.True(seq.IsPinned);
                 Assert.True(seq.IsSingleSegment);
-                TestEveryWhichWay(seq, 42);
+                TestEveryWhichWay(seq, length);
             }
         }
 
-        class MySegment : SequenceSegment<int>
+        unsafe class MySegment : SequenceSegment<int>, IPinnedMemoryOwner<int>
         {
-            public MySegment(Memory<int> memory, MySegment previous = null) : base(memory, previous) { }
+            public void* Origin { get; }
+            public MySegment(Memory<int> memory, MySegment previous = null) : base(memory, previous){}
+            public MySegment(IMemoryOwner<int> owner, MySegment previous = null) : base(owner.Memory, previous)
+            {
+                if (owner is IPinnedMemoryOwner<int> pinned) Origin = pinned.Origin;
+            }
         }
 
         [Fact]
-        public void CheckEmptySingleSegment()
+        public void CheckDefaultSegments()
         {
-            var segment = new MySegment(default);
-            Sequence<int> seq = new Sequence<int>(segment, segment, 0, segment.Length);
+            var first = new MySegment(memory: default);
+            var seq = new Sequence<int>(first, first, 0, 0);
             Assert.False(seq.IsArray);
+            Assert.False(seq.IsPinned);
             Assert.True(seq.IsSingleSegment);
+
             TestEveryWhichWay(seq, 0);
         }
 
-        [Fact]
-        public void CheckNonEmptySingleSegment()
+        [Theory]
+        [InlineData(new int[] { 0 }, true)]
+        [InlineData(new int[] { 1 }, true)]
+        [InlineData(new int[] { 2 }, true)]
+        [InlineData(new int[] { 42 }, true)]
+        [InlineData(new int[] { 1024 }, true)]
+        // test roll forward
+        [InlineData(new int[] { 0, 0 }, true)]
+        [InlineData(new int[] { 0, 1 }, true)]
+        [InlineData(new int[] { 0, 2 }, true)]
+        [InlineData(new int[] { 0, 42 }, true)]
+        [InlineData(new int[] { 0, 1024 }, true)]
+        // test roll backward
+        [InlineData(new int[] { 1, 0 }, true)]
+        [InlineData(new int[] { 2, 0 }, true)]
+        [InlineData(new int[] { 42, 0 }, true)]
+        [InlineData(new int[] { 1024, 0 }, true)]
+        // test non-trivial
+        [InlineData(new int[] { 128, 128, 64 }, false)]
+        [InlineData(new int[] { 128, 0, 64, 0, 12 }, false)] // zero length blocks in the middle
+        [InlineData(new int[] { 0, 128, 0, 64, 0 }, false)] // zero length blocks at the ends
+        [InlineData(new int[] { 0, 128, 0 }, true)]
+
+        public void CheckArrayBackedSegments(int[] sizes, bool isSingleSegment)
         {
-            var segment = new MySegment(new int[42]);
-            Sequence<int> seq = new Sequence<int>(segment, segment, 0, segment.Length);
+            Memory<int> Create(int size)
+            {
+                return new int[size];
+            }
+            int length = sizes.Sum();
+            var first = new MySegment(Create(sizes[0]));
+            var last = first;
+            for(int i = 1; i < sizes.Length; i++)
+            {
+                last = new MySegment(Create(sizes[i]), last);
+            }
+            Sequence<int> seq = new Sequence<int>(first, last, 0, last.Length);
             Assert.False(seq.IsArray);
-            Assert.True(seq.IsSingleSegment);
-            TestEveryWhichWay(seq, 42);
+            Assert.False(seq.IsPinned);
+
+            Assert.Equal(isSingleSegment, seq.IsSingleSegment);
+            TestEveryWhichWay(seq, length);
         }
 
-        [Fact]
-        public void CheckChainOfEmpty()
+        [Theory(Skip = "odd things afoot")]
+        [InlineData(new int[] { 0 }, true)]
+        [InlineData(new int[] { 1 }, true)]
+        [InlineData(new int[] { 2 }, true)]
+        [InlineData(new int[] { 42 }, true)]
+        [InlineData(new int[] { 1024 }, true)]
+        // test roll forward
+        [InlineData(new int[] { 0, 0 }, true)]
+        [InlineData(new int[] { 0, 1 }, true)]
+        [InlineData(new int[] { 0, 2 }, true)]
+        [InlineData(new int[] { 0, 42 }, true)]
+        [InlineData(new int[] { 0, 1024 }, true)]
+        // test roll backward
+        [InlineData(new int[] { 1, 0 }, true)]
+        [InlineData(new int[] { 2, 0 }, true)]
+        [InlineData(new int[] { 42, 0 }, true)]
+        [InlineData(new int[] { 1024, 0 }, true)]
+        // test non-trivial
+        [InlineData(new int[] { 128, 128, 64 }, false)]
+        [InlineData(new int[] { 128, 0, 64, 0, 12 }, false)] // zero length blocks in the middle
+        [InlineData(new int[] { 0, 128, 0, 64, 0 }, false)] // zero length blocks at the ends
+        [InlineData(new int[] { 0, 128, 0 }, true)]
+        public unsafe void CheckUnsafeBackedSegments(int[] sizes, bool isSingleSegment)
         {
-            var first = new MySegment(default);
-            var segment = new MySegment(default, first);
-            segment = new MySegment(default, segment);
+            int length = sizes.Sum();
+            int* ptr = stackalloc int[length + 1]; // extra to ensure never nil
 
-            Sequence<int> seq = new Sequence<int>(first, segment, 0, 0);
+            IMemoryOwner<int> Create(int size)
+            {
+                var mem = new MyUnsafeManager(ptr, size);
+                ptr += length;
+                return mem;
+            }
+
+            var first = new MySegment(Create(sizes[0]));
+            var last = first;
+            for (int i = 1; i < sizes.Length; i++)
+            {
+                last = new MySegment(Create(sizes[i]), last);
+            }
+            Sequence<int> seq = new Sequence<int>(first, last, 0, last.Length);
             Assert.False(seq.IsArray);
-            Assert.True(seq.IsSingleSegment); // due to roll-forward
-            TestEveryWhichWay(seq, 0);
+            Assert.False(seq.IsPinned);
+
+            Assert.Equal(isSingleSegment, seq.IsSingleSegment);
+            TestEveryWhichWay(seq, length);
+
+            Assert.False(true, "da fuk");
         }
 
-        [Fact]
-        public void CheckEmptySandwich()
+        [Theory(Skip = "odd things afoot")]
+        [InlineData(new int[] { 0 }, true)]
+        [InlineData(new int[] { 1 }, true)]
+        [InlineData(new int[] { 2 }, true)]
+        [InlineData(new int[] { 42 }, true)]
+        [InlineData(new int[] { 1024 }, true)]
+        // test roll forward
+        [InlineData(new int[] { 0, 0 }, true)]
+        [InlineData(new int[] { 0, 1 }, true)]
+        [InlineData(new int[] { 0, 2 }, true)]
+        [InlineData(new int[] { 0, 42 }, true)]
+        [InlineData(new int[] { 0, 1024 }, true)]
+        // test roll backward
+        [InlineData(new int[] { 1, 0 }, true)]
+        [InlineData(new int[] { 2, 0 }, true)]
+        [InlineData(new int[] { 42, 0 }, true)]
+        [InlineData(new int[] { 1024, 0 }, true)]
+        // test non-trivial
+        [InlineData(new int[] { 128, 128, 64 }, false)]
+        [InlineData(new int[] { 128, 0, 64, 0, 12 }, false)] // zero length blocks in the middle
+        [InlineData(new int[] { 0, 128, 0, 64, 0 }, false)] // zero length blocks at the ends
+        [InlineData(new int[] { 0, 128, 0 }, true)]
+        public unsafe void CheckUnsafePinnedBackedSegments(int[] sizes, bool isSingleSegment)
         {
-            var first = new MySegment(new int[20]);
-            var second = new MySegment(default, first);
-            var third = new MySegment(new int[22], second);
+            int length = sizes.Sum();
+            int* ptr = stackalloc int[length + 1]; // extra to ensure never nil
 
-            Sequence<int> seq = new Sequence<int>(first, third, 0, third.Length);
+            IMemoryOwner<int> Create(int size)
+            {
+                var mem = new MyUnsafePinnedManager(ptr, size);
+                ptr += length;
+                return mem;
+            }
+
+            var first = new MySegment(Create(sizes[0]));
+            var last = first;
+            for (int i = 1; i < sizes.Length; i++)
+            {
+                last = new MySegment(Create(sizes[i]), last);
+            }
+            Sequence<int> seq = new Sequence<int>(first, last, 0, last.Length);
             Assert.False(seq.IsArray);
-            Assert.False(seq.IsSingleSegment);
-            TestEveryWhichWay(seq, 42);
+            Assert.True(seq.IsPinned);
+
+            Assert.Equal(isSingleSegment, seq.IsSingleSegment);
+            TestEveryWhichWay(seq, length);
         }
 
         private void TestEveryWhichWay(Sequence<int> sequence, int count)
@@ -373,26 +527,23 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Assert.Throws<IndexOutOfRangeException>(() => sequence.GetPosition(-1));
             Assert.Throws<IndexOutOfRangeException>(() => sequence.GetPosition(c + 1));
 
-            // get ROS
+            // get ROS; note: we won't attempt to compare ROS and S positions,
+            // as positions are only meaningful inside the context in which they
+            // are obtained - we can check the slice contents one at a time, though
             var ros = sequence.AsReadOnly();
             Assert.Equal(c, ros.Length);
-            AssertEqualExceptMSB(ros.Start, sequence.Start);
-            AssertEqualExceptMSB(ros.End, sequence.End);
             for (int i = 0; i <= count; i++)
             {
-                if (i == 0 || i == count)
-                {
-                    AssertEqualExceptMSB(ros.GetPosition(i), sequence.GetPosition(i));
-                }
-                else
-                {
-                    Assert.Equal(ros.GetPosition(i), sequence.GetPosition(i));
-                }
-
                 var roSlice = ros.Slice(i, 0);
                 var slice = sequence.Slice(i, 0);
-                AssertEqualExceptMSB(roSlice.Start, slice.Start);
-                AssertEqualExceptMSB(roSlice.End, slice.End);
+                Assert.Equal(roSlice.Length, slice.Length);
+            }
+            for (int i = 0; i < count; i++)
+            {
+                var roSlice = ros.Slice(i, 1);
+                var slice = sequence.Slice(i, 1);
+                Assert.Equal(roSlice.Length, slice.Length);
+                Assert.Equal(roSlice.First.Span[0], slice[0]);
             }
 
             // and get back again
@@ -416,13 +567,15 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Assert.Equal(count, c);
             Assert.Equal(spanCount, roSpanCount);
 
-            void AssertEqualExceptMSB(SequencePosition x, SequencePosition y)
+            void AssertEqualExceptMSB(SequencePosition expected, SequencePosition actual)
             {
-                object xo = x.GetObject(), yo = y.GetObject();
-                int xi = x.GetInteger(), yi = y.GetInteger();
+                object eo = expected.GetObject(), ao = actual.GetObject();
+                int ei = expected.GetInteger() & ~Sequence.IsArrayFlag,
+                    ai = actual.GetInteger() & ~Sequence.IsArrayFlag;
 
-                Assert.Equal(new SequencePosition(xo, xi & ~Sequence.MSB),
-                    new SequencePosition(yo, yi & ~Sequence.MSB));
+                Assert.Equal(ei , ai );
+                Assert.Equal(eo, ao);
+                
             }
 
             // slice everything

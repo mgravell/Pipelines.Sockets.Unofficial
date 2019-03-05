@@ -110,13 +110,16 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Allocate a block of data
         /// </summary>
-        public abstract Sequence<T> Allocate(int length);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Sequence<T> Allocate(int length) => Allocate(length, true);
+
+        internal abstract Sequence<T> Allocate(int length, bool optimized);
 
         /// <summary>
         /// Allocate a single instance as a reference
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Reference<T> Allocate() => Allocate(1).GetReference(0);
+        public Reference<T> Allocate() => Allocate(1, optimized: true).GetReference(0);
 
         internal abstract object GetAllocator();
         internal abstract void Reset();
@@ -140,7 +143,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 allocator: suggestedAllocator ?? factory.SuggestAllocator<T>(options),
                 blockSizeBytes: factory.SuggestBlockSizeBytes<T>(options));
         }
-        public override Sequence<T> Allocate(int length) => _arena.Allocate(length);
+        internal override Sequence<T> Allocate(int length, bool optimized) => _arena.Allocate(length, optimized);
 
         internal override object GetAllocator() => _arena.GetAllocator();
 
@@ -193,9 +196,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override Sequence<TTo> Allocate(int length)
+        internal override Sequence<TTo> Allocate(int length, bool optimized)
         {
-            var fromParent = _arena.Allocate(length);
+            var fromParent = _arena.Allocate(length, false); // don't ever optimize; that prevents segment data being fetchable
 
             if (!fromParent.TryGetSegments(out var startSeq, out var endSeq, out var startOffset, out var endOffset))
                 Throw.InvalidOperation("The segment data was not available");
@@ -213,7 +216,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         where T : unmanaged
     {
         public PaddedBlittableOwnedArena(Arena parent) : base(parent) {}
-        public override Sequence<T> Allocate(int length)
+        internal override Sequence<T> Allocate(int length, bool optimized)
         {
             // we need to think about padding/alignment; to allow proper
             // interleaving, we'll always need to talk in alignments of <T>,
@@ -227,7 +230,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
                 // burn the padding, or to the end of the page - whichever comes first
                 if (padding >= arena.RemainingCurrentBlock) arena.SkipToNextPage();
-                else arena.Allocate(padding); // and drop it on the floor
+                else arena.Allocate(padding, optimized: false); // and drop it on the floor
             }
 
             // do we at least have space for *one* item? this is because we
@@ -259,7 +262,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 else if (length < elementsThisPage)
                 {
                     // take what we need, and we're done
-                    arena.Allocate(length * Unsafe.SizeOf<T>());
+                    arena.Allocate(length * Unsafe.SizeOf<T>(), optimized: false);
                     length = 0;
                     break;
                 }
@@ -343,13 +346,13 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Allocate a single instance as a reference
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Reference<T> Allocate<T>() => GetArena<T>().Allocate(1).GetReference(0);
+        public Reference<T> Allocate<T>() => GetArena<T>().Allocate(1, optimized: true).GetReference(0);
 
         /// <summary>
         /// Allocate a block of data
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)] // aggressive mostly in the JIT-optimized cases!
-        public Sequence<T> Allocate<T>(int length) => GetArena<T>().Allocate(length);
+        public Sequence<T> Allocate<T>(int length) => GetArena<T>().Allocate(length, optimized: true);
         
         /// <summary>
         /// Get a per-type arena inside a multi-type arena
@@ -435,10 +438,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         internal object GetAllocator<T>() => GetArena<T>().GetAllocator();
 
-        internal sealed class MappedSegment<TFrom, TTo> : SequenceSegment<TTo>
+        internal sealed class MappedSegment<TFrom, TTo> : SequenceSegment<TTo>, IPinnedMemoryOwner<TTo>
             where TFrom : unmanaged
             where TTo : unmanaged
         {
+            public unsafe void* Origin { get; }
             public Block<TFrom> Underlying { get; }
 
             protected override Type GetUnderlyingType() => typeof(TFrom);
@@ -451,12 +455,15 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             protected override long ByteOffset => _byteOffset;
 #endif
             
-            static unsafe Memory<TTo> CreateMapped(Block<TFrom> underlying)
+            static unsafe Memory<TTo> CreateMapped(Block<TFrom> underlying, out void* origin)
             {
                 MemoryManager<TTo> mapped;
+                origin = null;
                 if (underlying.Allocation is IPinnedMemoryOwner<TFrom> rooted && rooted.Origin != null)
                 {   // in this case, we can just cheat like crazy
-                    mapped = new PinnedConvertingMemoryManager(rooted);
+                    var x = new PinnedConvertingMemoryManager(rooted);
+                    origin = x.Origin;
+                    mapped = x;
                 }
                 else
                 {   // need to do everything properly; slower, but it'll work
@@ -464,9 +471,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 }
                 return mapped.Memory;
             }
-            public MappedSegment(MappedSegment<TFrom, TTo> previous, Block<TFrom> underlying)
-                : base(CreateMapped(underlying), previous)
+            public unsafe MappedSegment(MappedSegment<TFrom, TTo> previous, Block<TFrom> underlying)
+                : base(CreateMapped(underlying, out void* origin), previous)
             {
+                Origin = origin;
                 Underlying = underlying;
 #if DEBUG
                 _byteCount = underlying.Length * Unsafe.SizeOf<TFrom>();
@@ -487,7 +495,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                     Length = MemoryMarshal.Cast<TFrom, TTo>(rooted.Memory.Span).Length;
                 }
 
-                void* IPinnedMemoryOwner<TTo>.Origin => _origin;
+                public void* Origin => _origin;
 
                 public override Span<TTo> GetSpan() => new Span<TTo>(_origin, Length);
 

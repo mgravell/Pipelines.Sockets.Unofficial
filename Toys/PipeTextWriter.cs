@@ -47,11 +47,13 @@ namespace Pipelines.Sockets.Unofficial
             get => _newLine;
             set => _newLine = value ?? ""; // if someone tries to set to null, assume they meant empty
         }
-        private Encoder GetEncoder()
-        {
-            _encoder.Reset();
-            return _encoder;
-        }
+
+        //private Encoder GetEncoder()
+        //{
+        //    _encoder.Reset();
+        //    return _encoder;
+        //}
+
         /// <summary>
         /// Create a new instance of a PipeTextWriter
         /// </summary>
@@ -339,7 +341,7 @@ namespace Pipelines.Sockets.Unofficial
             if (!completed)
             {
                 var bytes = writer.GetSpan(10);
-                encoder.Convert(chars, bytes, true, out int charsUsed, out int bytesUsed, out completed);
+                encoder.Convert(chars, bytes, true, out _, out int bytesUsed, out completed);
                 Debug.Assert(completed);
                 writer.Advance(bytesUsed);
                 totalBytesUsed += bytesUsed;
