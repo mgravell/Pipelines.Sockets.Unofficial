@@ -10,18 +10,25 @@ namespace Pipelines.Sockets.Unofficial.Threading
     {
         private sealed class AsyncDirectPendingLockSlab : IAsyncPendingLockToken, IValueTaskSource<LockToken>
         {
-            private static readonly object s_Completed = new object(), s_NoState = new object();
+            private struct State
+            {
+                // public fields - used with interlocked
+                public Action<object> Continuation;
+                public object ContinuationState;
+                public int Token;
+            }
+
+            private static readonly Action<object> s_Completed = _ => { };
+            private static readonly object s_NoState = new object();
             private readonly MutexSlim _mutex;
 
-            private readonly int[] _tokens;
-            private readonly object[] _continuationsAndState;
+            private readonly State[] _items;
 
             public const int SlabSize = 128;
             public AsyncDirectPendingLockSlab(MutexSlim mutex)
             {
                 _mutex = mutex;
-                _tokens = new int[SlabSize];
-                _continuationsAndState = new object[SlabSize * 2];
+                _items = new State[SlabSize];
             }
 
             short _currentIndex;
@@ -29,14 +36,16 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
             void IPendingLockToken.Reset(short key)
             {
-                Volatile.Write(ref _tokens[key], LockState.Pending);
-                _continuationsAndState[key] = null; // continuation
-                _continuationsAndState[key + SlabSize] = s_NoState;
+                ref State item = ref _items[key];
+                Volatile.Write(ref item.Token, LockState.Pending);
+                item.Continuation = null; // continuation
+                item.ContinuationState = s_NoState;
             }
 
-            ValueTaskSourceStatus IValueTaskSource<LockToken>.GetStatus(short key)
+            ValueTaskSourceStatus IValueTaskSource<LockToken>.GetStatus(short token)
             {
-                switch (LockState.GetState(Volatile.Read(ref _tokens[key])))
+                ref State item = ref _items[token];
+                switch (LockState.GetState(Volatile.Read(ref item.Token)))
                 {
                     case LockState.Canceled:
                         return ValueTaskSourceStatus.Canceled;
@@ -47,15 +56,16 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 }
             }
 
-            void IValueTaskSource<LockToken>.OnCompleted(Action<object> continuation, object state, short key, ValueTaskSourceOnCompletedFlags flags)
+            void IValueTaskSource<LockToken>.OnCompleted(Action<object> continuation, object state, short token, ValueTaskSourceOnCompletedFlags flags)
             {
                 if (continuation == null) return;
 
                 // set the state first, as we'll always *read* the continuation first, so we can't get confused
-                var oldState = Interlocked.CompareExchange(ref _continuationsAndState[SlabSize + key], state, s_NoState);
+                ref State item = ref _items[token];
+                var oldState = Interlocked.CompareExchange(ref item.ContinuationState, state, s_NoState);
                 if (oldState != s_NoState) Throw.MultipleContinuations();
 
-                var oldContinuation = Interlocked.CompareExchange(ref _continuationsAndState[key], continuation, null);
+                var oldContinuation = Interlocked.CompareExchange(ref item.Continuation, continuation, null);
                 if (oldContinuation == s_Completed)
                 {
                     // we'd already finished; invoke it inline
@@ -64,31 +74,32 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 else if (oldContinuation != null) Throw.MultipleContinuations();
             }
 
-            LockToken IValueTaskSource<LockToken>.GetResult(short key) => new LockToken(_mutex, LockState.GetResult(ref _tokens[key]));
+            LockToken IValueTaskSource<LockToken>.GetResult(short token) => new LockToken(_mutex, LockState.GetResult(ref _items[token].Token));
 
             ValueTask<LockToken> IAsyncPendingLockToken.GetTask(short key) => new ValueTask<LockToken>(this, key);
 
-            bool IAsyncPendingLockToken.IsCanceled(short key) => LockState.IsCanceled(Volatile.Read(ref _tokens[key]));
+            bool IAsyncPendingLockToken.IsCanceled(short key) => LockState.IsCanceled(Volatile.Read(ref _items[key].Token));
 
             bool IPendingLockToken.TrySetResult(short key, int token)
             {
-                bool success = LockState.TrySetResult(ref _tokens[key], token);
+                bool success = LockState.TrySetResult(ref _items[key].Token, token);
                 if (success) OnAssigned(key);
                 return success;
             }
 
             bool IPendingLockToken.TryCancel(short key)
             {
-                bool success = LockState.TryCancel(ref _tokens[key]);
+                bool success = LockState.TryCancel(ref _items[key].Token);
                 if (success) OnAssigned(key);
                 return success;
             }
             private void OnAssigned(short key)
             {
-                var continuation = Interlocked.Exchange(ref _continuationsAndState[key], s_Completed);
+                ref State item = ref _items[key];
+                var continuation = Interlocked.Exchange(ref item.Continuation, s_Completed);
                 if (continuation != null && continuation != s_Completed)
                 {
-                    var state = Volatile.Read(ref _continuationsAndState[SlabSize + key]);
+                    var state = Volatile.Read(ref item.ContinuationState);
                     _mutex._scheduler.Schedule((Action<object>)continuation, state);
                 }
             }

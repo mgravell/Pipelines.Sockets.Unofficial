@@ -1,11 +1,13 @@
 ﻿using BenchmarkDotNet.Attributes;
 using Pipelines.Sockets.Unofficial.Threading;
+using System.IO.Pipelines;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Benchmark
 {
-    [MemoryDiagnoser, CoreJob, ClrJob]
+    [MemoryDiagnoser, CoreJob, ClrJob, MinColumn, MaxColumn]
     public class LockBenchmarks
     {
         const int TIMEOUTMS = 2000;
@@ -18,7 +20,7 @@ namespace Benchmark
 
         const int PER_TEST = 5 * 1024;
 
-        [Benchmark(OperationsPerInvoke = PER_TEST)]
+        // [Benchmark(OperationsPerInvoke = PER_TEST)]
         public int Monitor_Sync()
         {
             int count = 0;
@@ -38,7 +40,7 @@ namespace Benchmark
             return count.AssertIs(PER_TEST);
         }
 
-        [Benchmark(OperationsPerInvoke = PER_TEST)]
+        // [Benchmark(OperationsPerInvoke = PER_TEST)]
         public int SemaphoreSlim_Sync()
         {
             int count = 0;
@@ -59,7 +61,7 @@ namespace Benchmark
             return count.AssertIs(PER_TEST);
         }
 
-        [Benchmark(OperationsPerInvoke = PER_TEST)]
+        // [Benchmark(OperationsPerInvoke = PER_TEST)]
         public async ValueTask<int> SemaphoreSlim_Async()
         {
             int count = 0;
@@ -80,7 +82,7 @@ namespace Benchmark
             return count.AssertIs(PER_TEST);
         }
 
-        [Benchmark(OperationsPerInvoke = PER_TEST)]
+        // [Benchmark(OperationsPerInvoke = PER_TEST)]
         public async ValueTask<int> SemaphoreSlim_Async_HotPath()
         {
             int count = 0;
@@ -107,7 +109,7 @@ namespace Benchmark
             return count.AssertIs(PER_TEST);
         }
 
-        [Benchmark(OperationsPerInvoke = PER_TEST)]
+        // [Benchmark(OperationsPerInvoke = PER_TEST)]
         public int MutexSlim_Sync()
         {
             int count = 0;
@@ -121,7 +123,7 @@ namespace Benchmark
             return count.AssertIs(PER_TEST);
         }
 
-        [Benchmark(OperationsPerInvoke = PER_TEST)]
+        // [Benchmark(OperationsPerInvoke = PER_TEST)]
         public async ValueTask<int> MutexSlim_Async()
         {
             int count = 0;
@@ -135,7 +137,7 @@ namespace Benchmark
             return count.AssertIs(PER_TEST);
         }
 
-        [Benchmark(OperationsPerInvoke = PER_TEST)]
+        // [Benchmark(OperationsPerInvoke = PER_TEST)]
         public async ValueTask<int> MutexSlim_Async_HotPath()
         {
             int count = 0;
@@ -160,8 +162,108 @@ namespace Benchmark
             return count.AssertIs(PER_TEST);
         }
 
+        [Benchmark(OperationsPerInvoke = 100 * 100)]
+        public async Task<int> MutexSlim_ConcurrentLoadAsync()
+        {
+            var mutex = new MutexSlim(1000, PipeScheduler.ThreadPool);
+            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            {
+                int success = 0;
+                for (int t = 0; t < 100; t++)
+                {
+                    using (var taken = await mutex.TryWaitAsync())
+                    {
+                        if (taken) success++;
+                        await Task.Yield();
+                    }
+                }
+                return success;
+            }).ToArray();
+
+            await Task.WhenAll(tasks);
+            int total = tasks.Sum(x => x.Result);
+            return total.AssertIs(100 * 100);
+        }
+
+        [Benchmark(OperationsPerInvoke = 100 * 100)]
+        public async Task<int> MutexSlim_ConcurrentLoadAsync_DisableContext()
+        {
+            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            {
+                int success = 0;
+                for (int t = 0; t < 100; t++)
+                {
+                    using (var taken = await _mutexSlim.TryWaitAsync(options: MutexSlim.WaitOptions.DisableAsyncContext))
+                    {
+                        if (taken) success++;
+                        await Task.Yield();
+                    }
+                }
+                return success;
+            }).ToArray();
+
+            await Task.WhenAll(tasks);
+            int total = tasks.Sum(x => x.Result);
+            return total.AssertIs(100 * 100);
+        }
+
+        [Benchmark(OperationsPerInvoke = 100 * 100)]
+        public async Task<int> SemaphoreSlim_ConcurrentLoadAsync()
+        {
+            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            {
+                int success = 0;
+                for (int t = 0; t < 100; t++)
+                {
+                    var taken = await _semaphoreSlim.WaitAsync(1000);
+                    try
+                    {
+                        if (taken) success++;
+                        await Task.Yield();
+                    }
+                    finally
+                    {
+                        if (taken) _semaphoreSlim.Release();
+                    }
+                }
+                return success;
+            }).ToArray();
+
+            await Task.WhenAll(tasks);
+            int total = tasks.Sum(x => x.Result);
+            return total.AssertIs(100 * 100);
+        }
+
 #if !NO_NITO
-        [Benchmark(OperationsPerInvoke = PER_TEST)]
+
+        [Benchmark(OperationsPerInvoke = 100 * 100)]
+        public async Task<int> AsyncSemaphore_ConcurrentLoadAsync()
+        {
+            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            {
+                int success = 0;
+                for (int t = 0; t < 100; t++)
+                {
+                    await _asyncSemaphore.WaitAsync();
+                    try
+                    {
+                        success++;
+                        await Task.Yield();
+                    }
+                    finally
+                    {
+                        _asyncSemaphore.Release();
+                    }
+                }
+                return success;
+            }).ToArray();
+
+            await Task.WhenAll(tasks);
+            int total = tasks.Sum(x => x.Result);
+            return total.AssertIs(100 * 100);
+        }
+
+        //[Benchmark(OperationsPerInvoke = PER_TEST)]
         public int AsyncSemaphore_Sync()
         {
             int count = 0;
@@ -180,7 +282,7 @@ namespace Benchmark
             return count.AssertIs(PER_TEST);
         }
 
-        [Benchmark(OperationsPerInvoke = PER_TEST)]
+        //[Benchmark(OperationsPerInvoke = PER_TEST)]
         public async ValueTask<int> AsyncSemaphore_Async()
         {
             int count = 0;
@@ -199,7 +301,7 @@ namespace Benchmark
             return count.AssertIs(PER_TEST);
         }
 
-        [Benchmark(OperationsPerInvoke = PER_TEST)]
+        //[Benchmark(OperationsPerInvoke = PER_TEST)]
         public async ValueTask<int> AsyncSemaphore_Async_HotPath()
         {
             int count = 0;
