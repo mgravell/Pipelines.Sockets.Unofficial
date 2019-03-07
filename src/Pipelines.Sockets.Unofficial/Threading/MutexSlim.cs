@@ -307,20 +307,19 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
         private int TakeWithTimeout(WaitOptions options)
         {
-            // try and spin
             int token;
+            var start = GetTime(); // read this promptly to include any time spent spinning as part of our timeout interval
+
+            // try and get by spinning
 #if DEBUG
             token = HasFlag(options, DisableFastPath) ? 0 : TryTakeBySpinning();
 #else
             token = TryTakeBySpinning();
 #endif
-            if (token != 0) return token;
-
-            // if "now or never", bail
-            if (TimeoutMilliseconds == 0) return default;
+            // if we succesded by spinning, or we're using "now or never", exit
+            if (token != 0 | TimeoutMilliseconds == 0) return token; // no need to short-circuit
 
             bool itemLockTaken = false, queueLockTaken = false;
-            var start = GetTime();
 
             var item = SyncPendingLockToken.GetPerThreadLockObject();
             const short KEY = 0;
@@ -342,7 +341,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
                 // now lock the global queue, and then have a final stab at getting it cheaply
                 _mayHavePendingItems = true; // set this *before* getting the lock
-                Monitor.TryEnter(_queue, TimeoutMilliseconds, ref queueLockTaken);
+                Monitor.TryEnter(_queue, UpdateTimeOut(start, TimeoutMilliseconds), ref queueLockTaken);
                 if (!queueLockTaken) return default; // couldn't even get the lock, let alone the mutex
 
 #if DEBUG
@@ -416,12 +415,12 @@ namespace Pipelines.Sockets.Unofficial.Threading
         private ValueTask<LockToken> TakeWithTimeoutAsync(CancellationToken cancellationToken, WaitOptions options)
 #pragma warning restore RCS1231 // Make parameter ref read-only.
         {
-            int token; // do *not* spin here - under highly concurrent load, this causes pool exhaustion
-
             // if "now or never", bail
             if (TimeoutMilliseconds == 0) return default;
-
+            int token;
             var start = GetTime();
+
+            // do *not* spin on the async path - under highly concurrent load, this causes pool exhaustion
 
             // lock the global queue; then have a final stab at getting it cheaply
             bool queueLockTaken = false;
