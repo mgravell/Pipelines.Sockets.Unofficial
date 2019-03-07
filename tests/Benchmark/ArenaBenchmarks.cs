@@ -10,7 +10,7 @@ namespace Benchmark
 {
     [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByCategory)]
     [CategoriesColumn]
-    public class ArenaBenchmarks
+    public class ArenaBenchmarks : BenchmarkBase
     {
         private readonly int[][] _sizes;
         private readonly int _maxCount;
@@ -493,7 +493,7 @@ namespace Benchmark
 
         [BenchmarkCategory("allocate")]
         [Benchmark(Description = "OwnedArena<int>.Allocate (no sharing)")]
-        public void Alloc_Arena_Owned_NoSharingg()
+        public void Alloc_Arena_Owned_NoSharing()
         {
             var owned = _multiArenaNoSharing.GetArena<int>();
             for (int i = 0; i < _sizes.Length; i++)

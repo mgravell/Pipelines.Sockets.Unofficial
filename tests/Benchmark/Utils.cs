@@ -2,6 +2,10 @@
 
 namespace Benchmark
 {
+    public abstract class BenchmarkBase
+    {
+        public Action<string> Log;
+    }
     internal static class Utils
     {
         public static int AssertIs(this int actual, int expected)

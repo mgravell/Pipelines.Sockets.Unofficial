@@ -1,12 +1,13 @@
 ﻿using BenchmarkDotNet.Attributes;
 using Pipelines.Sockets.Unofficial.Threading;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Benchmark
 {
-    [MemoryDiagnoser, CoreJob, ClrJob]
-    public class LockBenchmarks
+    [MemoryDiagnoser, CoreJob, ClrJob, MinColumn, MaxColumn]
+    public class LockBenchmarks : BenchmarkBase
     {
         const int TIMEOUTMS = 2000;
         private readonly MutexSlim _mutexSlim = new MutexSlim(TIMEOUTMS);
@@ -29,6 +30,7 @@ namespace Benchmark
                 try
                 {
                     if (haveLock) count++;
+                    else Log?.Invoke($"failed at i={i}");
                 }
                 finally
                 {
@@ -55,6 +57,7 @@ namespace Benchmark
                         _semaphoreSlim.Release();
                     }
                 }
+                else Log?.Invoke($"failed at i={i}");
             }
             return count.AssertIs(PER_TEST);
         }
@@ -76,6 +79,7 @@ namespace Benchmark
                         _semaphoreSlim.Release();
                     }
                 }
+                else Log?.Invoke($"failed at i={i}");
             }
             return count.AssertIs(PER_TEST);
         }
@@ -94,6 +98,7 @@ namespace Benchmark
                         count++;
                         _semaphoreSlim.Release();
                     }
+                    else Log?.Invoke($"failed at i={i}");
                 }
                 else
                 {
@@ -102,6 +107,7 @@ namespace Benchmark
                         count++;
                         _semaphoreSlim.Release();
                     }
+                    else Log?.Invoke($"failed at i={i}");
                 }
             }
             return count.AssertIs(PER_TEST);
@@ -116,6 +122,7 @@ namespace Benchmark
                 using (var token = _mutexSlim.TryWait())
                 {
                     if (token) count++;
+                    else Log?.Invoke($"failed at i={i},{_mutexSlim}");
                 }
             }
             return count.AssertIs(PER_TEST);
@@ -130,6 +137,7 @@ namespace Benchmark
                 using (var token = await _mutexSlim.TryWaitAsync())
                 {
                     if (token) count++;
+                    else Log?.Invoke($"failed at i={i},{_mutexSlim}");
                 }
             }
             return count.AssertIs(PER_TEST);
@@ -147,6 +155,7 @@ namespace Benchmark
                     using (var token = awaitable.Result)
                     {
                         if (token) count++;
+                        else Log?.Invoke($"failed at i={i},{_mutexSlim}");
                     }
                 }
                 else
@@ -154,13 +163,204 @@ namespace Benchmark
                     using (var token = await awaitable)
                     {
                         if (token) count++;
+                        else Log?.Invoke($"failed at i={i},{_mutexSlim}");
                     }
                 }
             }
             return count.AssertIs(PER_TEST);
         }
 
+        [Benchmark(OperationsPerInvoke = 100 * 100)]
+        public async Task<int> MutexSlim_ConcurrentLoadAsync()
+        {
+            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            {
+                int success = 0;
+                for (int t = 0; t < 100; t++)
+                {
+                    using (var taken = await _mutexSlim.TryWaitAsync())
+                    {
+                        if (taken) success++;
+                        else Log?.Invoke($"failed at i={i},{_mutexSlim}");
+                        await Task.Yield();
+                    }
+                    await Task.Yield();
+                }
+                return success;
+            }).ToArray();
+
+            await Task.WhenAll(tasks);
+            int total = tasks.Sum(x => x.Result);
+            return total.AssertIs(100 * 100);
+        }
+
+        [Benchmark(OperationsPerInvoke = 100 * 100)]
+        public async Task<int> MutexSlim_ConcurrentLoadAsync_DisableContext()
+        {
+            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            {
+                int success = 0;
+                for (int t = 0; t < 100; t++)
+                {
+                    using (var taken = await _mutexSlim.TryWaitAsync(options: MutexSlim.WaitOptions.DisableAsyncContext))
+                    {
+                        if (taken) success++;
+                        else Log?.Invoke($"failed at i={i},t={t},{_mutexSlim}");
+                        await Task.Yield();
+                    }
+                    await Task.Yield();
+                }
+                return success;
+            }).ToArray();
+
+            await Task.WhenAll(tasks);
+            int total = tasks.Sum(x => x.Result);
+            return total.AssertIs(100 * 100);
+        }
+
+        // this is a sync-over-async; don't do it
+        //[Benchmark(OperationsPerInvoke = 100 * 100)]
+        public async Task<int> MutexSlim_ConcurrentLoad()
+        {
+            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            {
+                int success = 0;
+                for (int t = 0; t < 100; t++)
+                {
+                    using (var taken = _mutexSlim.TryWait())
+                    {
+                        if (taken) success++;
+                        else Log?.Invoke($"failed at i={i},t={t},{_mutexSlim}");
+                        await Task.Yield();
+                    }
+                    await Task.Yield();
+                }
+                return success;
+            }).ToArray();
+
+            await Task.WhenAll(tasks);
+            int total = tasks.Sum(x => x.Result);
+            return total.AssertIs(100 * 100);
+        }
+
+        [Benchmark(OperationsPerInvoke = 100 * 100)]
+        public async Task<int> SemaphoreSlim_ConcurrentLoadAsync()
+        {
+            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            {
+                int success = 0;
+                for (int t = 0; t < 100; t++)
+                {
+                    var taken = await _semaphoreSlim.WaitAsync(1000);
+                    try
+                    {
+                        if (taken) success++;
+                        else Log?.Invoke($"failed at i={i},t={t}");
+                        await Task.Yield();
+                    }
+                    finally
+                    {
+                        if (taken) _semaphoreSlim.Release();
+                    }
+                    await Task.Yield();
+                }
+                return success;
+            }).ToArray();
+
+            await Task.WhenAll(tasks);
+            int total = tasks.Sum(x => x.Result);
+            return total.AssertIs(100 * 100);
+        }
+
+        // this is a sync-over-async; don't do it
+        // [Benchmark(OperationsPerInvoke = 100 * 100)]
+        public async Task<int> SemaphoreSlim_ConcurrentLoad()
+        {
+            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            {
+                int success = 0;
+                for (int t = 0; t < 100; t++)
+                {
+                    var taken = _semaphoreSlim.Wait(1000);
+                    try
+                    {
+                        if (taken) success++;
+                        else Log?.Invoke($"failed at i={i},t={t}");
+                        await Task.Yield();
+                    }
+                    finally
+                    {
+                        if (taken) _semaphoreSlim.Release();
+                    }
+                    await Task.Yield();
+                }
+                return success;
+            }).ToArray();
+
+            await Task.WhenAll(tasks);
+            int total = tasks.Sum(x => x.Result);
+            return total.AssertIs(100 * 100);
+        }
+
 #if !NO_NITO
+
+        // this is a sync-over-async; don't do it
+        // [Benchmark(OperationsPerInvoke = 100 * 100)]
+        public async Task<int> AsyncSemaphore_ConcurrentLoad()
+        {
+            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            {
+                int success = 0;
+                for (int t = 0; t < 100; t++)
+                {
+                    _asyncSemaphore.Wait();
+                    try
+                    {
+                        success++;
+                        await Task.Yield();
+                    }
+                    finally
+                    {
+                        _asyncSemaphore.Release();
+                    }
+                    await Task.Yield();
+                }
+                return success;
+            }).ToArray();
+
+            await Task.WhenAll(tasks);
+            int total = tasks.Sum(x => x.Result);
+            return total.AssertIs(100 * 100);
+        }
+
+        [Benchmark(OperationsPerInvoke = 100 * 100)]
+        public async Task<int> AsyncSemaphore_ConcurrentLoadAsync()
+        {
+            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            {
+                int success = 0;
+                for (int t = 0; t < 100; t++)
+                {
+                    await _asyncSemaphore.WaitAsync();
+                    try
+                    {
+                        success++;
+                        await Task.Yield();
+                    }
+                    finally
+                    {
+                        _asyncSemaphore.Release();
+                    }
+                    await Task.Yield();
+                }
+                return success;
+            }).ToArray();
+
+            await Task.WhenAll(tasks);
+            int total = tasks.Sum(x => x.Result);
+            return total.AssertIs(100 * 100);
+        }
+
         [Benchmark(OperationsPerInvoke = PER_TEST)]
         public int AsyncSemaphore_Sync()
         {
