@@ -1,7 +1,5 @@
 ﻿using BenchmarkDotNet.Attributes;
-using Pipelines.Sockets.Unofficial;
 using Pipelines.Sockets.Unofficial.Threading;
-using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,7 +10,7 @@ namespace Benchmark
     public class LockBenchmarks : BenchmarkBase
     {
         const int TIMEOUTMS = 2000;
-        private readonly MutexSlim _mutexSlim = new MutexSlim(TIMEOUTMS, DedicatedThreadPoolPipeScheduler.Default);
+        private readonly MutexSlim _mutexSlim = new MutexSlim(TIMEOUTMS);
         private readonly SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(1, 1);
 #if !NO_NITO
         private readonly Nito.AsyncEx.AsyncSemaphore _asyncSemaphore = new Nito.AsyncEx.AsyncSemaphore(1);

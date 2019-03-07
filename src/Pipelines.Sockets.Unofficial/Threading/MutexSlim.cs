@@ -1,7 +1,6 @@
 ﻿using Pipelines.Sockets.Unofficial.Internal;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
