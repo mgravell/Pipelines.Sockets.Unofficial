@@ -208,6 +208,29 @@ namespace Benchmark
         }
 
         [Benchmark(OperationsPerInvoke = 100 * 100)]
+        public async Task<int> MutexSlim_ConcurrentLoad()
+        {
+            var mutex = new MutexSlim(1000, PipeScheduler.ThreadPool);
+            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            {
+                int success = 0;
+                for (int t = 0; t < 100; t++)
+                {
+                    using (var taken = mutex.TryWait())
+                    {
+                        if (taken) success++;
+                        await Task.Yield();
+                    }
+                }
+                return success;
+            }).ToArray();
+
+            await Task.WhenAll(tasks);
+            int total = tasks.Sum(x => x.Result);
+            return total.AssertIs(100 * 100);
+        }
+
+        [Benchmark(OperationsPerInvoke = 100 * 100)]
         public async Task<int> SemaphoreSlim_ConcurrentLoadAsync()
         {
             var tasks = Enumerable.Range(0, 100).Select(async i =>
