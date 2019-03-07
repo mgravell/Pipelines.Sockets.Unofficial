@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks.Sources;
 
 namespace Pipelines.Sockets.Unofficial.Threading
 {
@@ -31,6 +32,20 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static int GetState(int token) => token & 3;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static ValueTaskSourceStatus GetStatus(ref int token)
+            {
+                switch (LockState.GetState(Volatile.Read(ref token)))
+                {
+                    case LockState.Canceled:
+                        return ValueTaskSourceStatus.Canceled;
+                    case LockState.Pending:
+                        return ValueTaskSourceStatus.Pending;
+                    default: // LockState.Success, LockState.Timeout (we only have 4 bits for status)
+                        return ValueTaskSourceStatus.Succeeded;
+                }
+            }
 
             // "completed", in Task/ValueTask terms, includes cancelation - only omits pending
             [MethodImpl(MethodImplOptions.AggressiveInlining)]

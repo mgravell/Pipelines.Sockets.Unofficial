@@ -10,7 +10,7 @@ using Xunit.Abstractions;
 namespace Pipelines.Sockets.Unofficial.Tests
 {
     public abstract class BenchmarkTests<T> : IDisposable
-        where T : class, new()
+        where T : BenchmarkBase, new()
     {
         private T _instance = new T();
         private readonly int _defaultTimes;
@@ -18,6 +18,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public BenchmarkTests(ITestOutputHelper output, int? defaultTimes = null)
         {
             Output = output;
+            _instance.Log += s => Output.WriteLine(s);
             _defaultTimes = defaultTimes ?? 1;
         }
 

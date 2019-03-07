@@ -1,6 +1,7 @@
 ﻿using Pipelines.Sockets.Unofficial.Internal;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
@@ -79,6 +80,16 @@ namespace Pipelines.Sockets.Unofficial.Threading
         public int TimeoutMilliseconds { get; }
 
         internal bool IsThreadPool { get; } // are we confident that the chosen scheduler is the thread-pool?
+
+        private int BacklogCount()
+        {
+            lock (_queue) return _queue.Count;
+        }
+
+        /// <summary>
+        /// See Object.ToString
+        /// </summary>
+        public override string ToString() => $"{GetType().Name}, {LockState.GetStatus(ref _token)}, {BacklogCount()} pending";
 
         /// <summary>
         /// Create a new MutexSlim instance
@@ -405,15 +416,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
         private ValueTask<LockToken> TakeWithTimeoutAsync(CancellationToken cancellationToken, WaitOptions options)
 #pragma warning restore RCS1231 // Make parameter ref read-only.
         {
-            int token;
-            // try and spin
-#if DEBUG
-            token = HasFlag(options, DisableFastPath) ? 0 : TryTakeBySpinning();
-#else
-            token = TryTakeBySpinning();
-#endif
-
-            if (token != 0) return new ValueTask<LockToken>(new LockToken(this, token));
+            int token; // do *not* spin here - under highly concurrent load, this causes pool exhaustion
 
             // if "now or never", bail
             if (TimeoutMilliseconds == 0) return default;

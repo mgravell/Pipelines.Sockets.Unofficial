@@ -1,7 +1,7 @@
 ﻿using BenchmarkDotNet.Attributes;
 using Pipelines.Sockets.Unofficial;
 using Pipelines.Sockets.Unofficial.Threading;
-using System.IO.Pipelines;
+using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,10 +9,10 @@ using System.Threading.Tasks;
 namespace Benchmark
 {
     [MemoryDiagnoser, CoreJob, ClrJob, MinColumn, MaxColumn]
-    public class LockBenchmarks
+    public class LockBenchmarks : BenchmarkBase
     {
         const int TIMEOUTMS = 2000;
-        private readonly MutexSlim _mutexSlim = new MutexSlim(TIMEOUTMS);
+        private readonly MutexSlim _mutexSlim = new MutexSlim(TIMEOUTMS, DedicatedThreadPoolPipeScheduler.Default);
         private readonly SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(1, 1);
 #if !NO_NITO
         private readonly Nito.AsyncEx.AsyncSemaphore _asyncSemaphore = new Nito.AsyncEx.AsyncSemaphore(1);
@@ -32,6 +32,7 @@ namespace Benchmark
                 try
                 {
                     if (haveLock) count++;
+                    else Log?.Invoke($"failed at i={i}");
                 }
                 finally
                 {
@@ -58,6 +59,7 @@ namespace Benchmark
                         _semaphoreSlim.Release();
                     }
                 }
+                else Log?.Invoke($"failed at i={i}");
             }
             return count.AssertIs(PER_TEST);
         }
@@ -79,6 +81,7 @@ namespace Benchmark
                         _semaphoreSlim.Release();
                     }
                 }
+                else Log?.Invoke($"failed at i={i}");
             }
             return count.AssertIs(PER_TEST);
         }
@@ -97,6 +100,7 @@ namespace Benchmark
                         count++;
                         _semaphoreSlim.Release();
                     }
+                    else Log?.Invoke($"failed at i={i}");
                 }
                 else
                 {
@@ -105,6 +109,7 @@ namespace Benchmark
                         count++;
                         _semaphoreSlim.Release();
                     }
+                    else Log?.Invoke($"failed at i={i}");
                 }
             }
             return count.AssertIs(PER_TEST);
@@ -119,6 +124,7 @@ namespace Benchmark
                 using (var token = _mutexSlim.TryWait())
                 {
                     if (token) count++;
+                    else Log?.Invoke($"failed at i={i},{_mutexSlim}");
                 }
             }
             return count.AssertIs(PER_TEST);
@@ -133,6 +139,7 @@ namespace Benchmark
                 using (var token = await _mutexSlim.TryWaitAsync())
                 {
                     if (token) count++;
+                    else Log?.Invoke($"failed at i={i},{_mutexSlim}");
                 }
             }
             return count.AssertIs(PER_TEST);
@@ -150,6 +157,7 @@ namespace Benchmark
                     using (var token = awaitable.Result)
                     {
                         if (token) count++;
+                        else Log?.Invoke($"failed at i={i},{_mutexSlim}");
                     }
                 }
                 else
@@ -157,6 +165,7 @@ namespace Benchmark
                     using (var token = await awaitable)
                     {
                         if (token) count++;
+                        else Log?.Invoke($"failed at i={i},{_mutexSlim}");
                     }
                 }
             }
@@ -174,6 +183,7 @@ namespace Benchmark
                     using (var taken = await _mutexSlim.TryWaitAsync())
                     {
                         if (taken) success++;
+                        else Log?.Invoke($"failed at i={i},{_mutexSlim}");
                         await Task.Yield();
                     }
                     await Task.Yield();
@@ -197,6 +207,7 @@ namespace Benchmark
                     using (var taken = await _mutexSlim.TryWaitAsync(options: MutexSlim.WaitOptions.DisableAsyncContext))
                     {
                         if (taken) success++;
+                        else Log?.Invoke($"failed at i={i},t={t},{_mutexSlim}");
                         await Task.Yield();
                     }
                     await Task.Yield();
@@ -221,6 +232,7 @@ namespace Benchmark
                     using (var taken = _mutexSlim.TryWait())
                     {
                         if (taken) success++;
+                        else Log?.Invoke($"failed at i={i},t={t},{_mutexSlim}");
                         await Task.Yield();
                     }
                     await Task.Yield();
@@ -245,6 +257,7 @@ namespace Benchmark
                     try
                     {
                         if (taken) success++;
+                        else Log?.Invoke($"failed at i={i},t={t}");
                         await Task.Yield();
                     }
                     finally
@@ -274,6 +287,7 @@ namespace Benchmark
                     try
                     {
                         if (taken) success++;
+                        else Log?.Invoke($"failed at i={i},t={t}");
                         await Task.Yield();
                     }
                     finally

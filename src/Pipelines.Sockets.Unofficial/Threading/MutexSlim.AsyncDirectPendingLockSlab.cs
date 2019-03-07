@@ -43,18 +43,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
             }
 
             ValueTaskSourceStatus IValueTaskSource<LockToken>.GetStatus(short token)
-            {
-                ref State item = ref _items[token];
-                switch (LockState.GetState(Volatile.Read(ref item.Token)))
-                {
-                    case LockState.Canceled:
-                        return ValueTaskSourceStatus.Canceled;
-                    case LockState.Pending:
-                        return ValueTaskSourceStatus.Pending;
-                    default: // LockState.Success, LockState.Timeout (we only have 4 bits for status)
-                        return ValueTaskSourceStatus.Succeeded;
-                }
-            }
+                => LockState.GetStatus(ref _items[token].Token);
 
             void IValueTaskSource<LockToken>.OnCompleted(Action<object> continuation, object state, short token, ValueTaskSourceOnCompletedFlags flags)
             {

@@ -10,7 +10,7 @@ namespace Benchmark
 {
     [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByCategory)]
     [CategoriesColumn]
-    public class ArenaBenchmarks
+    public class ArenaBenchmarks : BenchmarkBase
     {
         private readonly int[][] _sizes;
         private readonly int _maxCount;
