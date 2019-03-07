@@ -257,7 +257,61 @@ namespace Benchmark
             return total.AssertIs(100 * 100);
         }
 
+        [Benchmark(OperationsPerInvoke = 100 * 100)]
+        public async Task<int> SemaphoreSlim_ConcurrentLoad()
+        {
+            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            {
+                int success = 0;
+                for (int t = 0; t < 100; t++)
+                {
+                    var taken = _semaphoreSlim.Wait(1000);
+                    try
+                    {
+                        if (taken) success++;
+                        await Task.Yield();
+                    }
+                    finally
+                    {
+                        if (taken) _semaphoreSlim.Release();
+                    }
+                }
+                return success;
+            }).ToArray();
+
+            await Task.WhenAll(tasks);
+            int total = tasks.Sum(x => x.Result);
+            return total.AssertIs(100 * 100);
+        }
+
 #if !NO_NITO
+
+        [Benchmark(OperationsPerInvoke = 100 * 100)]
+        public async Task<int> AsyncSemaphore_ConcurrentLoad()
+        {
+            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            {
+                int success = 0;
+                for (int t = 0; t < 100; t++)
+                {
+                    _asyncSemaphore.Wait();
+                    try
+                    {
+                        success++;
+                        await Task.Yield();
+                    }
+                    finally
+                    {
+                        _asyncSemaphore.Release();
+                    }
+                }
+                return success;
+            }).ToArray();
+
+            await Task.WhenAll(tasks);
+            int total = tasks.Sum(x => x.Result);
+            return total.AssertIs(100 * 100);
+        }
 
         [Benchmark(OperationsPerInvoke = 100 * 100)]
         public async Task<int> AsyncSemaphore_ConcurrentLoadAsync()
