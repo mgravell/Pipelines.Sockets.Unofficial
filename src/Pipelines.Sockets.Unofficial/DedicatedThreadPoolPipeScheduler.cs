@@ -1,6 +1,7 @@
 ﻿using Pipelines.Sockets.Unofficial.Internal;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -22,6 +23,19 @@ namespace Pipelines.Sockets.Unofficial
         {   // locating here rather than as a static field on DedicatedThreadPoolPipeScheduler so that it isn't instantiated too eagerly
             internal static readonly DedicatedThreadPoolPipeScheduler Instance = new DedicatedThreadPoolPipeScheduler(nameof(Default));
         }
+
+        [ThreadStatic]
+        private static int s_threadWorkerPoolId;
+        private static int s_nextWorkerPoolId;
+
+        /// <summary>
+        /// Indicates whether the current thread is a worker, optionally for the specific pool
+        /// (otherwise for any pool)
+        /// </summary>
+        public static bool IsWorker(DedicatedThreadPoolPipeScheduler pool = null)
+            => pool == null ? s_threadWorkerPoolId != 0 : s_threadWorkerPoolId == pool.Id;
+
+        private int Id { get; }
 
         /// <summary>
         /// The name of the pool
@@ -46,6 +60,9 @@ namespace Pipelines.Sockets.Unofficial
             ThreadPriority priority = ThreadPriority.Normal)
         {
             if (workerCount < 0) Throw.ArgumentNull(nameof(workerCount));
+
+            do { Id = Interlocked.Increment(ref s_nextWorkerPoolId); }
+            while (Id == 0); // in case of roll-around; unlikely, though
 
             WorkerCount = workerCount;
             UseThreadPoolQueueLength = useThreadPoolQueueLength;
@@ -146,27 +163,39 @@ namespace Pipelines.Sockets.Unofficial
 
         private void RunWorkLoop()
         {
-            while (true)
+            s_threadWorkerPoolId = Id;
+            try
             {
-                WorkItem next;
-                lock (_queue)
+                while (true)
                 {
-                    while (_queue.Count == 0)
+                    WorkItem next;
+                    lock (_queue)
                     {
-                        if (_disposed) break;
-                        _availableCount++;
-                        Monitor.Wait(_queue);
-                        _availableCount--;
+                        while (_queue.Count == 0)
+                        {
+                            if (_disposed) break;
+                            _availableCount++;
+                            Monitor.Wait(_queue);
+                            _availableCount--;
+                        }
+                        if (_queue.Count == 0)
+                        {
+                            if (_disposed) break;
+                            else continue;
+                        }
+                        next = _queue.Dequeue();
                     }
-                    if (_queue.Count == 0)
-                    {
-                        if (_disposed) break;
-                        else continue;
-                    }
-                    next = _queue.Dequeue();
+                    Interlocked.Increment(ref _totalServicedByQueue);
+                    Execute(next.Action, next.State);
                 }
-                Interlocked.Increment(ref _totalServicedByQueue);
-                Execute(next.Action, next.State);
+            }
+            catch (Exception ex)
+            {
+                Debug.Write(ex.Message);
+            }
+            finally
+            {
+                s_threadWorkerPoolId = 0;
             }
         }
         /// <summary>
