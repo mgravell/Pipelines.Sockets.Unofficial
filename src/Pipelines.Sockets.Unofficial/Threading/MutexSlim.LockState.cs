@@ -23,8 +23,8 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static int GetNextToken(int token)
-                // 2 low bits are status; 30 high bits are counter
-                => (int)((((uint)token >> 2) + 1) << 2) | Success;
+                // 2 low bits are status; 16 high bits are counter ("short", basically)
+                => (int)((((uint)token >> 16) + 1) << 16) | Success;
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static int ChangeState(int token, int state)

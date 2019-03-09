@@ -10,7 +10,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
         /// <summary>
         /// The result of a Wait/WaitAsync operation on MutexSlim; the caller *must* check Success to see whether the mutex was obtained
         /// </summary>
-        public readonly struct LockToken : IDisposable, IEquatable<LockToken>
+        public readonly partial struct LockToken : IDisposable, IEquatable<LockToken>
         {
             /// <summary>
             /// Compare two LockToken instances for equality
@@ -92,7 +92,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public void Dispose()
             {
-                if (LockState.GetState(_token) == LockState.Success) _parent.Release(_token, demandMatch: true);
+                if (LockState.GetState(_token) == LockState.Success) _parent.Release(_token, null, null);
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -3,6 +3,7 @@ using Pipelines.Sockets.Unofficial.Threading;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using static Pipelines.Sockets.Unofficial.Threading.MutexSlim;
 
 namespace Benchmark
 {
@@ -202,11 +203,99 @@ namespace Benchmark
                 int success = 0;
                 for (int t = 0; t < 100; t++)
                 {
-                    using (var taken = await _mutexSlim.TryWaitAsync(options: MutexSlim.WaitOptions.DisableAsyncContext))
+                    using (var taken = await _mutexSlim.TryWaitAsync(options: WaitOptions.DisableAsyncContext))
                     {
                         if (taken) success++;
                         else Log?.Invoke($"failed at i={i},t={t},{_mutexSlim}");
                         await Task.Yield();
+                    }
+                    await Task.Yield();
+                }
+                return success;
+            }).ToArray();
+
+            await Task.WhenAll(tasks);
+            int total = tasks.Sum(x => x.Result);
+            return total.AssertIs(100 * 100);
+        }
+
+        [Benchmark(OperationsPerInvoke = 100 * 100)] // regular async (TaskCompletionSource<T> if async)
+        public Task<int> MutexSlim_ConcurrentLoadAsync_AD_Off()
+            => ExecuteMutexSlimConcurrentLoad_SD(WaitOptions.None);
+
+        [Benchmark(OperationsPerInvoke = 100 * 100)] // aggressively remove sync/exec/etc context overhead
+        public Task<int> MutexSlim_ConcurrentLoadAsync_AD_Off_DisableContext()
+            => ExecuteMutexSlimConcurrentLoad_SD(WaitOptions.DisableAsyncContext);
+
+        [Benchmark(OperationsPerInvoke = 100 * 100)] // regular async (TaskCompletionSource<T> if async)
+        public Task<int> MutexSlim_ConcurrentLoadAsync_AD()
+            => ExecuteMutexSlimConcurrentLoad_AD(WaitOptions.None);
+
+        [Benchmark(OperationsPerInvoke = 100 * 100)] // aggressively remove sync/exec/etc context overhead
+        public Task<int> MutexSlim_ConcurrentLoadAsync_AD_DisableContext()
+            => ExecuteMutexSlimConcurrentLoad_AD(WaitOptions.DisableAsyncContext);
+
+        [Benchmark(OperationsPerInvoke = 100 * 100)] // above plus something worse
+        public Task<int> MutexSlim_ConcurrentLoadAsync_AD_Evil()
+            => ExecuteMutexSlimConcurrentLoad_AD(WaitOptions.DisableAsyncContext | WaitOptions.EvilMode);
+
+
+        private async Task<int> ExecuteMutexSlimConcurrentLoad_AD(WaitOptions options)
+        {
+            // spin up 100 async workers all fighting for the same mutex resource
+            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            {
+                int success = 0;
+                for (int t = 0; t < 100; t++)
+                {
+                    // this should be "await using (var taken = ...)", when
+                    // IAsyncDisposable and async-streams/disposables land
+                    LockToken taken = await _mutexSlim.TryWaitAsync(options: options);
+                    try {
+                        if (taken) {
+                            success++;
+                            // scenario modelled: sometimes yield inside the lock
+                            if (t % 10 == 0) await Task.Yield();
+                        }
+                        else Log?.Invoke($"failed at i={i},t={t},{_mutexSlim}");
+                    }
+                    finally {
+                        await taken.DisposeAsync();
+                    }
+                    await Task.Yield();
+                }
+                return success;
+            }).ToArray();
+
+            await Task.WhenAll(tasks);
+            int total = tasks.Sum(x => x.Result);
+            return total.AssertIs(100 * 100);
+        }
+
+        private async Task<int> ExecuteMutexSlimConcurrentLoad_SD(WaitOptions options)
+        {
+            // spin up 100 async workers all fighting for the same mutex resource
+            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            {
+                int success = 0;
+                for (int t = 0; t < 100; t++)
+                {
+                    // this should be "await using (var taken = ...)", when
+                    // IAsyncDisposable and async-streams/disposables land
+                    LockToken taken = await _mutexSlim.TryWaitAsync(options: options);
+                    try
+                    {
+                        if (taken)
+                        {
+                            success++;
+                            // scenario modelled: sometimes yield inside the lock
+                            if (t % 10 == 0) await Task.Yield();
+                        }
+                        else Log?.Invoke($"failed at i={i},t={t},{_mutexSlim}");
+                    }
+                    finally
+                    {
+                        taken.Dispose();
                     }
                     await Task.Yield();
                 }

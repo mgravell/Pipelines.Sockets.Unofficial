@@ -103,7 +103,10 @@ namespace Pipelines.Sockets.Unofficial.Threading
             _token = LockState.ChangeState(0, LockState.Pending); // initialize as unowned
             void ThrowInvalidTimeout() => Throw.ArgumentOutOfRange(nameof(timeoutMilliseconds));
             IsThreadPool = (object)_scheduler == (object)PipeScheduler.ThreadPool;
+            InitAsyncRelease();
         }
+
+        partial void InitAsyncRelease();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private PendingLockItem DequeueInsideLock()
@@ -114,58 +117,85 @@ namespace Pipelines.Sockets.Unofficial.Threading
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void Release(int token, bool demandMatch = true)
+        private bool IsValid(int token)
+            => token == Volatile.Read(ref _token);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void Release(int token, Action<object> continuation, object state)
         {
             // release the token (we can check for wrongness without needing the lock, note)
             Log($"attempting to release token {LockState.ToString(token)}");
             if (Interlocked.CompareExchange(ref _token, LockState.ChangeState(token, LockState.Pending), token) != token)
             {
                 Log($"token {LockState.ToString(token)} is invalid");
-                if (demandMatch) Throw.InvalidLockHolder();
+                continuation?.Invoke(state);
                 return;
             }
 
-
-            if (_mayHavePendingItems) ActivateNextQueueItem();
-            else Log($"no pending items to activate");
-        }
-
-        private void ActivateNextQueueItem()
-        {
-            // see if we can nudge the next waiter
-            lock (_queue)
+            if (_mayHavePendingItems) ActivateNextQueueItem(continuation, state);
+            else
             {
-                try
-                {
-                    int token; // if work to do, try and get a new token
-                    Log($"pending items: {_queue.Count}");
-                    if (_queue.Count == 0 || (token = TryTakeLoopIfChanges()) == 0) return;
-
-                    while (_queue.Count != 0)
-                    {
-                        var next = DequeueInsideLock();
-                        if (next.TrySetResult(token))
-                        {
-                            Log($"handed lock to {next}");
-                            return; // so we don't release the token
-                        }
-                        else
-                        {
-                            Log($"lock rejected by {next}");
-                        }
-                    }
-
-                    // nobody actually wanted it; return it
-                    Log("returning unwanted lock");
-                    Volatile.Write(ref _token, LockState.ChangeState(token, LockState.Pending));
-                }
-                finally
-                {
-                    FixMayHavePendingItemsInsideLock();
-                    SetNextAsyncTimeoutInsideLock();
-                }
+                Log($"no pending items to activate");
+                continuation?.Invoke(state);
             }
         }
+
+        private void ActivateNextQueueItem(Action<object> continuation, object state)
+        {
+            try
+            {
+                // see if we can nudge the next waiter
+                lock (_queue)
+                {
+                    try
+                    {
+                        int token; // if work to do, try and get a new token
+                        Log($"pending items: {_queue.Count}");
+                        if (_queue.Count == 0 || (token = TryTakeLoopIfChanges()) == 0) return;
+
+                        while (_queue.Count != 0)
+                        {
+                            var next = DequeueInsideLock();
+                            if (continuation != null && next.IsInlineable)
+                            {
+                                if (next.TrySetResult(token, continuation, state))
+                                {
+                                    continuation = null; // will have been scheduled by TrySetResult
+                                    state = null;
+
+                                    Log($"handed lock to {next}");
+                                    return; // so we don't release the token
+                                }
+                            }
+                            else
+                            {
+                                if (next.TrySetResult(token))
+                                {
+                                    Log($"handed lock to {next}");
+                                    return; // so we don't release the token
+                                }
+                            }
+                            Log($"lock rejected by {next}");
+                        }
+
+                        // nobody actually wanted it; return it
+                        Log("returning unwanted lock");
+                        Volatile.Write(ref _token, LockState.ChangeState(token, LockState.Pending));
+                    }
+                    finally
+                    {
+                        FixMayHavePendingItemsInsideLock();
+                        SetNextAsyncTimeoutInsideLock();
+                    }
+                }
+            }
+            finally
+            {
+                // if we were meant to perform a continuation: do it now
+                continuation?.Invoke(state);
+            }
+        }
+
         private void DequeueExpired()
         {
             lock (_queue)
@@ -322,7 +352,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
             var item = SyncPendingLockToken.GetPerThreadLockObject();
             const short KEY = 0;
-            var queueItem = new PendingLockItem(start, KEY, item);
+            var queueItem = new PendingLockItem(start, KEY, item, options);
             try
             {
                 // we want to have the item-lock *before* we put anything in the queue
@@ -456,7 +486,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 }
 
                 // enqueue the pending item, and release the global queue
-                var queueItem = new PendingLockItem(start, key, asyncItem);
+                var queueItem = new PendingLockItem(start, key, asyncItem, options);
                 if (cancellationToken.CanBeCanceled)
                 {
                     cancellationToken.Register(GetCancelationCallback(key), asyncItem);
@@ -558,6 +588,12 @@ namespace Pipelines.Sockets.Unofficial.Threading
             /// Disable full TPL flow; more efficient, but no sync-context or execution-context guarantees
             /// </summary>
             DisableAsyncContext = 2,
+
+            /// <summary>
+            /// Allow async-disposal to give the releasing thread to the next winner, scheduling
+            /// the disposer's continuation instead
+            /// </summary>
+            EvilMode = 4,
 
             // note: MSB is reserved for debugging
         }

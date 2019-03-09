@@ -8,7 +8,8 @@ namespace Pipelines.Sockets.Unofficial.Threading
 {
     public partial class MutexSlim
     {
-        private sealed class AsyncDirectPendingLockSlab : IAsyncPendingLockToken, IValueTaskSource<LockToken>
+        private sealed class AsyncDirectPendingLockSlab : IAsyncPendingLockToken, IValueTaskSource<LockToken>,
+            IInlineableAsyncPendingLockToken
         {
             private struct State
             {
@@ -76,6 +77,13 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 return success;
             }
 
+            bool IInlineableAsyncPendingLockToken.TrySetResult(short key, int token, Action<object> continuation, object state)
+            {
+                bool success = LockState.TrySetResult(ref _items[key].Token, token);
+                if (success) OnAssigned(key, continuation, state);
+                return success;
+            }
+
             bool IPendingLockToken.TryCancel(short key)
             {
                 bool success = LockState.TryCancel(ref _items[key].Token);
@@ -89,7 +97,27 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 if (continuation != null && continuation != s_Completed)
                 {
                     var state = Volatile.Read(ref item.ContinuationState);
-                    _mutex._scheduler.Schedule((Action<object>)continuation, state);
+                    _mutex._scheduler.Schedule(continuation, state);
+                }
+            }
+
+            private void OnAssigned(short key, Action<object> disposerContinuation, object disposerState)
+            {
+                ref State item = ref _items[key];
+                var nextContinuation = Interlocked.Exchange(ref item.Continuation, s_Completed);
+
+                if (disposerContinuation != null)
+                {
+                    // schedule the *disposer's* callback
+                    _mutex._scheduler.Schedule(disposerContinuation, disposerState);
+                }
+                if (nextContinuation != null && nextContinuation != s_Completed)
+                {
+                    // directly inline the registered state - i.e. we become the next winner
+                    var nextState = Volatile.Read(ref item.ContinuationState);
+                    s_InlineDepth++;
+                    nextContinuation.Invoke(nextState);
+                    s_InlineDepth--;
                 }
             }
         }
