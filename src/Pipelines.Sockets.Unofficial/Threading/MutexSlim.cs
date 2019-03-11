@@ -125,7 +125,6 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 return;
             }
 
-
             if (_mayHavePendingItems) ActivateNextQueueItem();
             else Log($"no pending items to activate");
         }
@@ -302,7 +301,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
         private void FixMayHavePendingItemsInsideLock() => _mayHavePendingItems = _queue.Count != 0;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool HasFlag(WaitOptions options, WaitOptions flag) => (options & flag) != 0;
+        private static bool HasFlag(WaitOptions options, WaitOptions flag) => (options & flag) != 0;
 
         private int TakeWithTimeout(WaitOptions options)
         {
@@ -316,7 +315,9 @@ namespace Pipelines.Sockets.Unofficial.Threading
             token = TryTakeBySpinning();
 #endif
             // if we succesded by spinning, or we're using "now or never", exit
+#pragma warning disable RCS1233 // Use short-circuiting operator.
             if (token != 0 | TimeoutMilliseconds == 0) return token; // no need to short-circuit
+#pragma warning restore RCS1233 // Use short-circuiting operator.
 
             bool itemLockTaken = false, queueLockTaken = false;
 
@@ -476,8 +477,8 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
         private AsyncDirectPendingLockSlab _directSlab;
 
-        static readonly Action<object>[] _slabCallbacks = new Action<object>[AsyncDirectPendingLockSlab.SlabSize - 1];
-        static Action<object> GetCancelationCallback(short key)
+        private static readonly Action<object>[] _slabCallbacks = new Action<object>[AsyncDirectPendingLockSlab.SlabSize - 1];
+        private static Action<object> GetCancelationCallback(short key)
         {
             if (key == 0) return state => ((IPendingLockToken)state).TryCancel(0);
             var index = key - 1; // don't need to worry about 0, so: offset by one
@@ -510,14 +511,17 @@ namespace Pipelines.Sockets.Unofficial.Threading
 #else
             var token = TryTakeOnceOnly();
 #endif
+
+#pragma warning disable RCS1233
             if (token != 0 | HasFlag(options, WaitOptions.NoDelay))
                 return new ValueTask<LockToken>(new LockToken(this, token));
+#pragma warning restore RCS1233
 
             // otherwise, do things the hard way
             return TakeWithTimeoutAsync(cancellationToken, options);
         }
 
-        static Task<LockToken> s_canceledTask;
+        private static Task<LockToken> s_canceledTask;
         internal static ValueTask<LockToken> GetCanceled() => new ValueTask<LockToken>(s_canceledTask ?? (s_canceledTask = CreateCanceledLockTokenTask()));
         private static Task<LockToken> CreateCanceledLockTokenTask()
         {
@@ -537,7 +541,10 @@ namespace Pipelines.Sockets.Unofficial.Threading
 #else
             var token = TryTakeOnceOnly();
 #endif
+
+#pragma warning disable RCS1233 // Use short-circuiting operator.
             return new LockToken(this, (token != 0 | HasFlag(options, WaitOptions.NoDelay)) ? token : TakeWithTimeout(options));
+#pragma warning restore RCS1233 // Use short-circuiting operator.
         }
 
         /// <summary>

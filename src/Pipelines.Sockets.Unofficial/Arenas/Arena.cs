@@ -145,8 +145,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
     internal sealed class SimpleOwnedArena<T> : OwnedArena<T>
     {
+#pragma warning disable RCS1085
         internal Arena<T> Arena => _arena;
         private readonly Arena<T> _arena;
+#pragma warning restore RCS1085
+
         public SimpleOwnedArena(Arena parent, Allocator<T> suggestedAllocator)
         {
             var factory = parent.Factory;
@@ -486,9 +489,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             protected override int GetSegmentIndex() => Underlying.SegmentIndex; // block index is always shared
 
 #if DEBUG
-            private readonly long _byteOffset;
             private readonly int _byteCount;
-            protected override long ByteOffset => _byteOffset;
+            protected override long ByteOffset { get; }
 #endif
 
             private static unsafe Memory<TTo> CreateMapped(Block<TFrom> underlying, out void* origin)
@@ -516,7 +518,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 _byteCount = underlying.Length * Unsafe.SizeOf<TFrom>();
                 if (previous != null)
                 {   // we can't use "underlying" for this, because of padding etc
-                    _byteOffset = previous.ByteOffset + previous._byteCount;
+                    ByteOffset = previous.ByteOffset + previous._byteCount;
                 }
 #endif
             }

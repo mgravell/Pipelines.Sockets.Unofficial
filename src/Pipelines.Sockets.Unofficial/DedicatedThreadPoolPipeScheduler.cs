@@ -104,7 +104,9 @@ namespace Pipelines.Sockets.Unofficial
             if (action == null) return; // nothing to do
             lock (_queue)
             {
+#pragma warning disable RCS1233
                 if (!(_disposed | _queue.Count >= UseThreadPoolQueueLength))
+#pragma warning restore RCS1233
                 {
                     _queue.Enqueue(new WorkItem(action, state));
                     if (_availableCount != 0)

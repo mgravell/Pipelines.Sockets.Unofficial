@@ -5,6 +5,8 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
+#pragma warning disable RCS1233 // short-circuit operators: this is intentional
+
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
     /// <summary>
@@ -55,8 +57,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override int GetHashCode()
             => IsEmpty ? 0 :
+#pragma warning disable RCS1032
             (RuntimeHelpers.GetHashCode(_startObj) ^ _startOffsetAndArrayFlag)
             ^ ~(RuntimeHelpers.GetHashCode(_endObj) ^ _endOffsetOrLength);
+#pragma warning restore RCS1032
 
         /// <summary>
         /// Summarizes a sequence as a string
@@ -68,13 +72,13 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool operator ==(Sequence x, Sequence y) => x.Equals(in y);
+        public static bool operator ==(in Sequence x, in Sequence y) => x.Equals(in y);
 
         /// <summary>
         /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool operator !=(Sequence x, Sequence y) => !x.Equals(in y);
+        public static bool operator !=(in Sequence x, in Sequence y) => !x.Equals(in y);
 
         /// <summary>
         /// Indicates whether the sequence involves multiple segments, vs whether all the data fits into the first segment
@@ -97,8 +101,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private long MultiSegmentLength()
         {
             // note that in the multi-segment case, the MSB will be set - as it isn't an array
+#pragma warning disable RCS1032
             return (((ISegment)_endObj).RunningIndex + (_endOffsetOrLength)) // start index
                 - (((ISegment)_startObj).RunningIndex + (_startOffsetAndArrayFlag & ~IsArrayFlag)); // start index
+#pragma warning restore RCS1032
         }
 
         /// <summary>
@@ -212,14 +218,14 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Represents a typed sequence as an untyped sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static implicit operator Sequence(Sequence<T> sequence)
+        public static implicit operator Sequence(in Sequence<T> sequence)
             => sequence.Untyped();
 
         /// <summary>
         /// Converts an untyped sequence back to a typed sequence; the type must be correct
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static explicit operator Sequence<T>(Sequence sequence)
+        public static explicit operator Sequence<T>(in Sequence sequence)
             => sequence.Cast<T>();
 
         /// <summary>
@@ -251,8 +257,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override int GetHashCode()
             => IsEmpty ? 0 :
+#pragma warning disable RCS1032
             (RuntimeHelpers.GetHashCode(_startObj) ^ __startOffsetAndArrayFlag)
             ^ ~(RuntimeHelpers.GetHashCode(_endObj) ^ __endOffsetOrLength);
+#pragma warning restore RCS1032
 
         /// <summary>
         /// Summaries a sequence as a string
@@ -264,19 +272,19 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool operator ==(Sequence<T> x, Sequence<T> y) => x.Equals(in y);
+        public static bool operator ==(in Sequence<T> x, in Sequence<T> y) => x.Equals(in y);
 
         /// <summary>
         /// Tests two sequences for equality
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool operator !=(Sequence<T> x, Sequence<T> y) => !x.Equals(in y);
+        public static bool operator !=(in Sequence<T> x, in Sequence<T> y) => !x.Equals(in y);
 
         /// <summary>
         /// Converts a typed sequence to a typed read-only-sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static implicit operator ReadOnlySequence<T>(Sequence<T> sequence)
+        public static implicit operator ReadOnlySequence<T>(in Sequence<T> sequence)
             => sequence.AsReadOnly();
 
         /// <summary>
@@ -333,7 +341,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Converts a typed sequence to a typed read-only-sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static explicit operator Sequence<T>(ReadOnlySequence<T> readOnlySequence)
+        public static explicit operator Sequence<T>(in ReadOnlySequence<T> readOnlySequence)
         {
             if (TryGetSequence(readOnlySequence, out var sequence)) return sequence;
             Throw.InvalidCast();
@@ -665,7 +673,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Copy the contents of the sequence into a contiguous region
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+#pragma warning disable RCS1231
         public void CopyTo(Span<T> destination)
+#pragma warning restore RCS1231
         {
             if (IsSingleSegment) FirstSpan.CopyTo(destination);
             else if (!TrySlowCopy(destination)) ThrowLengthError();
@@ -681,7 +691,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// If possible, copy the contents of the sequence into a contiguous region
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+#pragma warning disable RCS1231
         public bool TryCopyTo(Span<T> destination)
+#pragma warning restore RCS1231
             => IsSingleSegment ? FirstSpan.TryCopyTo(destination) : TrySlowCopy(destination);
 
         private bool TrySlowCopy(Span<T> destination)
@@ -699,7 +711,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Create a new single-segment sequence from a memory
         /// </summary>
+#pragma warning disable RCS1231
         public Sequence(Memory<T> memory)
+#pragma warning restore RCS1231
         {
             if (MemoryMarshal.TryGetMemoryManager<T, MemoryManager<T>>(memory, out var manager, out int index, out int length))
             {

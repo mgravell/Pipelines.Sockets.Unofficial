@@ -5,11 +5,12 @@ namespace Pipelines.Sockets.Unofficial.Threading
 {
     public partial class MutexSlim
     {
-        readonly struct PendingLockItem
+        private readonly struct PendingLockItem
         {
+            public IPendingLockToken Pending { get; }
             public uint Start { get; }
             private readonly short _key;
-            public IPendingLockToken Pending { get; }
+
             public bool IsAsync
             {
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -28,13 +29,15 @@ namespace Pipelines.Sockets.Unofficial.Threading
             internal bool TrySetResult(int token) => Pending.TrySetResult(_key, token);
 
             // note: the ==/!= here don't short-circuit deliberately, to avoid branches
+#pragma warning disable RCS1233 // Use short-circuiting operator.
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static bool operator ==(PendingLockItem x, PendingLockItem y)
+            public static bool operator ==(in PendingLockItem x, in PendingLockItem y)
                 => x._key == y._key & (object)x.Pending == (object)y.Pending;
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static bool operator !=(PendingLockItem x, PendingLockItem y)
+            public static bool operator !=(in PendingLockItem x, in PendingLockItem y)
                 => x._key != y._key | (object)x.Pending != (object)y.Pending;
+#pragma warning restore RCS1233 // Use short-circuiting operator.
 
             public override bool Equals(object obj) => obj is PendingLockItem other && other == this;
 

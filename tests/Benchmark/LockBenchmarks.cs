@@ -9,7 +9,7 @@ namespace Benchmark
     [MemoryDiagnoser, CoreJob, ClrJob, MinColumn, MaxColumn]
     public class LockBenchmarks : BenchmarkBase
     {
-        const int TIMEOUTMS = 2000;
+        private const int TIMEOUTMS = 2000;
         private readonly MutexSlim _mutexSlim = new MutexSlim(TIMEOUTMS);
         private readonly SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(1, 1);
 #if !NO_NITO
@@ -17,7 +17,7 @@ namespace Benchmark
 #endif
         private readonly object _syncLock = new object();
 
-        const int PER_TEST = 5 * 1024;
+        private const int PER_TEST = 5 * 1024;
 
         [Benchmark(OperationsPerInvoke = PER_TEST)]
         public int Monitor_Sync()
@@ -57,7 +57,10 @@ namespace Benchmark
                         _semaphoreSlim.Release();
                     }
                 }
-                else Log?.Invoke($"failed at i={i}");
+                else
+                {
+                    Log?.Invoke($"failed at i={i}");
+                }
             }
             return count.AssertIs(PER_TEST);
         }
@@ -68,7 +71,7 @@ namespace Benchmark
             int count = 0;
             for (int i = 0; i < PER_TEST; i++)
             {
-                if (await _semaphoreSlim.WaitAsync(TIMEOUTMS))
+                if (await _semaphoreSlim.WaitAsync(TIMEOUTMS).ConfigureAwait(false))
                 {
                     try // make sure we measure the expected try/finally usage
                     {
@@ -79,7 +82,10 @@ namespace Benchmark
                         _semaphoreSlim.Release();
                     }
                 }
-                else Log?.Invoke($"failed at i={i}");
+                else
+                {
+                    Log?.Invoke($"failed at i={i}");
+                }
             }
             return count.AssertIs(PER_TEST);
         }
@@ -98,7 +104,10 @@ namespace Benchmark
                         count++;
                         _semaphoreSlim.Release();
                     }
-                    else Log?.Invoke($"failed at i={i}");
+                    else
+                    {
+                        Log?.Invoke($"failed at i={i}");
+                    }
                 }
                 else
                 {
@@ -107,7 +116,10 @@ namespace Benchmark
                         count++;
                         _semaphoreSlim.Release();
                     }
-                    else Log?.Invoke($"failed at i={i}");
+                    else
+                    {
+                        Log?.Invoke($"failed at i={i}");
+                    }
                 }
             }
             return count.AssertIs(PER_TEST);
@@ -134,7 +146,7 @@ namespace Benchmark
             int count = 0;
             for (int i = 0; i < PER_TEST; i++)
             {
-                using (var token = await _mutexSlim.TryWaitAsync())
+                using (var token = await _mutexSlim.TryWaitAsync().ConfigureAwait(false))
                 {
                     if (token) count++;
                     else Log?.Invoke($"failed at i={i},{_mutexSlim}");
@@ -178,7 +190,7 @@ namespace Benchmark
                 int success = 0;
                 for (int t = 0; t < 100; t++)
                 {
-                    using (var taken = await _mutexSlim.TryWaitAsync())
+                    using (var taken = await _mutexSlim.TryWaitAsync().ConfigureAwait(false))
                     {
                         if (taken) success++;
                         else Log?.Invoke($"failed at i={i},{_mutexSlim}");
@@ -189,7 +201,7 @@ namespace Benchmark
                 return success;
             }).ToArray();
 
-            await Task.WhenAll(tasks);
+            await Task.WhenAll(tasks).ConfigureAwait(false);
             int total = tasks.Sum(x => x.Result);
             return total.AssertIs(100 * 100);
         }
@@ -202,7 +214,7 @@ namespace Benchmark
                 int success = 0;
                 for (int t = 0; t < 100; t++)
                 {
-                    using (var taken = await _mutexSlim.TryWaitAsync(options: MutexSlim.WaitOptions.DisableAsyncContext))
+                    using (var taken = await _mutexSlim.TryWaitAsync(options: MutexSlim.WaitOptions.DisableAsyncContext).ConfigureAwait(false))
                     {
                         if (taken) success++;
                         else Log?.Invoke($"failed at i={i},t={t},{_mutexSlim}");
@@ -213,7 +225,7 @@ namespace Benchmark
                 return success;
             }).ToArray();
 
-            await Task.WhenAll(tasks);
+            await Task.WhenAll(tasks).ConfigureAwait(false);
             int total = tasks.Sum(x => x.Result);
             return total.AssertIs(100 * 100);
         }
@@ -238,7 +250,7 @@ namespace Benchmark
                 return success;
             }).ToArray();
 
-            await Task.WhenAll(tasks);
+            await Task.WhenAll(tasks).ConfigureAwait(false);
             int total = tasks.Sum(x => x.Result);
             return total.AssertIs(100 * 100);
         }
@@ -251,7 +263,7 @@ namespace Benchmark
                 int success = 0;
                 for (int t = 0; t < 100; t++)
                 {
-                    var taken = await _semaphoreSlim.WaitAsync(1000);
+                    var taken = await _semaphoreSlim.WaitAsync(1000).ConfigureAwait(false);
                     try
                     {
                         if (taken) success++;
@@ -267,7 +279,7 @@ namespace Benchmark
                 return success;
             }).ToArray();
 
-            await Task.WhenAll(tasks);
+            await Task.WhenAll(tasks).ConfigureAwait(false);
             int total = tasks.Sum(x => x.Result);
             return total.AssertIs(100 * 100);
         }
@@ -297,7 +309,7 @@ namespace Benchmark
                 return success;
             }).ToArray();
 
-            await Task.WhenAll(tasks);
+            await Task.WhenAll(tasks).ConfigureAwait(false);
             int total = tasks.Sum(x => x.Result);
             return total.AssertIs(100 * 100);
         }
@@ -308,7 +320,7 @@ namespace Benchmark
         // [Benchmark(OperationsPerInvoke = 100 * 100)]
         public async Task<int> AsyncSemaphore_ConcurrentLoad()
         {
-            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            var tasks = Enumerable.Range(0, 100).Select(async _ =>
             {
                 int success = 0;
                 for (int t = 0; t < 100; t++)
@@ -328,7 +340,7 @@ namespace Benchmark
                 return success;
             }).ToArray();
 
-            await Task.WhenAll(tasks);
+            await Task.WhenAll(tasks).ConfigureAwait(false);
             int total = tasks.Sum(x => x.Result);
             return total.AssertIs(100 * 100);
         }
@@ -336,12 +348,12 @@ namespace Benchmark
         [Benchmark(OperationsPerInvoke = 100 * 100)]
         public async Task<int> AsyncSemaphore_ConcurrentLoadAsync()
         {
-            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            var tasks = Enumerable.Range(0, 100).Select(async _ =>
             {
                 int success = 0;
                 for (int t = 0; t < 100; t++)
                 {
-                    await _asyncSemaphore.WaitAsync();
+                    await _asyncSemaphore.WaitAsync().ConfigureAwait(false);
                     try
                     {
                         success++;
@@ -356,7 +368,7 @@ namespace Benchmark
                 return success;
             }).ToArray();
 
-            await Task.WhenAll(tasks);
+            await Task.WhenAll(tasks).ConfigureAwait(false);
             int total = tasks.Sum(x => x.Result);
             return total.AssertIs(100 * 100);
         }
@@ -386,7 +398,7 @@ namespace Benchmark
             int count = 0;
             for (int i = 0; i < PER_TEST; i++)
             {
-                await _asyncSemaphore.WaitAsync();
+                await _asyncSemaphore.WaitAsync().ConfigureAwait(false);
                 try
                 {
                     count++;

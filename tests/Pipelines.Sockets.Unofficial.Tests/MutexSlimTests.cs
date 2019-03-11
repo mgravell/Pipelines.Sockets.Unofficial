@@ -30,7 +30,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             _timeoutMuxCustomScheduler = new MutexSlim(1000, DedicatedThreadPoolPipeScheduler.Default),
             _timeoutMux = new MutexSlim(1000);
 
-        class DummySyncContext : SynchronizationContext
+        private class DummySyncContext : SynchronizationContext
         {
             public Guid Id { get; }
             public DummySyncContext(Guid guid) => Id = guid;
@@ -209,7 +209,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
                 for(int i = 0; i < 280; i++) // see: SlabSize - 2+ slabs, basically
                 {
-                    using (var inner = await fastMux.TryWaitAsync(options: waitOptions))
+                    using (var inner = await fastMux.TryWaitAsync(options: waitOptions).ConfigureAwait(false))
                     {
                         Assert.False(inner.Success);
                     }
@@ -418,7 +418,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             int active = 0, success = 0, asyncOps = 0;
 
             var tasks = new Task[COMPETITORS];
-            using (var token = await _timeoutMux.TryWaitAsync())
+            using (var token = await _timeoutMux.TryWaitAsync().ConfigureAwait(false))
             {
                 lock (allReady)
                 {
@@ -434,7 +434,10 @@ namespace Pipelines.Sockets.Unofficial.Tests
                                     Log($"all tasks ready; releasing everyone");
                                     Monitor.PulseAll(allReady);
                                 }
-                                else Monitor.Wait(allReady);
+                                else
+                                {
+                                    Monitor.Wait(allReady);
+                                }
                             }
                             var awaitable = _timeoutMux.TryWaitAsync(options: waitOptions);
                             if (!awaitable.IsCompleted) asyncOps++;
@@ -479,7 +482,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             int active = 0, success = 0, asyncOps = 0;
 
             var tasks = new Task[COMPETITORS];
-            using (var token = await _timeoutMux.TryWaitAsync())
+            using (var token = await _timeoutMux.TryWaitAsync().ConfigureAwait(false))
             {
                 lock (allReady)
                 {

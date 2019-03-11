@@ -10,7 +10,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
 {
     public class ArenaTests
     {
-#pragma warning disable CS0169, IDE0051 // unused fields
+#pragma warning disable CS0169, IDE0051, RCS1213 // unused fields
         private struct TwoPositions<T>
         {
             private readonly SequencePosition start, end;
@@ -31,7 +31,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             private readonly object x;
             private readonly int offse;
         }
-#pragma warning restore CS0169
+#pragma warning restore CS0169, IDE0051, RCS1213
 
         [Fact]
         public void AssertPossibleLayoutSizes()
@@ -95,7 +95,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 Assert.Throws<ArgumentOutOfRangeException>(() => alloc.Slice(1, (int)alloc.Length));
             }
 
-            void Check(Sequence<int> range, int start)
+            void Check(in Sequence<int> range, int start)
             {
                 int count = 0;
                 foreach (var span in range.Spans)
@@ -131,7 +131,6 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 // we expect "some" (not zero, not all) single-segments
                 Assert.NotEqual(0, singleSegmentCount);
                 Assert.NotEqual(arr.Length, singleSegmentCount);
-
             }
         }
 

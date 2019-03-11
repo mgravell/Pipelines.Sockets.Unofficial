@@ -7,7 +7,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
 {
     public class MultiArenaTests
     {
-        static void AssertPosition(string expected, SequencePosition position)
+        private static void AssertPosition(string expected, in SequencePosition position)
         {
 #if !DEBUG
             // byte-offset only available in debug
@@ -145,17 +145,17 @@ namespace Pipelines.Sockets.Unofficial.Tests
         }
 
         // calls to ShowUnmanaged won't compile
-        static void ShowUnmanaged<T>() where T : unmanaged { }
+        private static void ShowUnmanaged<T>() where T : unmanaged { }
 
-#pragma warning disable IDE0044, IDE0051, CS0169
-        struct Foo
+#pragma warning disable IDE0044, IDE0051, CS0169, RCS1169, RCS1213
+        private struct Foo
         {
-            int a, b, c, d;
+            private int a, b, c, d;
         }
-        struct Bar
+        private struct Bar
         {
-            object a, b;
+            private object a, b;
         }
-#pragma warning restore IDE0044, IDE0051, CS0169
+#pragma warning restore IDE0044, IDE0051, CS0169, RCS1169, RCS1213
     }
 }

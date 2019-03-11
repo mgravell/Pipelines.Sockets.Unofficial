@@ -24,7 +24,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Used to compare two instances for equality
         /// </summary>
-        public bool Equals(Reference<T> other) => _obj == other._obj & _offset == other._offset;
+#pragma warning disable RCS1233 // Use short-circuiting operator.
+        public bool Equals(in Reference<T> other) => _obj == other._obj & _offset == other._offset;
+#pragma warning restore RCS1233 // Use short-circuiting operator.
+
+        bool IEquatable<Reference<T>>.Equals(Reference<T> other) => Equals(in other);
 
         /// <summary>
         /// Used to compare two instances for equality
@@ -40,23 +44,31 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public Reference(T[] array, int index) : this(index, array)
         {
             if (array == null) Throw.ArgumentNull(nameof(array));
+#pragma warning disable RCS1233 // Use short-circuiting operator.
             if (index < 0 | index >= array.Length) Throw.ArgumentOutOfRange(nameof(index));
+#pragma warning restore RCS1233 // Use short-circuiting operator.
         }
 
         /// <summary>
         /// Create a new reference into a memory
         /// </summary>
+#pragma warning disable RCS1231
         public Reference(Memory<T> memory, int index)
+#pragma warning restore RCS1231
         {
             if (MemoryMarshal.TryGetMemoryManager<T, MemoryManager<T>>(memory, out MemoryManager<T> manager, out int start, out int length))
             {
+#pragma warning disable RCS1233
                 if (index < 0 | index >= length) Throw.ArgumentOutOfRange(nameof(index));
+#pragma warning restore RCS1233
                 _obj = manager;
                 _offset = start + index;
             }
             else if (MemoryMarshal.TryGetArray(memory, out ArraySegment<T> segment))
             {
+#pragma warning disable RCS1233
                 if (index < 0 | index >= segment.Count) Throw.ArgumentOutOfRange(nameof(index));
+#pragma warning restore RCS1233
                 _obj = segment.Array;
                 _offset = segment.Offset + index;
             }
@@ -72,7 +84,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             _obj = obj;
             _offset = offset;
         }
-        
+
         /// <summary>
         /// Get a reference to the underlying value
         /// </summary>
@@ -99,6 +111,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Convert a reference to the underlying type
         /// </summary>
-        public static implicit operator T (Reference<T> reference) => reference.Value;
+        public static implicit operator T (in Reference<T> reference) => reference.Value;
     }
 }

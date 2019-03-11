@@ -31,7 +31,6 @@ namespace Pipelines.Sockets.Unofficial.Tests
             TestEveryWhichWay(seq, length);
         }
 
-
         [Fact]
         public void CheckDefaultMemory()
         {
@@ -57,10 +56,12 @@ namespace Pipelines.Sockets.Unofficial.Tests
             TestEveryWhichWay(seq, length);
         }
 
-        class MyManager : MemoryManager<int>
+        private class MyManager : MemoryManager<int>
         {
             private readonly Memory<int> _memory;
+#pragma warning disable RCS1231 // Make parameter ref read-only.
             public MyManager(Memory<int> memory) => _memory = memory;
+#pragma warning restore RCS1231 // Make parameter ref read-only.
             public override Span<int> GetSpan() => _memory.Span;
 
             public override MemoryHandle Pin(int elementIndex = 0) => default;
@@ -69,7 +70,6 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
             protected override void Dispose(bool disposing) { }
         }
-
 
         [Fact]
         public void CheckDefaultCustomManager()
@@ -102,8 +102,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
         }
 
-
-        unsafe class MyUnsafeManager : MemoryManager<int>
+        private unsafe class MyUnsafeManager : MemoryManager<int>
         {
             protected readonly int* _ptr;
             protected readonly int _length;
@@ -140,7 +139,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
         }
 
-        unsafe class MyUnsafePinnedManager : MyUnsafeManager, IPinnedMemoryOwner<int>
+        private unsafe class MyUnsafePinnedManager : MyUnsafeManager, IPinnedMemoryOwner<int>
         {
             public MyUnsafePinnedManager(int* ptr, int length) : base(ptr, length) { }
 
@@ -168,10 +167,12 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
         }
 
-        unsafe class MySegment : SequenceSegment<int>, IPinnedMemoryOwner<int>
+        unsafe private class MySegment : SequenceSegment<int>, IPinnedMemoryOwner<int>
         {
             public void* Origin { get; }
+#pragma warning disable RCS1231 // Make parameter ref read-only.
             public MySegment(Memory<int> memory, MySegment previous = null) : base(memory, previous) { }
+#pragma warning restore RCS1231 // Make parameter ref read-only.
             public MySegment(IMemoryOwner<int> owner, MySegment previous = null) : base(owner.Memory, previous)
             {
                 if (owner is IPinnedMemoryOwner<int> pinned) Origin = pinned.Origin;
@@ -336,7 +337,6 @@ namespace Pipelines.Sockets.Unofficial.Tests
             int GetNextRandom() => rand.Next(0, 100); //_nextRandom++; 
             void ResetRandom() => rand = new Random(12345); // _nextRandom = 0;
 
-
             Assert.Equal(count, sequence.Length);
             if (!sequence.IsEmpty)
             {
@@ -408,7 +408,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             while (iter.MoveNext())
             {
                 c++;
-                t += iter.CurrentReference;
+                t += iter.Current;
                 Assert.Equal(GetNextRandom(), iter.Current);
             }
             Assert.Equal(total, t);
@@ -565,7 +565,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Assert.Equal(count, c);
             Assert.Equal(spanCount, roSpanCount);
 
-            void AssertEqualExceptMSB(SequencePosition expected, SequencePosition actual)
+            void AssertEqualExceptMSB(in SequencePosition expected, in SequencePosition actual)
             {
                 object eo = expected.GetObject(), ao = actual.GetObject();
                 int ei = expected.GetInteger() & ~Sequence.IsArrayFlag,
@@ -573,7 +573,6 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
                 Assert.Equal(ei, ai);
                 Assert.Equal(eo, ao);
-
             }
 
             // slice everything
@@ -611,7 +610,6 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Assert.Equal(count, c);
             Assert.Equal(total, t);
 
-
             Assert.Throws<ArgumentOutOfRangeException>(() => sequence.Slice(-1, 0));
             Assert.Throws<ArgumentOutOfRangeException>(() => sequence.Slice(c, 1));
 
@@ -624,7 +622,6 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Assert.True(end.IsEmpty);
             AssertEqualExceptMSB(sequence.End, end.Start);
             Assert.Equal(sequence.End, end.End);
-
         }
     }
 }
