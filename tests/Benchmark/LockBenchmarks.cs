@@ -182,13 +182,19 @@ namespace Benchmark
             return count.AssertIs(PER_TEST);
         }
 
-        [Benchmark(OperationsPerInvoke = 100 * 100)]
+#if DEBUG
+        private const int CC_LOAD = 5;
+#else
+        private const int CC_LOAD = 50;
+#endif
+
+        [Benchmark(OperationsPerInvoke = CC_LOAD * CC_LOAD)]
         public async Task<int> MutexSlim_ConcurrentLoadAsync()
         {
-            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            var tasks = Enumerable.Range(0, CC_LOAD).Select(async i =>
             {
                 int success = 0;
-                for (int t = 0; t < 100; t++)
+                for (int t = 0; t < CC_LOAD; t++)
                 {
                     using (var taken = await _mutexSlim.TryWaitAsync().ConfigureAwait(false))
                     {
@@ -203,16 +209,16 @@ namespace Benchmark
 
             await Task.WhenAll(tasks).ConfigureAwait(false);
             int total = tasks.Sum(x => x.Result);
-            return total.AssertIs(100 * 100);
+            return total.AssertIs(CC_LOAD * CC_LOAD);
         }
 
-        [Benchmark(OperationsPerInvoke = 100 * 100)]
+        [Benchmark(OperationsPerInvoke = CC_LOAD * CC_LOAD)]
         public async Task<int> MutexSlim_ConcurrentLoadAsync_DisableContext()
         {
-            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            var tasks = Enumerable.Range(0, CC_LOAD).Select(async i =>
             {
                 int success = 0;
-                for (int t = 0; t < 100; t++)
+                for (int t = 0; t < CC_LOAD; t++)
                 {
                     using (var taken = await _mutexSlim.TryWaitAsync(options: MutexSlim.WaitOptions.DisableAsyncContext).ConfigureAwait(false))
                     {
@@ -227,17 +233,17 @@ namespace Benchmark
 
             await Task.WhenAll(tasks).ConfigureAwait(false);
             int total = tasks.Sum(x => x.Result);
-            return total.AssertIs(100 * 100);
+            return total.AssertIs(CC_LOAD * CC_LOAD);
         }
 
         // this is a sync-over-async; don't do it
-        //[Benchmark(OperationsPerInvoke = 100 * 100)]
+        //[Benchmark(OperationsPerInvoke = CC_LOAD * CC_LOAD)]
         public async Task<int> MutexSlim_ConcurrentLoad()
         {
-            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            var tasks = Enumerable.Range(0, CC_LOAD).Select(async i =>
             {
                 int success = 0;
-                for (int t = 0; t < 100; t++)
+                for (int t = 0; t < CC_LOAD; t++)
                 {
                     using (var taken = _mutexSlim.TryWait())
                     {
@@ -252,18 +258,18 @@ namespace Benchmark
 
             await Task.WhenAll(tasks).ConfigureAwait(false);
             int total = tasks.Sum(x => x.Result);
-            return total.AssertIs(100 * 100);
+            return total.AssertIs(CC_LOAD * CC_LOAD);
         }
 
-        [Benchmark(OperationsPerInvoke = 100 * 100)]
+        [Benchmark(OperationsPerInvoke = CC_LOAD * CC_LOAD)]
         public async Task<int> SemaphoreSlim_ConcurrentLoadAsync()
         {
-            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            var tasks = Enumerable.Range(0, CC_LOAD).Select(async i =>
             {
                 int success = 0;
-                for (int t = 0; t < 100; t++)
+                for (int t = 0; t < CC_LOAD; t++)
                 {
-                    var taken = await _semaphoreSlim.WaitAsync(1000).ConfigureAwait(false);
+                    var taken = await _semaphoreSlim.WaitAsync(TIMEOUTMS).ConfigureAwait(false);
                     try
                     {
                         if (taken) success++;
@@ -281,19 +287,19 @@ namespace Benchmark
 
             await Task.WhenAll(tasks).ConfigureAwait(false);
             int total = tasks.Sum(x => x.Result);
-            return total.AssertIs(100 * 100);
+            return total.AssertIs(CC_LOAD * CC_LOAD);
         }
 
         // this is a sync-over-async; don't do it
-        // [Benchmark(OperationsPerInvoke = 100 * 100)]
+        // [Benchmark(OperationsPerInvoke = CC_LOAD * CC_LOAD)]
         public async Task<int> SemaphoreSlim_ConcurrentLoad()
         {
-            var tasks = Enumerable.Range(0, 100).Select(async i =>
+            var tasks = Enumerable.Range(0, CC_LOAD).Select(async i =>
             {
                 int success = 0;
-                for (int t = 0; t < 100; t++)
+                for (int t = 0; t < CC_LOAD; t++)
                 {
-                    var taken = _semaphoreSlim.Wait(1000);
+                    var taken = _semaphoreSlim.Wait(TIMEOUTMS);
                     try
                     {
                         if (taken) success++;
@@ -311,19 +317,19 @@ namespace Benchmark
 
             await Task.WhenAll(tasks).ConfigureAwait(false);
             int total = tasks.Sum(x => x.Result);
-            return total.AssertIs(100 * 100);
+            return total.AssertIs(CC_LOAD * CC_LOAD);
         }
 
 #if !NO_NITO
 
         // this is a sync-over-async; don't do it
-        // [Benchmark(OperationsPerInvoke = 100 * 100)]
+        // [Benchmark(OperationsPerInvoke = CC_LOAD * CC_LOAD)]
         public async Task<int> AsyncSemaphore_ConcurrentLoad()
         {
-            var tasks = Enumerable.Range(0, 100).Select(async _ =>
+            var tasks = Enumerable.Range(0, CC_LOAD).Select(async _ =>
             {
                 int success = 0;
-                for (int t = 0; t < 100; t++)
+                for (int t = 0; t < CC_LOAD; t++)
                 {
                     _asyncSemaphore.Wait();
                     try
@@ -342,16 +348,16 @@ namespace Benchmark
 
             await Task.WhenAll(tasks).ConfigureAwait(false);
             int total = tasks.Sum(x => x.Result);
-            return total.AssertIs(100 * 100);
+            return total.AssertIs(CC_LOAD * CC_LOAD);
         }
 
-        [Benchmark(OperationsPerInvoke = 100 * 100)]
+        [Benchmark(OperationsPerInvoke = CC_LOAD * CC_LOAD)]
         public async Task<int> AsyncSemaphore_ConcurrentLoadAsync()
         {
-            var tasks = Enumerable.Range(0, 100).Select(async _ =>
+            var tasks = Enumerable.Range(0, CC_LOAD).Select(async _ =>
             {
                 int success = 0;
-                for (int t = 0; t < 100; t++)
+                for (int t = 0; t < CC_LOAD; t++)
                 {
                     await _asyncSemaphore.WaitAsync().ConfigureAwait(false);
                     try
@@ -370,7 +376,7 @@ namespace Benchmark
 
             await Task.WhenAll(tasks).ConfigureAwait(false);
             int total = tasks.Sum(x => x.Result);
-            return total.AssertIs(100 * 100);
+            return total.AssertIs(CC_LOAD * CC_LOAD);
         }
 
         [Benchmark(OperationsPerInvoke = PER_TEST)]
