@@ -25,14 +25,14 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public async Task TestDedicatedScheduler()
         {
             var pool = DedicatedThreadPoolPipeScheduler.Default;
-            await Task.Delay(100);
+            await Task.Delay(100).ConfigureAwait(false);
 
             Log("after:");
             Log($"serviced by pool: {pool.TotalServicedByPool}");
             Log($"serviced by queue: {pool.TotalServicedByQueue}");
             Log($"available: {pool.AvailableCount}");
-            
-            await TestScheduler(pool);
+
+            await TestScheduler(pool).ConfigureAwait(false);
 
             Log("after:");
             Log($"serviced by pool: {pool.TotalServicedByPool}");
@@ -43,12 +43,12 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public Task TestThreadPoolScheduler() => TestScheduler(PipeScheduler.ThreadPool);
 
-        class SchedulerState : TaskCompletionSource<int>
+        private class SchedulerState : TaskCompletionSource<int>
         {
-            int _count;
-            readonly int _start;
-            readonly PipeScheduler _scheduler;
-            static readonly Action<object> RunNext = s => ((SchedulerState)s).Next();
+            private int _count;
+            private readonly int _start;
+            private readonly PipeScheduler _scheduler;
+            private static readonly Action<object> RunNext = s => ((SchedulerState)s).Next();
             public void Start() => _scheduler.Schedule(RunNext, this);
             private void Next()
             {
@@ -62,7 +62,6 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 {
                     _scheduler.Schedule(RunNext, this);
                 }
-
             }
             public SchedulerState(PipeScheduler scheduler, int count)
             {
@@ -73,12 +72,12 @@ namespace Pipelines.Sockets.Unofficial.Tests
         }
         private async Task<int> TestScheduler(PipeScheduler scheduler, int count = 1000000, int timeoutMilliseconds = 5000)
         {
-            var time = await TestSchedulerImpl(scheduler, count, timeoutMilliseconds);
+            var time = await TestSchedulerImpl(scheduler, count, timeoutMilliseconds).ConfigureAwait(false);
             Log($"time taken: {time}ms for {count} schedules");
             return time;
         }
         private Task<int> TestSchedulerImpl(PipeScheduler scheduler, int count, int timeoutMilliseconds)
-        {   
+        {
             var timeout = Task.Delay(timeoutMilliseconds);
             var obj = new SchedulerState(scheduler, count);
             obj.Start();
