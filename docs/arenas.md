@@ -106,15 +106,38 @@ allocating all types that satisfy `T : unmanaged` (i.e. `struct` types that don'
 
 ## How to work with the values in a sequence
 
-Similarly to `ReadOnlySequence<T>` there is no *indexer* access to the entire block, but you can iterate over the individual segments (`Memory<T>`) if needed. You can also iterate over the spans (`Span<T>`) or even the individual elements (`T`):
+`Sequence<T>` works very similarly to `ReadOnlySequence<T>`, with some tweaks. Firstly, unlike `ReadOnlySequence<T>`, `Sequence<T>` exposes an *indexer*; this indexer
+is of type `ref T`, so you aren't copying the value - you're accessing it *in situ* (unless you choose to de-reference it). You can also assign directly to the reference, or mutate the
+value via the reference. If the mention of `ref T` references sounds scary: it really isn't; ultimately this is identical to what the array (`T[]`) and span (`Span<T>`)
+indexers already return; in most cases you simply don't need to stress about it.
+
+You can also iterate over the individual segments (`Memory<T>`) if needed, or the segments as spans (`Span<T>`)
 
 ``` c#
 foreach (Memory<T> segment in block.Segments) { ... }
 foreach (Span<T> span in block.Spans) { ... }
-foreach (T value in block) { ... }
 ```
 
 Note that because the segments and spans here are writable rather than read-only, assigning values is as simple as writing to the span indexers.
+
+Alternatively, you iterate over the *values*:
+
+``` c#
+foreach (T value in block) { ... }
+```
+
+and if you're using C# 8.0 or above, you can iterate over the items *as references* - avoiding a stack copy:
+
+``` c#
+foreach (ref T value in block) { ... }
+foreach (ref readonly T value in block) { ... }
+```
+
+And just like with the indexer, the `foreach (ref T value in block)` syntax allows you to assign *to the l-value* (`value`), or mutate the value via the reference.
+This usage is particularly useful when `T` is a large `struct`, as it avoids copying non-trivial types on the stack. It also works particularly well when passing
+the values to methods that take `in T` or `ref T` parameters.
+
+---
 
 The most common pattern - and the most efficient - is to iterate over a span via the indexer, so a *very* common usage might be:
 
@@ -150,33 +173,14 @@ static decimal SumOrderValue(Sequence<Order> orders)
 }
 ```
 
-However, we can *also* make use of the value iterator in some interesing ways - more than just `foreach`. In particular:
+However, we can *also* make use of the value iterator directly in some interesing ways - more than just `foreach`. In particular:
 
 - `.MoveNext()` behaves as you would expect, returning `false` at the end of the data
-- `.Current` on the iterator allows both read and write, assigning directly into the data
-- `.CurrentReference` on the iterator returns a *reference* to the current element (`ref return`), allowing you to avoid copying large `struct` items unnecessarily, and/or using the item with `in` or `ref` parameters very efficiently
-- `.GetNext()` **asserts** that there is more data, and then returns a reference (`ref return`) to the next element (essentially combining `MoveNext()` and `CurrentReference` into a single step)
+- `.Current` on the iterator return a reference to the value (`ref return`), allowing both read and write
+- `.GetNext()` **asserts** that there is more data, and then returns a reference (`ref return`) to the next element (essentially combining `MoveNext()` and `Current` into a single step)
 
-If the mention of `ref return` references sounds scary: it really isn't; ultimately this is identical to what the array (`T[]`) and span (`Span<T>`) indexers already return; in most cases you simply don't need to stress about it.
 
-One particular interesting scenario that presents itself here is when the `T` is itself a large `struct`; with *regular* `foreach`, the iterator value (via `.Current`) is a `T`, which can force the large `struct` to be copied on the stack. We can avoid this problem using `.CurrentReference`, for example:
-
-``` c#
-static decimal SumOrderValue(Sequence<Order> orders)
-{
-    decimal total = 0;
-    var iter = orders.GetEnumerator();
-    while (iter.MoveNext())
-        total += iter.CurrentReference.NetValue;
-    return total;
-}
-```
-
-The `iter.CurrentReference.NetValue` here is a highly efficient way of accessing the value *directly in the underlying memory*, without ever copying the `Order` itself. It *looks* identical, but the impact here can be significant (for large `struct T`).
-
-Note that not only can you *read* data in this way (without copying), but you can similarly *assign* data directly into the underlying memory (overwriting the value) - simply by *assigning* to `.CurrentReference`. This is, once again, semantically identical to assigning to an array (`T[]`) or span (`Span<T>`) via the indexer.
-
-The `GetNext()` option works similarly, and is particularly useful for migrating existing code; consider:
+The `GetNext()` option is particularly useful for migrating existing code; consider:
 
 ``` c#
 int[] values = new int[itemCount];
