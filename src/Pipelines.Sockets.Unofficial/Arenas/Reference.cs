@@ -24,6 +24,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Used to compare two instances for equality
         /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [CLSCompliant(false)]
 #pragma warning disable RCS1233 // Use short-circuiting operator.
         public bool Equals(in Reference<T> other) => _obj == other._obj & _offset == other._offset;
 #pragma warning restore RCS1233 // Use short-circuiting operator.

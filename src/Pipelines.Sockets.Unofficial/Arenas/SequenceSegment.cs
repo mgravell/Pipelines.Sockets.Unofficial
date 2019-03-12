@@ -41,6 +41,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     /// <summary>
     /// A memory-owner that provides direct access to the root reference
     /// </summary>
+    [CLSCompliant(false)]
     public interface IPinnedMemoryOwner<T> : IMemoryOwner<T>
     {
         /// <summary>

@@ -1,3 +1,6 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System;
+using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Pipelines.Sockets.Unofficial.Tests, PublicKey=00240000048000009400000006020000002400005253413100040000010001004d8891d82193e8bd0b50154069ae06c5984af46c017a452d238d7a0b4fa0bec892cbfbc103b3757a35d4cc7f048e42df8c50b82e024b4c452bb953b74980c84b4fd00f1bc7f5a98883ed8bc9db43005491f71067fbaf5623b29a845ef828e79a8991b022e88030c3c9b5610e5045683d0e404746c82344209b498eab408164e7")]
+
+[assembly: CLSCompliant(true)]

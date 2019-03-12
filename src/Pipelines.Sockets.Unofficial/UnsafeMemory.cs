@@ -27,15 +27,23 @@ namespace Pipelines.Sockets.Unofficial
                 _length = span.Length;
             }
         }
+
         /// <summary>
         /// Create a new UnmanagedMemoryManager instance at the given pointer and size
         /// </summary>
+        [CLSCompliant(false)]
         public UnmanagedMemoryManager(T* pointer, int length)
         {
             if (length < 0) Throw.ArgumentOutOfRange(nameof(length));
             _pointer = pointer;
             _length = length;
         }
+
+        /// <summary>
+        /// Create a new UnmanagedMemoryManager instance at the given pointer and size
+        /// </summary>
+        public UnmanagedMemoryManager(IntPtr pointer, int length) : this((T*)pointer.ToPointer(), length) { }
+
         /// <summary>
         /// Obtains a span that represents the region
         /// </summary>
