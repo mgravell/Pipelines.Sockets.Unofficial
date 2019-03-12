@@ -23,7 +23,7 @@
     <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS</DefineConstants>
   </PropertyGroup>
   <PropertyGroup Condition="'$(TargetFramework)'=='netcoreapp3.0'">
-    <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS;RANGES</DefineConstants>
+    <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS</DefineConstants><!--;RANGES-->
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.IO.Pipelines" Version="4.5.1" />
