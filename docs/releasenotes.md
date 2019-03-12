@@ -1,5 +1,9 @@
 # Release Notes
 
+## 2.0.1
+
+- arenas (`Sequence<T>`): make better use of `ref return` features, `ref foreach` enumerators, and `in` operators; this is not binary compatible, hence 2.0
+
 ## 1.1.*
 
 Two big feature additions in 1.1
