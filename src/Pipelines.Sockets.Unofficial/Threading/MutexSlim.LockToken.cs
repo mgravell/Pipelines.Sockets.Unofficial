@@ -16,12 +16,13 @@ namespace Pipelines.Sockets.Unofficial.Threading
             /// Compare two LockToken instances for equality
             /// </summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static bool operator ==(LockToken x, LockToken y) => x.Equals(y);
+            public static bool operator ==(in LockToken x, in LockToken y) => x.Equals(y);
+
             /// <summary>
             /// Compare two LockToken instances for equality
             /// </summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static bool operator !=(LockToken x, LockToken y) => !x.Equals(y);
+            public static bool operator !=(in LockToken x, in LockToken y) => !x.Equals(y);
 
             /// <summary>
             /// Compare two LockToken instances for equality
@@ -41,11 +42,13 @@ namespace Pipelines.Sockets.Unofficial.Threading
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public override string ToString() => LockState.ToString(_token);
 
+            bool IEquatable<LockToken>.Equals(LockToken other) => Equals(in other);
+
             /// <summary>
             /// Compare two LockToken instances for equality
             /// </summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public bool Equals(LockToken other)
+            public bool Equals(in LockToken other)
             {
                 if (_parent != null) return ReferenceEquals(_parent, other._parent);
                 if (other._parent != null) return false;
@@ -59,16 +62,13 @@ namespace Pipelines.Sockets.Unofficial.Threading
             /// Indicates whether the mutex was successfully taken
             /// </summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#pragma warning disable RCS1231 // Make parameter ref read-only.
-            public static bool operator true(LockToken token) => LockState.GetState(token._token) == LockState.Success;
-#pragma warning restore RCS1231 // Make parameter ref read-only.
+            public static bool operator true(in LockToken token) => LockState.GetState(token._token) == LockState.Success;
+
             /// <summary>
             /// Indicates whether the mutex was successfully taken
             /// </summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#pragma warning disable RCS1231 // Make parameter ref read-only.
-            public static bool operator false(LockToken token) => LockState.GetState(token._token) != LockState.Success;
-#pragma warning restore RCS1231 // Make parameter ref read-only.
+            public static bool operator false(in LockToken token) => LockState.GetState(token._token) != LockState.Success;
 
             /// <summary>
             /// Indicates whether the mutex was successfully taken

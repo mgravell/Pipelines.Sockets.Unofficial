@@ -15,7 +15,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         private T _instance = new T();
         private readonly int _defaultTimes;
         public ITestOutputHelper Output { get; }
-        public BenchmarkTests(ITestOutputHelper output, int? defaultTimes = null)
+        protected BenchmarkTests(ITestOutputHelper output, int? defaultTimes = null)
         {
             Output = output;
             _instance.Log += s => Output.WriteLine(s);
@@ -48,7 +48,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         {
             int runs = times ?? _defaultTimes;
             for (int i = 0; i < runs; i++)
-                await action(_instance);
+                await action(_instance).ConfigureAwait(false);
         }
         public async Task Run(Func<T, ValueTask> action, int? times = null)
         {
@@ -60,13 +60,13 @@ namespace Pipelines.Sockets.Unofficial.Tests
         {
             int runs = times ?? _defaultTimes;
             for (int i = 0; i < runs; i++)
-                Write(await action(_instance));
+                Write(await action(_instance).ConfigureAwait(false));
         }
         public async Task Run<TResult>(Func<T, ValueTask<TResult>> action, int? times = null)
         {
             int runs = times ?? _defaultTimes;
             for (int i = 0; i < runs; i++)
-                Write(await action(_instance));
+                Write(await action(_instance).ConfigureAwait(false));
         }
 
         [MemberData(nameof(GetMethods))]
@@ -77,7 +77,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Assert.NotNull(found);
             Assert.Equal(typeof(Task), found.ReturnType);
         }
+#pragma warning disable RCS1158 // Static member in generic type should use a type parameter.
         public static IEnumerable<object[]> GetMethods()
+#pragma warning restore RCS1158 // Static member in generic type should use a type parameter.
         {
             foreach(var method in typeof(T).GetMethods(BindingFlags.Instance | BindingFlags.Public))
             {
@@ -85,9 +87,6 @@ namespace Pipelines.Sockets.Unofficial.Tests
                     yield return new object[] { method.Name };
             }
         }
-
-        
-
     }
     public class ArenaBenchmarkTests : BenchmarkTests<ArenaBenchmarks>
     {
@@ -121,13 +120,13 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact] public Task Monitor_Sync() => Run(_ => _.Monitor_Sync());
         [Fact] public Task MutexSlim_Async() => Run(_ => _.MutexSlim_Async());
         [Fact] public Task MutexSlim_Async_HotPath() => Run(_ => _.MutexSlim_Async_HotPath());
-        [Fact(Skip = "sync-over-async")] public Task MutexSlim_ConcurrentLoad() => Run(_ => _.MutexSlim_ConcurrentLoad());
+        // [Fact(Skip = "sync-over-async")] public Task MutexSlim_ConcurrentLoad() => Run(_ => _.MutexSlim_ConcurrentLoad());
         [Fact] public Task MutexSlim_ConcurrentLoadAsync() => Run(_ => _.MutexSlim_ConcurrentLoadAsync());
         [Fact] public Task MutexSlim_ConcurrentLoadAsync_DisableContext() => Run(_ => _.MutexSlim_ConcurrentLoadAsync_DisableContext());
         [Fact] public Task MutexSlim_Sync() => Run(_ => _.MutexSlim_Sync());
         [Fact] public Task SemaphoreSlim_Async() => Run(_ => _.SemaphoreSlim_Async());
         [Fact] public Task SemaphoreSlim_Async_HotPath() => Run(_ => _.SemaphoreSlim_Async_HotPath());
-        [Fact(Skip = "sync-over-async")] public Task SemaphoreSlim_ConcurrentLoad() => Run(_ => _.SemaphoreSlim_ConcurrentLoad());
+        // [Fact(Skip = "sync-over-async")] public Task SemaphoreSlim_ConcurrentLoad() => Run(_ => _.SemaphoreSlim_ConcurrentLoad());
         [Fact] public Task SemaphoreSlim_ConcurrentLoadAsync() => Run(_ => _.SemaphoreSlim_ConcurrentLoadAsync());
         [Fact] public Task SemaphoreSlim_Sync() => Run(_ => _.SemaphoreSlim_Sync());
     }

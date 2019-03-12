@@ -5,6 +5,8 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
+#pragma warning disable RCS1233 // short-circuit operators: this is intentional
+
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
     /// <summary>

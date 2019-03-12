@@ -24,7 +24,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public readonly ref struct SpanEnumerable
         {
-            readonly Sequence<T> _sequence;
+            private readonly Sequence<T> _sequence;
             internal SpanEnumerable(in Sequence<T> sequence) => _sequence = sequence; // flat copy
 
             /// <summary>
@@ -38,7 +38,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public readonly ref struct MemoryEnumerable
         {
-            readonly Sequence<T> _sequence;
+            private readonly Sequence<T> _sequence;
             internal MemoryEnumerable(in Sequence<T> sequence) => _sequence = sequence; // flat copy
 
             /// <summary>
@@ -111,8 +111,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         private sealed unsafe class PointerBasedEnumerator : IEnumerator<T>
         {
-            void* _ptr;
-            int _remaining;
+            private void* _ptr;
+            private int _remaining;
 
             public PointerBasedEnumerator(void* origin, int offset, int length)
             {
@@ -188,7 +188,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             public ref T GetNext()
             {
                 if (!MoveNext()) Throw.EnumeratorOutOfRange();
-                return ref CurrentReference;
+                return ref Current;
             }
 
             private bool MoveNextNonEmptySegment()
@@ -220,14 +220,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
 
             /// <summary>
-            /// Obtain the current value
+            /// Obtain a reference to the current value
             /// </summary>
-            public T Current
+            public ref T Current
             {
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                get => _span[_offsetThisSpan];
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                set => _span[_offsetThisSpan] = value;
+                get => ref _span[_offsetThisSpan];
                 /*
 
                 Note: the choice of using the indexer here was compared against:
@@ -256,15 +254,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 |      ArrayPool<int> |    Core | netcoreapp2.1 | read/foreach |   172.11 us |
                 |             'int[]' |    Core | netcoreapp2.1 | read/foreach |    23.42 us |
                  */
-            }
-
-            /// <summary>
-            /// Obtain a reference to the current value
-            /// </summary>
-            public ref T CurrentReference
-            {
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                get => ref _span[_offsetThisSpan];
             }
         }
 

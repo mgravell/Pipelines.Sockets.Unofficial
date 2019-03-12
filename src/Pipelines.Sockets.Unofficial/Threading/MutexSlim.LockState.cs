@@ -64,12 +64,8 @@ namespace Pipelines.Sockets.Unofficial.Threading
             public static bool TrySetResult(ref int token, int value)
             {
                 int oldValue = Volatile.Read(ref token);
-                if (LockState.GetState(oldValue) == LockState.Pending
-                    && Interlocked.CompareExchange(ref token, value, oldValue) == oldValue)
-                {
-                    return true;
-                }
-                return false;
+                return LockState.GetState(oldValue) == LockState.Pending
+                    && Interlocked.CompareExchange(ref token, value, oldValue) == oldValue;
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]

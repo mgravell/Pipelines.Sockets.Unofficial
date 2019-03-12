@@ -178,7 +178,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Copy the data from a sequence to a span, applying a projection
         /// </summary>
         public static void CopyTo<TFrom, TTo>(this in Sequence<TFrom> source,
-            Span<TTo> destination, Projection<TFrom, TTo> projection)
+#pragma warning disable RCS1231
+            Span<TTo> destination,
+#pragma warning restore RCS1231
+            Projection<TFrom, TTo> projection)
         {
             if (!TryCopyTo<TFrom, TTo>(in source, destination, projection))
                 Throw.InvalidOperation();
@@ -188,7 +191,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Copy the data from a sequence to a span, applying a projection
         /// </summary>
         public static void CopyTo<TFrom, TState, TTo>(this in Sequence<TFrom> source,
-            Span<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
+#pragma warning disable RCS1231
+            Span<TTo> destination,
+#pragma warning restore RCS1231
+            Projection<TFrom, TState, TTo> projection, in TState state)
         {
             if (!TryCopyTo<TFrom, TState, TTo>(in source, destination, projection, in state))
                 Throw.InvalidOperation();
@@ -197,7 +203,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Copy the data from a span to a sequence
         /// </summary>
-        public static void CopyTo<T>(this ReadOnlySpan<T> source, in Sequence<T> destination)
+
+        public static void CopyTo<T>(
+#pragma warning disable RCS1231
+            this ReadOnlySpan<T> source,
+#pragma warning restore RCS1231
+             in Sequence<T> destination)
         {
             if (!TryCopyTo<T>(source, in destination))
                 Throw.InvalidOperation();
@@ -206,7 +217,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
-        public static void CopyTo<TFrom, TTo>(this Span<TFrom> source,
+        public static void CopyTo<TFrom, TTo>(
+#pragma warning disable RCS1231
+            this Span<TFrom> source,
+#pragma warning restore RCS1231
             in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
             if (!TryCopyTo<TFrom, TTo>(source, in destination, projection))
@@ -216,7 +230,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
-        public static void CopyTo<TFrom, TState, TTo>(this ReadOnlySpan<TFrom> source,
+        public static void CopyTo<TFrom, TState, TTo>(
+#pragma warning disable RCS1231
+            this ReadOnlySpan<TFrom> source,
+#pragma warning restore RCS1231
             in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
         {
             if (!TryCopyTo<TFrom, TState, TTo>(source, in destination, projection, in state))
@@ -226,7 +243,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
-        public static void CopyTo<TFrom, TTo>(this ReadOnlySpan<TFrom> source,
+        public static void CopyTo<TFrom, TTo>(
+#pragma warning disable RCS1231
+            this ReadOnlySpan<TFrom> source,
+#pragma warning restore RCS1231
             in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
             if (!TryCopyTo<TFrom, TTo>(source, in destination, projection))
@@ -236,7 +256,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
-        public static void CopyTo<TFrom, TState, TTo>(this Span<TFrom> source,
+        public static void CopyTo<TFrom, TState, TTo>(
+#pragma warning disable RCS1231
+            this Span<TFrom> source,
+#pragma warning restore RCS1231
             in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
         {
             if (!TryCopyTo<TFrom, TState, TTo>(source, in destination, projection, in state))
@@ -247,7 +270,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Copy the data from a sequence to a span, applying a projection
         /// </summary>
         public static bool TryCopyTo<TFrom, TTo>(this in Sequence<TFrom> source,
-            Span<TTo> destination, Projection<TFrom, TTo> projection)
+#pragma warning disable RCS1231
+            Span<TTo> destination,
+#pragma warning restore RCS1231
+            Projection<TFrom, TTo> projection)
         {
             void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
@@ -280,7 +306,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Copy the data from a sequence to a span, applying a projection
         /// </summary>
         public static bool TryCopyTo<TFrom, TState, TTo>(this in Sequence<TFrom> source,
-                Span<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
+#pragma warning disable RCS1231
+                Span<TTo> destination,
+#pragma warning restore RCS1231
+                Projection<TFrom, TState, TTo> projection, in TState state)
         {
             void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
@@ -337,7 +366,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
-        public static bool TryCopyTo<TFrom, TTo>(this Span<TFrom> source,
+        public static bool TryCopyTo<TFrom, TTo>(
+#pragma warning disable RCS1231
+            this Span<TFrom> source,
+#pragma warning restore RCS1231
             in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
             void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
@@ -370,8 +402,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
-        public static bool TryCopyTo<TFrom, TState, TTo>(this Span<TFrom> source,
-                in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
+        public static bool TryCopyTo<TFrom, TState, TTo>(
+#pragma warning disable RCS1231
+            this Span<TFrom> source,
+#pragma warning restore RCS1231
+            in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
         {
             void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
@@ -403,7 +438,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
-        public static bool TryCopyTo<TFrom, TTo>(this ReadOnlySpan<TFrom> source,
+        public static bool TryCopyTo<TFrom, TTo>(
+#pragma warning disable RCS1231
+            this ReadOnlySpan<TFrom> source,
+#pragma warning restore RCS1231
             in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
             void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
@@ -436,8 +474,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Copy the data from a span to a sequence, applying a projection
         /// </summary>
-        public static bool TryCopyTo<TFrom, TState, TTo>(this ReadOnlySpan<TFrom> source,
-                in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
+        public static bool TryCopyTo<TFrom, TState, TTo>(
+#pragma warning disable RCS1231
+            this ReadOnlySpan<TFrom> source,
+#pragma warning restore RCS1231
+            in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
         {
             void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
@@ -505,7 +546,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public static bool TryCopyTo<T>(this in Sequence<T> source, in Sequence<T> destination)
         {
             if (source.Length > destination.Length) return false;
+#pragma warning disable RCS1233 // Use short-circuiting operator.
             if (source.IsSingleSegment & destination.IsSingleSegment) return source.FirstSpan.TryCopyTo(destination.FirstSpan);
+#pragma warning restore RCS1233 // Use short-circuiting operator.
             SlowCopyTo<T>(source, destination);
             return true; // we checked the lengths first
         }
@@ -534,7 +577,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public static bool TryCopyTo<T>(this in ReadOnlySequence<T> source, in Sequence<T> destination)
         {
             if (source.Length > destination.Length) return false;
+#pragma warning disable RCS1233 // Use short-circuiting operator.
             if (source.IsSingleSegment & destination.IsSingleSegment) return source.First.Span.TryCopyTo(destination.FirstSpan);
+#pragma warning restore RCS1233 // Use short-circuiting operator.
             SlowCopyTo<T>(source, destination);
             return true; // we checked the lengths first
         }
@@ -619,7 +664,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Attempt to calculate the net offset of a position
         /// </summary>
-        internal static long? TryGetOffset(this SequencePosition position)
+        internal static long? TryGetOffset(this in SequencePosition position)
         {
             var obj = position.GetObject();
             var offset = position.GetInteger();
@@ -631,7 +676,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Attempt to calculate the net offset of a position
         /// </summary>
-        internal static string TryGetSummary(this SequencePosition position)
+        internal static string TryGetSummary(this in SequencePosition position)
         {
             var obj = position.GetObject();
             var offset = position.GetInteger();

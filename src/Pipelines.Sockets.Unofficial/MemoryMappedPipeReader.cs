@@ -45,7 +45,7 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public static bool IsAvailable => s_safeBufferField != null;
 
-        static readonly FieldInfo s_safeBufferField;
+        private static readonly FieldInfo s_safeBufferField;
         static MemoryMappedPipeReader()
         {
             try
@@ -71,7 +71,8 @@ namespace Pipelines.Sockets.Unofficial
             _remaining = length;
         }
 
-        const int DEFAULT_PAGE_SIZE = 64 * 1024;
+        private const int DEFAULT_PAGE_SIZE = 64 * 1024;
+
         /// <summary>
         /// Create a pipe-reader over the provided file
         /// </summary>
@@ -128,6 +129,7 @@ namespace Pipelines.Sockets.Unofficial
         /// Indicates how much data was consumed from a read operation
         /// </summary>
         public override void AdvanceTo(SequencePosition consumed) => AdvanceTo(consumed, consumed);
+
         /// <summary>
         /// Indicates how much data was consumed, and how much examined, from a read operation
         /// </summary>
@@ -192,7 +194,7 @@ namespace Pipelines.Sockets.Unofficial
             DebugLog($"After AdvanceTo, {CountAvailable(_first)} available bytes, {_remaining} remaining unloaded bytes, load more: {_loadMore}");
         }
 
-        static long CountAvailable(MappedPage page)
+        private static long CountAvailable(MappedPage page)
         {
             long total = 0;
             while(page != null)
@@ -224,12 +226,11 @@ namespace Pipelines.Sockets.Unofficial
                     var take = (int)Math.Min(_remaining, _pageSize);
                     DebugLog($"Loading {take} bytes from offet {_offset}...");
                     var accessor = _file.CreateViewAccessor(_offset, take, MemoryMappedFileAccess.Read);
-                    
+
                     var next = new MappedPage(accessor, _offset, take);
                     Debug.Assert(next.RunningIndex == _offset);
                     _remaining -= take;
                     _offset += take;
-
 
                     if (_first == null)
                     {
@@ -282,7 +283,7 @@ namespace Pipelines.Sockets.Unofficial
                 Memory = new UnmanagedMemoryManager<byte>(ptr + accessor.PointerOffset, capacity).Memory;
                 Capacity = capacity;
             }
-            public override string ToString() => $"[{(RunningIndex + Consumed)},{(RunningIndex + Capacity)})";
+            public override string ToString() => $"[{RunningIndex + Consumed},{RunningIndex + Capacity})";
             public int Capacity { get; }
             public void Dispose()
             {

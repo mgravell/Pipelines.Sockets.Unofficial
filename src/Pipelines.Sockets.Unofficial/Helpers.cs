@@ -91,18 +91,18 @@ namespace Pipelines.Sockets.Unofficial
             for(int i = 0 ; i < enums.Length ; i++)
             {
                 var count = Thread.VolatileRead(ref _counters[(int)enums[i]]);
-                if (count != 0) sb.AppendLine($"{enums[i]}:\t{count}");
+                if (count != 0) sb.Append(enums[i]).Append(":\t").Append(count).AppendLine();
             }
             lock(_execCount)
             {
                 foreach(var pair in _execCount)
                 {
-                    sb.AppendLine($"{pair.Key}:\t{pair.Value}");
+                    sb.Append(pair.Key).Append(":\t").Append(pair.Value).AppendLine();
                 }
             }
             return sb.ToString();
         }
-        static readonly Dictionary<string, int> _execCount = new Dictionary<string, int>();
+        private static readonly Dictionary<string, int> _execCount = new Dictionary<string, int>();
 #endif
         [Conditional("DEBUG")]
 #pragma warning disable RCS1163 // Unused parameter.
@@ -185,14 +185,13 @@ namespace Pipelines.Sockets.Unofficial
 #pragma warning restore RCS1163 // Unused parameter.
         {
 #if VERBOSE
-            
             var log = Log;
             if (log != null)
             {
                 var thread = System.Threading.Thread.CurrentThread;
                 var threadName = thread.Name;
                 if (string.IsNullOrWhiteSpace(threadName)) threadName = thread.ManagedThreadId.ToString();
-                    
+
                 var s = $"[{threadName}, {name}, {caller}]: {message}";
                 lock (log)
                 {
