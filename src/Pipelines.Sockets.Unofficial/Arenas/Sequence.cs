@@ -507,6 +507,29 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return SlowSlice(start, length, seqLength);
         }
 
+#if RANGES
+        /// <summary>
+        /// Obtains a sub-region of a sequence
+        /// </summary>
+        public Sequence<T> Slice(Range range)
+        {
+            var length = checked((int)Length);
+            int from = range.Start.GetOffset(length),
+                to = range.End.GetOffset(length);
+            return Slice(from, to - from);
+        }
+
+        /// <summary>
+        /// Get a reference to an element by index; note that this *can* have
+        /// poor performance for multi-segment sequences, but it is usually satisfactory
+        /// </summary>
+        public ref T this[Index index]
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => ref this[index.GetOffset(checked((int)Length))];
+        }
+#endif
+
         private Sequence<T> SlowSlice(long start, long length, long seqLength)
         {
             if (start < 0 | start > seqLength) Throw.ArgumentOutOfRange(nameof(start));
