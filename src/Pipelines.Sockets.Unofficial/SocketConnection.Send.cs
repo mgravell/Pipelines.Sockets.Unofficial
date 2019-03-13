@@ -163,7 +163,6 @@ namespace Pipelines.Sockets.Unofficial
             else
             {
                 Helpers.Incr(Counter.SocketSendAsyncMultiSync);
-                RecycleSpareBuffer(args);
                 args.Complete();
             }
         }
@@ -172,11 +171,8 @@ namespace Pipelines.Sockets.Unofficial
         private static void DoSend(Socket socket, SocketAwaitableEventArgs args, ReadOnlyMemory<byte> memory, string name)
 #pragma warning restore RCS1231 // Make parameter ref read-only.
         {
-            // The BufferList getter is much less expensive then the setter.
-            if (args.BufferList != null)
-            {
-                args.BufferList = null;
-            }
+            // clear any existing buffer list
+            RecycleSpareBuffer(args);
 
 #if SOCKET_STREAM_BUFFERS
             args.SetBuffer(MemoryMarshal.AsMemory(memory));

@@ -313,13 +313,11 @@ namespace Pipelines.Sockets.Unofficial
 
         private static void RecycleSpareBuffer(SocketAwaitableEventArgs args)
         {
-            if (args != null)
+            // note: the BufferList getter is much less expensive then the setter.
+            if (args?.BufferList is List<ArraySegment<byte>> list)
             {
-                if (args.BufferList is List<ArraySegment<byte>> list)
-                {
-                    args.BufferList = null; // see #26 - don't want it being reused by the next piece of IO
-                    Interlocked.Exchange(ref _spareBuffer, list);
-                }
+                args.BufferList = null; // see #26 - don't want it being reused by the next piece of IO
+                Interlocked.Exchange(ref _spareBuffer, list);
             }
         }
     }
