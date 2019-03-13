@@ -163,7 +163,7 @@ namespace Pipelines.Sockets.Unofficial
             else
             {
                 Helpers.Incr(Counter.SocketSendAsyncMultiSync);
-                RecycleSpareBuffer(bufferList);
+                RecycleSpareBuffer(args);
                 args.Complete();
             }
         }

@@ -311,9 +311,16 @@ namespace Pipelines.Sockets.Unofficial
             return existing;
         }
 
-        private static void RecycleSpareBuffer(List<ArraySegment<byte>> value)
+        private static void RecycleSpareBuffer(SocketAwaitableEventArgs args)
         {
-            if (value != null) Interlocked.Exchange(ref _spareBuffer, value);
+            if (args != null)
+            {
+                if (args.BufferList is List<ArraySegment<byte>> list)
+                {
+                    args.BufferList = null; // see #26 - don't want it being reused by the next piece of IO
+                    Interlocked.Exchange(ref _spareBuffer, list);
+                }
+            }
         }
     }
 }
