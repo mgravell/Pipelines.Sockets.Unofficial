@@ -734,6 +734,24 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
+        /// Clear (set to zero) this sequence
+        /// </summary>
+        public void Clear()
+        {
+            if(IsSingleSegment)
+            {
+                FirstSpan.Clear();
+            }
+            else
+            {
+                foreach(var span in Spans)
+                {
+                    span.Clear();
+                }
+            }
+        }
+
+        /// <summary>
         /// Create a new single-segment sequence from a memory
         /// </summary>
 #pragma warning disable RCS1231
