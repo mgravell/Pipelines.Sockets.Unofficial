@@ -1,4 +1,5 @@
 ﻿using BenchmarkDotNet.Attributes;
+using Microsoft.IO;
 using Pipelines.Sockets.Unofficial.Arenas;
 using System;
 using System.IO;
@@ -10,6 +11,9 @@ namespace Benchmark
     {
         const int SEED = 123456, MAX_BYTES = 2048, ITERS = 512, TOTAL_SIZE = 514672;
         private readonly byte[] buffer = new byte[MAX_BYTES];
+        private readonly RecyclableMemoryStreamManager manager
+            = new RecyclableMemoryStreamManager();
+
         [Benchmark(Baseline = true)]
         public long MemoryStreamDefault()
         {
@@ -29,6 +33,35 @@ namespace Benchmark
         public long MemoryStreamPreSize()
         {
             using (var ms = new MemoryStream(TOTAL_SIZE))
+            {
+                var rand = new Random(SEED);
+                for (int i = 0; i < ITERS; i++)
+                {
+                    rand.NextBytes(buffer);
+                    ms.Write(buffer, 0, rand.Next(MAX_BYTES));
+                }
+                return ms.Length.AssertIs(TOTAL_SIZE);
+            }
+        }
+
+        public long RecyclableMemoryStreamDefault()
+        {
+            using (var ms = new RecyclableMemoryStream(manager, "tag"))
+            {
+                var rand = new Random(SEED);
+                for (int i = 0; i < ITERS; i++)
+                {
+                    rand.NextBytes(buffer);
+                    ms.Write(buffer, 0, rand.Next(MAX_BYTES));
+                }
+                return ms.Length.AssertIs(TOTAL_SIZE);
+            }
+        }
+
+        [Benchmark]
+        public long RecyclableMemoryStreamPreSize()
+        {
+            using (var ms = new RecyclableMemoryStream(manager, "tag", TOTAL_SIZE))
             {
                 var rand = new Random(SEED);
                 for (int i = 0; i < ITERS; i++)

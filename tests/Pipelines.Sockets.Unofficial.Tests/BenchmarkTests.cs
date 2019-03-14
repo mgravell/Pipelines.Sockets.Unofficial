@@ -136,6 +136,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public StreamBenchmarkTests(ITestOutputHelper output) : base(output, 10) { }
         [Fact] public Task MemoryStreamDefault() => Run(_ => _.MemoryStreamDefault());
         [Fact] public Task MemoryStreamPreSize() => Run(_ => _.MemoryStreamPreSize());
+        [Fact] public Task RecyclableMemoryStreamDefault() => Run(_ => _.RecyclableMemoryStreamDefault());
+        [Fact] public Task RecyclableMemoryStreamPreSize() => Run(_ => _.RecyclableMemoryStreamPreSize());
         [Fact] public Task SequenceStreamDefault() => Run(_ => _.SequenceStreamDefault());
         [Fact] public Task SequenceStreamPreSize() => Run(_ => _.SequenceStreamPreSize());
     }
