@@ -130,4 +130,13 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact] public Task SemaphoreSlim_ConcurrentLoadAsync() => Run(_ => _.SemaphoreSlim_ConcurrentLoadAsync());
         [Fact] public Task SemaphoreSlim_Sync() => Run(_ => _.SemaphoreSlim_Sync());
     }
+
+    public class StreamBenchmarkTests : BenchmarkTests<StreamBenchmarks>
+    {
+        public StreamBenchmarkTests(ITestOutputHelper output) : base(output, 10) { }
+        [Fact] public Task MemoryStreamDefault() => Run(_ => _.MemoryStreamDefault());
+        [Fact] public Task MemoryStreamPreSize() => Run(_ => _.MemoryStreamPreSize());
+        [Fact] public Task SequenceStreamDefault() => Run(_ => _.SequenceStreamDefault());
+        [Fact] public Task SequenceStreamPreSize() => Run(_ => _.SequenceStreamPreSize());
+    }
 }

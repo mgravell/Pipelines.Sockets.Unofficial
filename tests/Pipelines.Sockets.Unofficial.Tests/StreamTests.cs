@@ -1,6 +1,7 @@
 ﻿using Pipelines.Sockets.Unofficial.Arenas;
 using System;
 using System.Buffers;
+using System.Linq;
 using Xunit;
 
 namespace Pipelines.Sockets.Unofficial.Tests
@@ -15,12 +16,12 @@ namespace Pipelines.Sockets.Unofficial.Tests
 #if DEBUG
             Assert.Equal(0, SequenceStream.LeaseCount);
 #endif
-            using (var s = SequenceStream.Create())
+            using (var s = SequenceStream.Create(maxCapacity: 700000)) // max here to test segment sizes
             {
                 byte[] buffer = new byte[512];
                 var rand = new Random(seed);
                 long length = 0;
-                for (int i = 0; i < 1000; i++)
+                for (int i = 0; i < 1200; i++) // total: 614400
                 {
                     for (int j = 0; j < buffer.Length; j++)
                         buffer[j] = (byte)rand.Next(0, 256);
@@ -46,8 +47,16 @@ namespace Pipelines.Sockets.Unofficial.Tests
                     Assert.Equal(++length, s.Position);
                 }
 
+                Assert.Equal(614400, s.Length);
+
 #if DEBUG
-                Assert.NotEqual(0, SequenceStream.LeaseCount);
+                // note: numbers based on impl details, so may change; that's fine
+                var arr = s.GetSegmentSizes();
+                Assert.Equal(12, arr.Length);
+                Assert.Equal(12, SequenceStream.LeaseCount);
+                Assert.Equal(700000, s.Capacity);
+                Assert.Equal(787456, arr.Sum()); // note that ArrayPool still gives us a bigger chunk - that's fine
+                Assert.Equal("1024,1024,1024,2048,4096,8192,16384,32768,65536,131072,262144,262144", string.Join(",", Array.ConvertAll(arr, i => (object)i)));
 #endif
             }
 

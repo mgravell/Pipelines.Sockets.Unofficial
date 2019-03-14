@@ -1,6 +1,7 @@
 ﻿using Pipelines.Sockets.Unofficial.Internal;
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -150,10 +151,37 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         private protected abstract Sequence<byte> GetReadWriteBuffer();
 
+        internal abstract long Capacity { get; }
+
         /// <summary>
         /// Release any unnecessary sequence segments
         /// </summary>
         public abstract void Trim();
+
+        // for debugging only
+        internal int[] GetSegmentSizes()
+        {
+            if (!(GetReadWriteBuffer().Start.GetObject() is SequenceSegment<byte> root))
+                return Array.Empty<int>();
+
+            int count = 0;
+            var segment = root;
+            while (segment != null)
+            {
+                count++;
+                segment = segment.Next;
+            }
+
+            var arr = new int[count];
+            segment = root;
+            count = 0;
+            while (segment != null)
+            {
+                arr[count++] = segment.Length;
+                segment = segment.Next;
+            }
+            return arr;
+        }
     }
 
     internal sealed partial class SequenceStreamImpl : SequenceStream
@@ -166,6 +194,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 #if DEBUG
         internal static long s_leaseCount;
 #endif
+
+        internal override long Capacity => _capacity;
 
         private class LeasedSegment : SequenceSegment<byte>
         {
@@ -324,7 +354,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             if (length > _maxCapacity)
                 Throw.InvalidOperation("The stream cannot be expanded beyond the maximum capacity specified at construction");
 
-            const int MinBlockSize = 1024, MaxBlockSize = 128 * 1024 * 1024;
+            const int MinBlockSize = 1024, MaxBlockSize = 256 * 1024;
 
             long needed = length - _capacity;
             Debug.Assert(needed > 0, "expected to grow capacity");

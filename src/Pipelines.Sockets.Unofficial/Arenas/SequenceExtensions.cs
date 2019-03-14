@@ -355,9 +355,17 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 var iter = destination.Spans.GetEnumerator();
                 while(!source.IsEmpty)
                 {
-                    var span = iter.GetNext();
-                    source.Slice(0, span.Length).CopyTo(span);
-                    source = source.Slice(span.Length);
+                    var dest = iter.GetNext();
+                    if (dest.Length >= source.Length)
+                    {
+                        source.CopyTo(dest);
+                        break;
+                    }
+                    else
+                    {
+                        source.Slice(0, dest.Length).CopyTo(dest);
+                        source = source.Slice(dest.Length);
+                    }
                 }
             }
             return true;
