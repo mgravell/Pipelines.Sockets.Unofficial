@@ -251,12 +251,49 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             internal static LeasedSegment Create(int minimumSize, LeasedSegment previous)
             {
-                var arr = ArrayPool<byte>.Shared.Rent(minimumSize);
+                var array = ArrayPool<byte>.Shared.Rent(minimumSize);
 #if DEBUG
                 Interlocked.Increment(ref s_leaseCount);
 #endif
-                return new LeasedSegment(arr, previous);
+
+                // try and get from the pool, noting that we might be squabbling
+                for (int i = 0; i < 5; i++)
+                {
+                    LeasedSegment oldHead;
+                    if (Volatile.Read(ref s_poolSize) == 0
+                        || (oldHead = Volatile.Read(ref s_poolHead)) == null) break;
+                    var newHead = (LeasedSegment)oldHead.Next;
+
+                    if (Interlocked.CompareExchange(ref s_poolHead, newHead, oldHead) == oldHead)
+                    {
+                        Interlocked.Decrement(ref s_poolSize); // doesn't need to be hard in lock-step with the actual length
+                        oldHead.Init(array, previous);
+                        return oldHead;
+                    }
+                }
+                return new LeasedSegment(array, previous);
             }
+
+            static void PushToPool(LeasedSegment segment)
+            {
+                if (segment == null) return;
+                for (int i = 0; i < 5; i++)
+                {
+                    if (Volatile.Read(ref s_poolSize) >= MAX_RECYCLED) return;
+
+                    var oldHead = Volatile.Read(ref s_poolHead);
+                    segment.SetNext(oldHead);
+                    if (Interlocked.CompareExchange(ref s_poolHead, segment, oldHead) == oldHead)
+                    {
+                        Interlocked.Increment(ref s_poolSize); // doesn't need to be hard in lock-step with the actual length
+                        return;
+                    }
+                }
+            }
+
+            const int MAX_RECYCLED = 50; // hold a small number of LeasedSegment tokens for re-use
+            static LeasedSegment s_poolHead;
+            static int s_poolSize;
 
             private LeasedSegment(byte[] array, LeasedSegment previous) : base(array, previous) { }
 
@@ -272,7 +309,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                         Interlocked.Decrement(ref s_leaseCount);
 #endif
                     }
-                    segment = (LeasedSegment)segment.ResetNext();
+                    var next = (LeasedSegment)segment.ResetNext();
+                    PushToPool(segment);
+                    segment = next;
                 }
             }
         }
@@ -390,7 +429,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             if (length > _length)
             {
                 if (_capacity < length) ExpandCapacity(length);
-                 _length = length;
+                _length = length;
             }
             AssertValid();
         }
@@ -466,7 +505,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             var retain = (LeasedSegment)_sequence.GetPosition(keep).GetObject();
             retain.CascadeRelease(inclusive: false);
             _capacity = _sequence.Length;
-            
+
             AssertValid();
         }
 
@@ -489,7 +528,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 return Task.FromException<int>(ex);
             }
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int ReadSpan(Span<byte> buffer)
         {
