@@ -9,25 +9,207 @@ using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
-    public sealed class SequenceStream : Stream
+    /// <summary>
+    /// A Stream backed by a read-only ReadSequence of bytes
+    /// </summary>
+    public abstract class ReadOnlySequenceStream : Stream
     {
-        private readonly Sequence<byte> _sequence;
-        private long _length, _capacity, _position;
+        /// <summary>
+        /// Create a ReadOnlySequenceStream based on an existing sequence
+        /// </summary>
+        public static ReadOnlySequenceStream Create(in ReadOnlySequence<byte> sequence)
+            => sequence.IsEmpty ? Empty : new ReadOnlySequenceStreamImpl(sequence);
 
-        public SequenceStream()
+        /// <summary>
+        /// An empty stream
+        /// </summary>
+        public static ReadOnlySequenceStream Empty { get; } = new ReadOnlySequenceStreamImpl(default);
+
+        /// <summary>
+        /// Gets the underlying buffer associated with this stream
+        /// </summary>
+        public ReadOnlySequence<byte> GetBuffer() => GetReadOnlyBuffer();
+
+        private protected abstract ReadOnlySequence<byte> GetReadOnlyBuffer();
+
+        /// <summary>
+        /// See Stream.CanRead
+        /// </summary>
+        public override bool CanRead => true;
+
+        /// <summary>
+        /// See Stream.CanSeek
+        /// </summary>
+        public override bool CanSeek => true;
+
+        /// <summary>
+        /// See Stream.FlushAsync
+        /// </summary>
+        public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        /// <summary>
+        /// See Stream.Flush
+        /// </summary>
+        public override void Flush() { }
+
+        /// <summary>
+        /// See Stream.CanTimeout
+        /// </summary>
+        public override bool CanTimeout => false;
+
+        /// <summary>
+        /// See Stream.Seek
+        /// </summary>
+        public override long Seek(long offset, SeekOrigin origin)
         {
-            _sequence = default; // sequence;
+            switch (origin)
+            {
+                case SeekOrigin.Current:
+                    Position += offset;
+                    break;
+                case SeekOrigin.Begin:
+                    Position = offset;
+                    break;
+                case SeekOrigin.End:
+                    Position = Length + offset;
+                    break;
+                default:
+                    Throw.ArgumentOutOfRange(nameof(origin));
+                    break;
+            }
+            return Position;
         }
 
-        public Sequence<byte> GetBuffer() => _sequence.Slice(0, _length); // don't over-report, since we don't have to
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private protected static void CopySegment(in ReadOnlyMemory<byte> buffer, Stream destination)
+        {
+#if SOCKET_STREAM_BUFFERS
+            destination.Write(buffer.Span);
+#else
+            if(MemoryMarshal.TryGetArray(buffer, out var segment))
+            {
+                destination.Write(segment.Array, segment.Offset, segment.Count);
+            }
+            else
+            {
+                var span = buffer.Span;
+                var arr = ArrayPool<byte>.Shared.Rent(span.Length);
+                span.CopyTo(arr);
+                destination.Write(arr, 0, span.Length);
+                ArrayPool<byte>.Shared.Return(arr);
+            }
+#endif
+        }
 
-        public override bool CanRead => true;
-        public override bool CanSeek => true;
+        private protected static void CopyTo(in ReadOnlySequence<byte> sequence, Stream destination)
+        {
+            if (sequence.IsSingleSegment)
+            {
+                CopySegment(sequence.First, destination);
+            }
+            else
+            {
+                foreach (var segment in sequence)
+                {
+                    CopySegment(segment, destination);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// A Stream backed by a read-write Sequence of bytes
+    /// </summary>
+    public abstract class SequenceStream : ReadOnlySequenceStream
+    {
+        /// <summary>
+        /// Create a new dynamically expandable SequenceStream
+        /// </summary>
+        /// <returns></returns>
+        public static SequenceStream Create(long minCapacity = -1, long maxCapacity = -1)
+            => maxCapacity == 0 ? s_empty : new SequenceStreamImpl(minCapacity, maxCapacity);
+
+        /// <summary>
+        /// Create a new SequenceStream based on an existing sequence; it will not be possible to expand the stream past the initial capacity
+        /// </summary>
+        public static SequenceStream Create(in Sequence<byte> sequence)
+            => sequence.IsEmpty ? s_empty : new SequenceStreamImpl(sequence);
+
+        private static readonly SequenceStreamImpl s_empty = new SequenceStreamImpl(0, 0);
+
+        /// <summary>
+        /// Gets the underlying buffer associated with this stream
+        /// </summary>
+        public new Sequence<byte> GetBuffer() => GetReadWriteBuffer();
+
+        private protected sealed override ReadOnlySequence<byte> GetReadOnlyBuffer() => GetReadWriteBuffer();
+
+        private protected abstract Sequence<byte> GetReadWriteBuffer();
+
+        /// <summary>
+        /// Release any unnecessary sequence segments
+        /// </summary>
+        public abstract void Trim();
+    }
+
+    internal sealed class SequenceStreamImpl : SequenceStream, IDisposable
+    {
+        private class LeasedSegment : SequenceSegment<byte>
+        {
+            internal static LeasedSegment Create(int minimumSize, LeasedSegment previous)
+            {
+                var arr = ArrayPool<byte>.Shared.Rent(minimumSize);
+                return new LeasedSegment(arr, previous);
+            }
+
+            private LeasedSegment(byte[] array, LeasedSegment previous) : base(array, previous) { }
+
+            public void Dispose()
+            {
+                if (MemoryMarshal.TryGetArray<byte>(ResetMemory(), out var segment))
+                    ArrayPool<byte>.Shared.Return(segment.Array);
+            }
+
+            public new LeasedSegment Next
+                => (LeasedSegment)((ReadOnlySequenceSegment<byte>)this).Next;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            var segment = _sequence.Start.GetObject() as LeasedSegment;
+            _sequence = default;
+
+            // now release the chain if it was leased
+            while (segment != null)
+            {
+                var next = segment.Next; // in case Dispose breaks the chain
+                try { segment.Dispose(); } catch { } // best efforts
+                segment = next;
+            }
+        }
+
         public override bool CanWrite => true;
 
-        public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-        public override void Flush() { }
-        public override bool CanTimeout => false;
+        private Sequence<byte> _sequence;
+        private long _length, _capacity, _position;
+        private readonly long _minCapacity, _maxCapacity;
+
+        internal SequenceStreamImpl(long minCapacity, long maxCapacity)
+        {
+            _minCapacity = minCapacity;
+            _maxCapacity = maxCapacity;
+        }
+
+        public SequenceStreamImpl(in Sequence<byte> sequence)
+        {
+            _length = _minCapacity = _maxCapacity = sequence.Length; // don't allow trim/expand to mess with the sequence
+            _sequence = sequence;
+        }
+
+        private protected override Sequence<byte> GetReadWriteBuffer()
+            => _sequence.Slice(0, _length); // don't over-report, since we don't have to
+
         public override void Write(byte[] buffer, int offset, int count) => Throw.NotSupported();
         public override long Position
         {
@@ -48,7 +230,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         public override void SetLength(long value)
         {
-            if(value == _length)
+            if (value == _length)
             {
                 // nothing to do
             }
@@ -73,32 +255,21 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 if (_capacity < length)
                 {
+                    if (length > _maxCapacity)
+                        Throw.InvalidOperation("The stream cannot be expanded");
                     throw new NotImplementedException();
                 }
                 _length = length;
             }
         }
 
-
-        public override long Seek(long offset, SeekOrigin origin)
+        public override void Trim()
         {
-            switch (origin)
-            {
-                case SeekOrigin.Current:
-                    Position += offset;
-                    break;
-                case SeekOrigin.Begin:
-                    Position = offset;
-                    break;
-                case SeekOrigin.End:
-                    Position = _length + offset;
-                    break;
-                default:
-                    Throw.ArgumentOutOfRange(nameof(origin));
-                    break;
-            }
-            return Position;
+            if (_capacity <= _minCapacity) return; // can't release anything
+
+            throw new NotImplementedException();
         }
+
         public override int Read(byte[] buffer, int offset, int count)
             => ReadSpan(new Span<byte>(buffer, offset, count));
 
@@ -132,7 +303,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             try
             {
-                ReadOnlySequenceStream.CopyTo(_sequence.Slice(_position, _length - _position), destination);
+                CopyTo(_sequence.Slice(_position, _length - _position), destination);
                 return Task.CompletedTask;
             }
             catch (Exception ex)
@@ -172,7 +343,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
 #if SOCKET_STREAM_BUFFERS
         public override void CopyTo(Stream destination, int bufferSize)
-            => ReadOnlySequenceStream.CopyTo(_sequence.Slice(_position, _length - _position), destination);
+            => CopyTo(_sequence.Slice(_position, _length - _position), destination);
         public override int Read(Span<byte> buffer) => ReadSpan(buffer);
         public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
@@ -201,27 +372,22 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 #endif
     }
 
-    public sealed class ReadOnlySequenceStream : Stream
+    internal sealed class ReadOnlySequenceStreamImpl : ReadOnlySequenceStream
     {
         private readonly ReadOnlySequence<byte> _sequence;
         private readonly long _length;
         private long _position;
 
-        public ReadOnlySequenceStream(ReadOnlySequence<byte> sequence)
+        private protected override ReadOnlySequence<byte> GetReadOnlyBuffer() => _sequence;
+
+        internal ReadOnlySequenceStreamImpl(in ReadOnlySequence<byte> sequence)
         {
             _sequence = sequence;
             _length = sequence.Length;
         }
 
-        public ReadOnlySequence<byte> GetBuffer() => _sequence;
-
-        public override bool CanRead => true;
-        public override bool CanSeek => true;
         public override bool CanWrite => false;
 
-        public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-        public override void Flush() { }
-        public override bool CanTimeout => false;
         public override void Write(byte[] buffer, int offset, int count) => Throw.NotSupported();
         public override IAsyncResult BeginWrite(byte[] buffer, int offset, int count, AsyncCallback callback, object state)
         {
@@ -259,25 +425,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             if (value != _length) Throw.NotSupported();
         }
 
-        public override long Seek(long offset, SeekOrigin origin)
-        {
-            switch (origin)
-            {
-                case SeekOrigin.Current:
-                    Position += offset;
-                    break;
-                case SeekOrigin.Begin:
-                    Position = offset;
-                    break;
-                case SeekOrigin.End:
-                    Position = _length + offset;
-                    break;
-                default:
-                    Throw.ArgumentOutOfRange(nameof(origin));
-                    break;
-            }
-            return Position;
-        }
         public override int Read(byte[] buffer, int offset, int count)
             => ReadSpan(new Span<byte>(buffer, offset, count));
 
@@ -286,6 +433,16 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             Span<byte> span = stackalloc byte[1];
             return ReadSpan(span) <= 0 ? -1 : span[0];
         }
+
+        private int ReadSpan(Span<byte> buffer)
+        {
+            int bytes = (int)Math.Min(buffer.Length, _length - _position);
+            if (bytes <= 0) return 0;
+            _sequence.Slice(_position, bytes).CopyTo(buffer);
+            _position += bytes;
+            return bytes;
+        }
+
         public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
             try
@@ -298,50 +455,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
         }
 
-        private int ReadSpan(Span<byte> buffer)
-        {
-            int bytes = (int)Math.Min(buffer.Length, _length - _position);
-            if (bytes <= 0) return 0;
-            _sequence.Slice(_position, bytes).CopyTo(buffer);
-            _position += bytes;
-            return bytes;
-        }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static void CopySegment(in ReadOnlyMemory<byte> buffer, Stream destination)
-        {
-#if SOCKET_STREAM_BUFFERS
-            destination.Write(buffer.Span);
-#else
-            if(MemoryMarshal.TryGetArray(buffer, out var segment))
-            {
-                destination.Write(segment.Array, segment.Offset, segment.Count);
-            }
-            else
-            {
-                var span = buffer.Span;
-                var arr = ArrayPool<byte>.Shared.Rent(span.Length);
-                span.CopyTo(arr);
-                destination.Write(arr, 0, span.Length);
-                ArrayPool<byte>.Shared.Return(arr);
-            }
-#endif
-        }
-
-        internal static void CopyTo(in ReadOnlySequence<byte> sequence, Stream destination)
-        {
-            if (sequence.IsSingleSegment)
-            {
-                CopySegment(sequence.First, destination);
-            }
-            else
-            {
-                foreach(var segment in sequence)
-                {
-                    CopySegment(segment, destination);
-                }
-            }
-        }
 
         public override Task CopyToAsync(Stream destination, int bufferSize, CancellationToken cancellationToken)
         {
@@ -350,7 +464,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 CopyTo(_sequence.Slice(_position), destination);
                 return Task.CompletedTask;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 return Task.FromException(ex);
             }

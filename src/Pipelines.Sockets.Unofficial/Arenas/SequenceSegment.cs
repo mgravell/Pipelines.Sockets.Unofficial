@@ -136,6 +136,17 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             private set => base.Next = value;
         }
+        
+        /// <summary>
+        /// Resets the Memory associated with this sequence; this may result in undefined behaviour in existing chains,
+        /// and should only be used if you control the lifetime of the sequences using this segment
+        /// </summary>
+        protected Memory<T> ResetMemory()
+        {
+            var old = Memory;
+            Memory = default;
+            return old;
+        }
 
         /// <summary>
         /// The memory represented by this segment
