@@ -44,6 +44,7 @@ namespace Benchmark
             }
         }
 
+        [Benchmark]
         public long RecyclableMemoryStreamDefault()
         {
             using (var ms = new RecyclableMemoryStream(manager, "tag"))
