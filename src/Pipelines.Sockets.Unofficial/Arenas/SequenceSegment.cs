@@ -149,6 +149,17 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         /// <summary>
+        /// Resets the next segment associated with this sequence; this may result in undefined behaviour in existing chains,
+        /// and should only be used if you control the lifetime of the sequences using this segment
+        /// </summary>
+        protected SequenceSegment<T> ResetNext()
+        {
+            var old = Next;
+            Next = default;
+            return old;
+        }
+
+        /// <summary>
         /// The memory represented by this segment
         /// </summary>
         public new Memory<T> Memory

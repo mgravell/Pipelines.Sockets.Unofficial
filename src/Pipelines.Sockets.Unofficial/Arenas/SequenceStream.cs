@@ -1,6 +1,7 @@
 ﻿using Pipelines.Sockets.Unofficial.Internal;
 using System;
 using System.Buffers;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -122,11 +123,14 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     /// </summary>
     public abstract class SequenceStream : ReadOnlySequenceStream
     {
+#if DEBUG
+        internal static long LeaseCount => Volatile.Read(ref SequenceStreamImpl.s_leaseCount);
+#endif
+
         /// <summary>
         /// Create a new dynamically expandable SequenceStream
         /// </summary>
-        /// <returns></returns>
-        public static SequenceStream Create(long minCapacity = -1, long maxCapacity = -1)
+        public static SequenceStream Create(long minCapacity = 0, long maxCapacity = long.MaxValue)
             => maxCapacity == 0 ? s_empty : new SequenceStreamImpl(minCapacity, maxCapacity);
 
         /// <summary>
@@ -152,27 +156,50 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public abstract void Trim();
     }
 
-    internal sealed class SequenceStreamImpl : SequenceStream, IDisposable
+    internal sealed partial class SequenceStreamImpl : SequenceStream
     {
+        private bool _disposed;
+        private Sequence<byte> _sequence;
+        private long _length, _capacity, _position;
+        private readonly long _minCapacity, _maxCapacity;
+
+#if DEBUG
+        internal static long s_leaseCount;
+#endif
+
         private class LeasedSegment : SequenceSegment<byte>
         {
             internal static LeasedSegment Create(int minimumSize, LeasedSegment previous)
             {
                 var arr = ArrayPool<byte>.Shared.Rent(minimumSize);
+#if DEBUG
+                Interlocked.Increment(ref s_leaseCount);
+#endif
                 return new LeasedSegment(arr, previous);
             }
 
             private LeasedSegment(byte[] array, LeasedSegment previous) : base(array, previous) { }
 
-            public void Dispose()
+            internal void CascadeRelease(bool inclusive)
             {
-                if (MemoryMarshal.TryGetArray<byte>(ResetMemory(), out var segment))
-                    ArrayPool<byte>.Shared.Return(segment.Array);
+                var segment = inclusive ? this : (LeasedSegment)ResetNext();
+                while (segment != null)
+                {
+                    if (MemoryMarshal.TryGetArray<byte>(segment.ResetMemory(), out var array))
+                    {
+                        ArrayPool<byte>.Shared.Return(array.Array);
+#if DEBUG
+                        Interlocked.Decrement(ref s_leaseCount);
+#endif
+                    }
+                    segment = (LeasedSegment)segment.ResetNext();
+                }
             }
-
-            public new LeasedSegment Next
-                => (LeasedSegment)((ReadOnlySequenceSegment<byte>)this).Next;
         }
+
+        private LeasedSegment GetLeaseHead() => _sequence.Start.GetObject() as LeasedSegment;
+
+        private LeasedSegment GetLeaseTail() => _sequence.End.GetObject() as LeasedSegment;
 
         protected override void Dispose(bool disposing)
         {
@@ -180,41 +207,55 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             if (disposing)
             {
-                var segment = _sequence.Start.GetObject() as LeasedSegment;
+                _disposed = true;
+                var leased = GetLeaseHead();
                 _sequence = default;
+                _length = _capacity = _position = 0;
 
-                // now release the chain if it was leased
-                while (segment != null)
-                {
-                    var next = segment.Next; // in case Dispose breaks the chain
-                    try { segment.Dispose(); } catch { } // best efforts
-                    segment = next;
-                }
+                leased?.CascadeRelease(inclusive: true);
             }
         }
 
-        public override bool CanWrite => true;
+        partial void AssertValid();
 
-        private Sequence<byte> _sequence;
-        private long _length, _capacity, _position;
-        private readonly long _minCapacity, _maxCapacity;
+#if DEBUG
+        partial void AssertValid()
+        {
+            if (!_disposed) // all bets are off once disposed
+            {
+                Debug.Assert(_minCapacity >= 0 & _maxCapacity >= 0, "invalid min/max capacity");
+                Debug.Assert(_capacity == _sequence.Length, "capacity should match sequence length");
+                Debug.Assert(_capacity >= _minCapacity, "undersized capacity");
+                Debug.Assert(_capacity <= _maxCapacity, "oversized capacity");
+                Debug.Assert(_length >= 0 & Length <= _capacity, "invalid length");
+                Debug.Assert(_position >= 0 & _position <= _length, "invalid position");
+            }
+        }
+#endif
+
+        public override bool CanWrite => true;
 
         internal SequenceStreamImpl(long minCapacity, long maxCapacity)
         {
+            if (minCapacity < 0) Throw.ArgumentOutOfRange(nameof(minCapacity));
+            if (maxCapacity < minCapacity) Throw.ArgumentOutOfRange(nameof(maxCapacity));
             _minCapacity = minCapacity;
             _maxCapacity = maxCapacity;
+            if (minCapacity != 0) ExpandCapacity(minCapacity);
+            AssertValid();
         }
 
         public SequenceStreamImpl(in Sequence<byte> sequence)
         {
-            _length = _minCapacity = _maxCapacity = sequence.Length; // don't allow trim/expand to mess with the sequence
+            _length = _minCapacity = _maxCapacity = _capacity = sequence.Length; // don't allow trim/expand to mess with the sequence
             _sequence = sequence;
+            AssertValid();
         }
 
         private protected override Sequence<byte> GetReadWriteBuffer()
             => _sequence.Slice(0, _length); // don't over-report, since we don't have to
 
-        public override void Write(byte[] buffer, int offset, int count) => Throw.NotSupported();
+        public override void Write(byte[] buffer, int offset, int count) => WriteSpan(new ReadOnlySpan<byte>(buffer, offset, count));
         public override long Position
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -223,6 +264,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 if (_position < 0 | _position > _length) Throw.ArgumentOutOfRange(nameof(Position));
                 _position = value;
+                AssertValid();
             }
         }
 
@@ -238,6 +280,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 // nothing to do
             }
+            else if (value < 0)
+            {
+                Throw.ArgumentOutOfRange(nameof(value));
+            }
             else if (value < _length)
             {
                 // getting smaller; simple
@@ -248,30 +294,96 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 // getting bigger
                 var oldLen = _length;
-                Expand(value);
+                ExpandLength(value);
                 _sequence.Slice(oldLen, value - oldLen).Clear(); // wipe
             }
+            AssertValid();
         }
 
-        private void Expand(long length)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ExpandLength(long length)
         {
-            if (length < _length)
+            if (length > _length)
             {
-                if (_capacity < length)
-                {
-                    if (length > _maxCapacity)
-                        Throw.InvalidOperation("The stream cannot be expanded");
-                    throw new NotImplementedException();
-                }
-                _length = length;
+                if (_capacity < length) ExpandCapacity(length);
+                 _length = length;
             }
+            AssertValid();
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void ExpandCapacity(long length)
+        {
+            if (_disposed) Throw.ObjectDisposed(GetType().Name);
+
+            var head = GetLeaseHead();
+            var tail = GetLeaseTail();
+            if (tail == null && !_sequence.IsEmpty)
+                Throw.InvalidOperation("The Stream is not dynamically expandable as it is based on a pre-existing sequence");
+
+            if (length > _maxCapacity)
+                Throw.InvalidOperation("The stream cannot be expanded beyond the maximum capacity specified at construction");
+
+            const int MinBlockSize = 1024, MaxBlockSize = 128 * 1024 * 1024;
+
+            long needed = length - _capacity;
+            Debug.Assert(needed > 0, "expected to grow capacity");
+
+            int takeFromTail = -1;
+            while (needed > 0)
+            {
+                int delta;
+                if (needed >= MaxBlockSize | _capacity >= MaxBlockSize)
+                {   // nice and simple
+                    delta = MaxBlockSize;
+                }
+                else
+                {
+                    // we don't want tiny little blocks; let's take the larger
+                    // of "what we want" and "half again the current capacity"
+                    // (note we know that both values are in "int" range now)
+                    delta = (int)Math.Max(needed, _capacity / 2);
+
+                    // apply a hard lower limit
+                    delta = Math.Max(delta, MinBlockSize);
+                }
+
+                if (_capacity + delta > _maxCapacity)
+                {
+                    delta = checked((int)(_maxCapacity - _capacity));
+                }
+
+                if (delta <= 0) Throw.InvalidOperation("Error expanding chain");
+
+                tail = LeasedSegment.Create(delta, tail);
+                if (head == null) head = tail;
+
+                // note: we might not want to take all of what we are given, because of max-capacity
+                // (the lease can be larger than what we actually ask for)
+                takeFromTail = _capacity + tail.Length <= _maxCapacity ? tail.Length : delta;
+                needed -= takeFromTail;
+                _capacity += takeFromTail;
+            }
+
+            _sequence = new Sequence<byte>(head, tail, 0, takeFromTail);
+            AssertValid();
         }
 
         public override void Trim()
         {
-            if (_capacity <= _minCapacity) return; // can't release anything
+            AssertValid();
 
-            throw new NotImplementedException();
+            if (GetLeaseHead() == null) return; // only applies to leased chunks
+
+            var keep = Math.Max(_length, _minCapacity);
+            if (keep == _capacity) return; // can't release anything
+
+            // we have spare capacity; release the *next* block
+            var retain = (LeasedSegment)_sequence.GetPosition(keep).GetObject();
+            retain.CascadeRelease(inclusive: false);
+            _capacity = _sequence.Length;
+            
+            AssertValid();
         }
 
         public override int Read(byte[] buffer, int offset, int count)
@@ -300,6 +412,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             if (bytes <= 0) return 0;
             _sequence.Slice(_position, bytes).CopyTo(buffer);
             _position += bytes;
+            AssertValid();
             return bytes;
         }
 
@@ -339,10 +452,14 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             if (!span.IsEmpty)
             {
-                Expand(_position + span.Length);
-                span.CopyTo(_sequence.Slice(_position));
+                ExpandLength(_position + span.Length);
+
+                var target = _sequence.Slice(_position);
+                Debug.Assert(target.Length >= span.Length, $"insufficient target length; needed {span.Length}, but only {target.Length} available");
+                span.CopyTo(target);
                 _position += span.Length;
             }
+            AssertValid();
         }
 
 #if SOCKET_STREAM_BUFFERS
