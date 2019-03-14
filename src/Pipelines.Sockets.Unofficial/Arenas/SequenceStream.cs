@@ -177,15 +177,19 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
-            var segment = _sequence.Start.GetObject() as LeasedSegment;
-            _sequence = default;
 
-            // now release the chain if it was leased
-            while (segment != null)
+            if (disposing)
             {
-                var next = segment.Next; // in case Dispose breaks the chain
-                try { segment.Dispose(); } catch { } // best efforts
-                segment = next;
+                var segment = _sequence.Start.GetObject() as LeasedSegment;
+                _sequence = default;
+
+                // now release the chain if it was leased
+                while (segment != null)
+                {
+                    var next = segment.Next; // in case Dispose breaks the chain
+                    try { segment.Dispose(); } catch { } // best efforts
+                    segment = next;
+                }
             }
         }
 
