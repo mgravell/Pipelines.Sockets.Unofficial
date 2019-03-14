@@ -1,6 +1,7 @@
 ﻿using Pipelines.Sockets.Unofficial.Arenas;
 using System;
 using System.Buffers;
+using System.Diagnostics;
 using System.Linq;
 using Xunit;
 
@@ -43,8 +44,11 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 int x;
                 while((x = s.ReadByte()) >= 0)
                 {
-                    Assert.Equal((byte)rand.Next(0, 256), (byte)x);
+                    byte expected = (byte)rand.Next(0, 256), actual = (byte)x;
+                    Assert.Equal(expected, actual);
                     Assert.Equal(++length, s.Position);
+
+                    if (s.Position == 1025) Debugger.Break();
                 }
 
                 Assert.Equal(614400, s.Length);

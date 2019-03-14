@@ -117,6 +117,56 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 }
             }
         }
+
+        protected private struct FastState // not actually a buffer as such - just prevents
+        {                                   // us constantly having to slice etc
+            public void Init(in SequencePosition position, long remaining)
+            {
+                if (position.GetObject() is ReadOnlySequenceSegment<byte> segment
+                    && MemoryMarshal.TryGetArray(segment.Memory, out var array))
+                {
+                    int offset = position.GetInteger();
+                    _array = array.Array;
+                    _offset = offset; // the net offset into the array
+                    _count = (int)Math.Min( // the smaller of (noting it will always be an int)
+                            array.Count - offset, // the amount left in this buffer
+                            remaining); // the logical amount left in the stream
+                }
+                else
+                {
+                    this = default;
+                }
+            }
+
+            public override string ToString() => $"{_count} bytes remaining";
+
+            byte[] _array;
+            int _count, _offset;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public int TryRead(Span<byte> span)
+            {
+                var bytes = Math.Min(span.Length, _count);
+                if (bytes != 0)
+                {
+                    new Span<byte>(_array, _offset, bytes).CopyTo(span);
+                    _count -= bytes;
+                    _offset += bytes;
+                }
+                return bytes;
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public bool TryWrite(ReadOnlySpan<byte> span)
+            {
+                int bytes = span.Length;
+                if (_count < bytes) return false;
+                span.CopyTo(new Span<byte>(_array, _offset, bytes));
+                _count -= bytes;
+                _offset += bytes;
+                return true;
+            }
+        }
     }
 
     /// <summary>
@@ -263,6 +313,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 #endif
 
+        private FastState _fastState;
+
         public override bool CanWrite => true;
 
         internal SequenceStreamImpl(long minCapacity, long maxCapacity)
@@ -294,6 +346,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 if (_position < 0 | _position > _length) Throw.ArgumentOutOfRange(nameof(Position));
                 _position = value;
+                InitFastState();
                 AssertValid();
             }
         }
@@ -327,6 +380,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 ExpandLength(value);
                 _sequence.Slice(oldLen, value - oldLen).Clear(); // wipe
             }
+            InitFastState();
             AssertValid();
         }
 
@@ -435,14 +489,34 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 return Task.FromException<int>(ex);
             }
         }
-
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int ReadSpan(Span<byte> buffer)
+        {
+            int bytes = _fastState.TryRead(buffer);
+            if (bytes != 0)
+            {
+                _position += bytes;
+            }
+            else
+            {
+                bytes = SlowReadSpan(buffer);
+            }
+            AssertValid();
+            return bytes;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void InitFastState() => _fastState.Init(_sequence.GetPosition(_position), _length - _position);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private int SlowReadSpan(Span<byte> buffer)
         {
             int bytes = (int)Math.Min(buffer.Length, _length - _position);
             if (bytes <= 0) return 0;
             _sequence.Slice(_position, bytes).CopyTo(buffer);
             _position += bytes;
-            AssertValid();
+            InitFastState();
             return bytes;
         }
 
@@ -478,7 +552,21 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteSpan(ReadOnlySpan<byte> span)
+        {
+            if (_fastState.TryWrite(span))
+            {
+                _position += span.Length;
+            }
+            else
+            {
+                SlowWriteSpan(span);
+            }
+            AssertValid();
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void SlowWriteSpan(ReadOnlySpan<byte> span)
         {
             if (!span.IsEmpty)
             {
@@ -488,8 +576,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 Debug.Assert(target.Length >= span.Length, $"insufficient target length; needed {span.Length}, but only {target.Length} available");
                 span.CopyTo(target);
                 _position += span.Length;
+                InitFastState();
             }
-            AssertValid();
         }
 
 #if SOCKET_STREAM_BUFFERS
@@ -528,6 +616,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private readonly ReadOnlySequence<byte> _sequence;
         private readonly long _length;
         private long _position;
+        private FastState _fastState;
 
         private protected override ReadOnlySequence<byte> GetReadOnlyBuffer() => _sequence;
 
@@ -562,6 +651,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 if (_position < 0 | _position > _length) Throw.ArgumentOutOfRange(nameof(Position));
                 _position = value;
+                InitFastState();
             }
         }
 
@@ -585,12 +675,32 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return ReadSpan(span) <= 0 ? -1 : span[0];
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int ReadSpan(Span<byte> buffer)
+        {
+            int bytes = _fastState.TryRead(buffer);
+            if (bytes != 0)
+            {
+                _position += bytes;
+            }
+            else
+            {
+                bytes = SlowReadSpan(buffer);
+            }
+            return bytes;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void InitFastState() => _fastState.Init(_sequence.GetPosition(_position), _length - _position);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private int SlowReadSpan(Span<byte> buffer)
         {
             int bytes = (int)Math.Min(buffer.Length, _length - _position);
             if (bytes <= 0) return 0;
             _sequence.Slice(_position, bytes).CopyTo(buffer);
             _position += bytes;
+            InitFastState();
             return bytes;
         }
 
