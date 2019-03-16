@@ -181,8 +181,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Create a new dynamically expandable SequenceStream
         /// </summary>
-        public static SequenceStream Create(long minCapacity = 0, long maxCapacity = long.MaxValue)
-            => maxCapacity == 0 ? s_empty : new SequenceStreamImpl(minCapacity, maxCapacity);
+        public static SequenceStream Create(long minCapacity = 0, long maxCapacity = long.MaxValue, MemoryPool<byte> pool = default)
+            => maxCapacity == 0 ? s_empty : new SequenceStreamImpl(minCapacity, maxCapacity, pool);
 
         /// <summary>
         /// Create a new SequenceStream based on an existing sequence; it will not be possible to expand the stream past the initial capacity
@@ -190,7 +190,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public static SequenceStream Create(in Sequence<byte> sequence)
             => sequence.IsEmpty ? s_empty : new SequenceStreamImpl(sequence);
 
-        private static readonly SequenceStreamImpl s_empty = new SequenceStreamImpl(0, 0);
+        private static readonly SequenceStreamImpl s_empty = new SequenceStreamImpl(0, 0, null);
 
         /// <summary>
         /// Gets the underlying buffer associated with this stream
@@ -276,9 +276,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         private class LeasedSegment : SequenceSegment<byte>
         {
-            internal static LeasedSegment Create(int minimumSize, LeasedSegment previous)
+            internal static LeasedSegment Create(int minimumSize, LeasedSegment previous, MemoryPool<byte> pool)
             {
-                var array = ArrayPool<byte>.Shared.Rent(minimumSize);
+                var leased = pool.Rent(minimumSize);
 #if DEBUG
                 Interlocked.Increment(ref s_leaseCount);
 #endif
@@ -294,11 +294,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                     if (Interlocked.CompareExchange(ref s_poolHead, newHead, oldHead) == oldHead)
                     {
                         Interlocked.Decrement(ref s_poolSize); // doesn't need to be hard in lock-step with the actual length
-                        oldHead.Init(array, previous);
+                        oldHead.Init(leased, previous);
                         return oldHead;
                     }
                 }
-                return new LeasedSegment(array, previous);
+                return new LeasedSegment(leased, previous);
             }
 
             static void PushToPool(LeasedSegment segment)
@@ -322,24 +322,38 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             static LeasedSegment s_poolHead;
             static int s_poolSize;
 
-            private LeasedSegment(byte[] array, LeasedSegment previous) : base(array, previous) { }
+            private IMemoryOwner<byte> _lease;
+            private LeasedSegment(IMemoryOwner<byte> lease, LeasedSegment previous) : base(lease.Memory, previous)
+            {
+                _lease = lease;
+            }
+            internal void Init(IMemoryOwner<byte> lease, LeasedSegment previous)
+            {
+                Init(lease.Memory, previous);
+                _lease = lease;
+            }
 
             internal void CascadeRelease(bool inclusive)
             {
                 var segment = inclusive ? this : (LeasedSegment)ResetNext();
                 while (segment != null)
                 {
-                    if (MemoryMarshal.TryGetArray<byte>(segment.ResetMemory(), out var array))
-                    {
-                        ArrayPool<byte>.Shared.Return(array.Array);
+                    segment.ReleaseMemory();
 #if DEBUG
-                        Interlocked.Decrement(ref s_leaseCount);
+                    Interlocked.Decrement(ref s_leaseCount);
 #endif
-                    }
                     var next = (LeasedSegment)segment.ResetNext();
                     PushToPool(segment);
                     segment = next;
                 }
+            }
+
+            private void ReleaseMemory()
+            {
+                ResetMemory();
+                var lease = _lease;
+                _lease = null;
+                lease?.Dispose();
             }
         }
 
@@ -378,6 +392,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 Debug.Assert(_capacity <= _maxCapacity, "oversized capacity");
                 Debug.Assert(_length >= 0 & Length <= _capacity, "invalid length");
                 Debug.Assert(_position >= 0 & _position <= _length, "invalid position");
+                if (IsOwner) Debug.Assert(_pool != null, "expected a pool");
+                else Debug.Assert(_pool == null, "didn't expect a pool");
             }
         }
 #endif
@@ -385,9 +401,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private FastState _fastState;
 
         public override bool CanWrite => true;
+        private readonly MemoryPool<byte> _pool;
 
-        internal SequenceStreamImpl(long minCapacity, long maxCapacity)
+        internal SequenceStreamImpl(long minCapacity, long maxCapacity, MemoryPool<byte> pool)
         {
+            _pool = pool ?? MemoryPool<byte>.Shared;
             _flags |= (int)StreamFlags.IsOwner;
             if (minCapacity < 0) Throw.ArgumentOutOfRange(nameof(minCapacity));
             if (maxCapacity < minCapacity) Throw.ArgumentOutOfRange(nameof(maxCapacity));
@@ -479,18 +497,18 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             var head = GetLeaseHead();
             var tail = GetLeaseTail();
 
-            const int MinBlockSize = 1024, MaxBlockSize = 256 * 1024;
+            const int MinBlockSize = 1024;
 
             long needed = length - _capacity;
             Debug.Assert(needed > 0, "expected to grow capacity");
 
-            int takeFromTail = -1;
+            int takeFromTail = -1, maxBlockSize = Math.Max(256 * 1024, _pool.MaxBufferSize);
             while (needed > 0)
             {
                 int delta;
-                if (needed >= MaxBlockSize | _capacity >= MaxBlockSize)
+                if (needed >= maxBlockSize | _capacity >= maxBlockSize)
                 {   // nice and simple
-                    delta = MaxBlockSize;
+                    delta = maxBlockSize;
                 }
                 else
                 {
@@ -510,7 +528,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
                 if (delta <= 0) Throw.InvalidOperation("Error expanding chain");
 
-                tail = LeasedSegment.Create(delta, tail);
+                tail = LeasedSegment.Create(delta, tail, _pool);
                 if (head == null) head = tail;
 
                 // note: we might not want to take all of what we are given, because of max-capacity
