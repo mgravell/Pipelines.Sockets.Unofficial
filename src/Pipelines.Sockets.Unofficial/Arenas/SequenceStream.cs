@@ -234,9 +234,36 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
     }
 
+    [Flags]
+    internal enum StreamFlags
+    {
+        None,
+        Disposed = 1,
+        IsOwner = 2,
+    }
+    internal static class FlagUtils
+    {
+        [MethodImpl]
+        internal static bool HasFlag(ref int flags, StreamFlags flag)
+            => (Volatile.Read(ref flags) & (int)flag) != 0;
+
+        [MethodImpl]
+        internal static void SetFlag(ref int flags, StreamFlags flag, bool value)
+        {
+            int oldVal, newVal;
+            do
+            {
+                oldVal = Volatile.Read(ref flags);
+                newVal = value ? oldVal | (int)flag : oldVal &~(int)flag;
+            } while (oldVal != newVal && Interlocked.CompareExchange(ref flags, newVal, oldVal) != oldVal);
+        }
+    }
+
+
+
     internal sealed partial class SequenceStreamImpl : SequenceStream
     {
-        private bool _disposed;
+        private int _flags;
         private Sequence<byte> _sequence;
         private long _length, _capacity, _position;
         private readonly long _minCapacity, _maxCapacity;
@@ -320,13 +347,16 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         private LeasedSegment GetLeaseTail() => _sequence.End.GetObject() as LeasedSegment;
 
+        private bool IsDisposed => FlagUtils.HasFlag(ref _flags, StreamFlags.Disposed);
+        private bool IsOwner => FlagUtils.HasFlag(ref _flags, StreamFlags.IsOwner);
+
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
 
             if (disposing)
             {
-                _disposed = true;
+                FlagUtils.SetFlag(ref _flags, StreamFlags.Disposed, true);
                 var leased = GetLeaseHead();
                 _sequence = default;
                 _length = _capacity = _position = 0;
@@ -340,7 +370,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 #if DEBUG
         partial void AssertValid()
         {
-            if (!_disposed) // all bets are off once disposed
+            if (!IsDisposed) // all bets are off once disposed
             {
                 Debug.Assert(_minCapacity >= 0 & _maxCapacity >= 0, "invalid min/max capacity");
                 Debug.Assert(_capacity == _sequence.Length, "capacity should match sequence length");
@@ -358,6 +388,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         internal SequenceStreamImpl(long minCapacity, long maxCapacity)
         {
+            _flags |= (int)StreamFlags.IsOwner;
             if (minCapacity < 0) Throw.ArgumentOutOfRange(nameof(minCapacity));
             if (maxCapacity < minCapacity) Throw.ArgumentOutOfRange(nameof(maxCapacity));
             _minCapacity = minCapacity;
@@ -437,15 +468,16 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void ExpandCapacity(long length)
         {
-            if (_disposed) Throw.ObjectDisposed(GetType().Name);
+            if (IsDisposed) Throw.ObjectDisposed(GetType().Name);
 
-            var head = GetLeaseHead();
-            var tail = GetLeaseTail();
-            if (tail == null && !_sequence.IsEmpty)
+            if (!IsOwner)
                 Throw.InvalidOperation("The Stream is not dynamically expandable as it is based on a pre-existing sequence");
 
             if (length > _maxCapacity)
                 Throw.InvalidOperation("The stream cannot be expanded beyond the maximum capacity specified at construction");
+
+            var head = GetLeaseHead();
+            var tail = GetLeaseTail();
 
             const int MinBlockSize = 1024, MaxBlockSize = 256 * 1024;
 

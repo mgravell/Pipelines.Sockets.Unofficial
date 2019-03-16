@@ -7,6 +7,10 @@ using Xunit;
 
 namespace Pipelines.Sockets.Unofficial.Tests
 {
+    [CollectionDefinition(nameof(NonParallelCollectionDefinition), DisableParallelization = true)]
+    public class NonParallelCollectionDefinition { }
+
+    [Collection(nameof(NonParallelCollectionDefinition))]
     public class StreamTests
     {
         [Fact]
