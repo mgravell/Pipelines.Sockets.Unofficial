@@ -1,7 +1,6 @@
 ﻿using Pipelines.Sockets.Unofficial.Internal;
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -117,56 +116,6 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 }
             }
         }
-
-        protected private struct FastState // not actually a buffer as such - just prevents
-        {                                   // us constantly having to slice etc
-            public void Init(in SequencePosition position, long remaining)
-            {
-                if (position.GetObject() is ReadOnlySequenceSegment<byte> segment
-                    && MemoryMarshal.TryGetArray(segment.Memory, out var array))
-                {
-                    int offset = position.GetInteger();
-                    _array = array.Array;
-                    _offset = offset; // the net offset into the array
-                    _count = (int)Math.Min( // the smaller of (noting it will always be an int)
-                            array.Count - offset, // the amount left in this buffer
-                            remaining); // the logical amount left in the stream
-                }
-                else
-                {
-                    this = default;
-                }
-            }
-
-            public override string ToString() => $"{_count} bytes remaining";
-
-            byte[] _array;
-            int _count, _offset;
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public int TryRead(Span<byte> span)
-            {
-                var bytes = Math.Min(span.Length, _count);
-                if (bytes != 0)
-                {
-                    new Span<byte>(_array, _offset, bytes).CopyTo(span);
-                    _count -= bytes;
-                    _offset += bytes;
-                }
-                return bytes;
-            }
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public bool TryWrite(ReadOnlySpan<byte> span)
-            {
-                int bytes = span.Length;
-                if (_count < bytes) return false;
-                span.CopyTo(new Span<byte>(_array, _offset, bytes));
-                _count -= bytes;
-                _offset += bytes;
-                return true;
-            }
-        }
     }
 
     /// <summary>
@@ -175,7 +124,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     public abstract class SequenceStream : ReadOnlySequenceStream
     {
 #if DEBUG
-        internal static long LeaseCount => Volatile.Read(ref SequenceStreamImpl.s_leaseCount);
+        internal static long LeaseCount => Volatile.Read(ref LeasedSegment<byte>.s_leaseCount);
 #endif
 
         /// <summary>
@@ -268,84 +217,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private long _length, _capacity, _position;
         private readonly long _minCapacity, _maxCapacity;
 
-#if DEBUG
-        internal static long s_leaseCount;
-#endif
-
         internal override long Capacity => _capacity;
-
-        private class LeasedSegment : SequenceSegment<byte>
-        {
-            internal static LeasedSegment Create(int minimumSize, LeasedSegment previous)
-            {
-                var array = ArrayPool<byte>.Shared.Rent(minimumSize);
-#if DEBUG
-                Interlocked.Increment(ref s_leaseCount);
-#endif
-
-                // try and get from the pool, noting that we might be squabbling
-                for (int i = 0; i < 5; i++)
-                {
-                    LeasedSegment oldHead;
-                    if (Volatile.Read(ref s_poolSize) == 0
-                        || (oldHead = Volatile.Read(ref s_poolHead)) == null) break;
-                    var newHead = (LeasedSegment)oldHead.Next;
-
-                    if (Interlocked.CompareExchange(ref s_poolHead, newHead, oldHead) == oldHead)
-                    {
-                        Interlocked.Decrement(ref s_poolSize); // doesn't need to be hard in lock-step with the actual length
-                        oldHead.Init(array, previous);
-                        return oldHead;
-                    }
-                }
-                return new LeasedSegment(array, previous);
-            }
-
-            static void PushToPool(LeasedSegment segment)
-            {
-                if (segment == null) return;
-                for (int i = 0; i < 5; i++)
-                {
-                    if (Volatile.Read(ref s_poolSize) >= MAX_RECYCLED) return;
-
-                    var oldHead = Volatile.Read(ref s_poolHead);
-                    segment.SetNext(oldHead);
-                    if (Interlocked.CompareExchange(ref s_poolHead, segment, oldHead) == oldHead)
-                    {
-                        Interlocked.Increment(ref s_poolSize); // doesn't need to be hard in lock-step with the actual length
-                        return;
-                    }
-                }
-            }
-
-            const int MAX_RECYCLED = 50; // hold a small number of LeasedSegment tokens for re-use
-            static LeasedSegment s_poolHead;
-            static int s_poolSize;
-
-            private LeasedSegment(byte[] array, LeasedSegment previous) : base(array, previous) { }
-
-            internal void CascadeRelease(bool inclusive)
-            {
-                var segment = inclusive ? this : (LeasedSegment)ResetNext();
-                while (segment != null)
-                {
-                    if (MemoryMarshal.TryGetArray<byte>(segment.ResetMemory(), out var array))
-                    {
-                        ArrayPool<byte>.Shared.Return(array.Array);
-#if DEBUG
-                        Interlocked.Decrement(ref s_leaseCount);
-#endif
-                    }
-                    var next = (LeasedSegment)segment.ResetNext();
-                    PushToPool(segment);
-                    segment = next;
-                }
-            }
-        }
-
-        private LeasedSegment GetLeaseHead() => _sequence.Start.GetObject() as LeasedSegment;
-
-        private LeasedSegment GetLeaseTail() => _sequence.End.GetObject() as LeasedSegment;
 
         private bool IsDisposed => FlagUtils.HasFlag(ref _flags, StreamFlags.Disposed);
         private bool IsOwner => FlagUtils.HasFlag(ref _flags, StreamFlags.IsOwner);
@@ -357,7 +229,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             if (disposing)
             {
                 FlagUtils.SetFlag(ref _flags, StreamFlags.Disposed, true);
-                var leased = GetLeaseHead();
+                var leased = _sequence.GetLeaseHead();
                 _sequence = default;
                 _length = _capacity = _position = 0;
 
@@ -382,7 +254,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 #endif
 
-        private FastState _fastState;
+        private FastState<byte> _fastState;
 
         public override bool CanWrite => true;
 
@@ -476,65 +348,23 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             if (length > _maxCapacity)
                 Throw.InvalidOperation("The stream cannot be expanded beyond the maximum capacity specified at construction");
 
-            var head = GetLeaseHead();
-            var tail = GetLeaseTail();
-
-            const int MinBlockSize = 1024, MaxBlockSize = 256 * 1024;
-
-            long needed = length - _capacity;
-            Debug.Assert(needed > 0, "expected to grow capacity");
-
-            int takeFromTail = -1;
-            while (needed > 0)
-            {
-                int delta;
-                if (needed >= MaxBlockSize | _capacity >= MaxBlockSize)
-                {   // nice and simple
-                    delta = MaxBlockSize;
-                }
-                else
-                {
-                    // we don't want tiny little blocks; let's take the larger
-                    // of "what we want" and "half again the current capacity"
-                    // (note we know that both values are in "int" range now)
-                    delta = (int)Math.Max(needed, _capacity / 2);
-
-                    // apply a hard lower limit
-                    delta = Math.Max(delta, MinBlockSize);
-                }
-
-                if (_capacity + delta > _maxCapacity)
-                {
-                    delta = checked((int)(_maxCapacity - _capacity));
-                }
-
-                if (delta <= 0) Throw.InvalidOperation("Error expanding chain");
-
-                tail = LeasedSegment.Create(delta, tail);
-                if (head == null) head = tail;
-
-                // note: we might not want to take all of what we are given, because of max-capacity
-                // (the lease can be larger than what we actually ask for)
-                takeFromTail = _capacity + tail.Length <= _maxCapacity ? tail.Length : delta;
-                needed -= takeFromTail;
-                _capacity += takeFromTail;
-            }
-
-            _sequence = new Sequence<byte>(head, tail, 0, takeFromTail);
+            _sequence = _sequence.ExpandCapacity(length, _maxCapacity);
+            _capacity = _sequence.Length;
             AssertValid();
         }
+
 
         public override void Trim()
         {
             AssertValid();
 
-            if (GetLeaseHead() == null) return; // only applies to leased chunks
+            if (_sequence.GetLeaseHead() == null) return; // only applies to leased chunks
 
             var keep = Math.Max(_length, _minCapacity);
             if (keep == _capacity) return; // can't release anything
 
             // we have spare capacity; release the *next* block
-            var retain = (LeasedSegment)_sequence.GetPosition(keep).GetObject();
+            var retain = (LeasedSegment<byte>)_sequence.GetPosition(keep).GetObject();
             retain.CascadeRelease(inclusive: false);
             _capacity = _sequence.Length;
 
@@ -687,7 +517,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private readonly ReadOnlySequence<byte> _sequence;
         private readonly long _length;
         private long _position;
-        private FastState _fastState;
+        private FastState<byte> _fastState;
 
         private protected override ReadOnlySequence<byte> GetReadOnlyBuffer() => _sequence;
 

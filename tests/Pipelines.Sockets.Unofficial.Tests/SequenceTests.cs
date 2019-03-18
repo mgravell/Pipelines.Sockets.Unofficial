@@ -2,6 +2,8 @@
 using System;
 using System.Buffers;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Xunit;
 
 namespace Pipelines.Sockets.Unofficial.Tests

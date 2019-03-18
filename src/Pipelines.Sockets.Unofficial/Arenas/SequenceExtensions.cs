@@ -2,6 +2,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace Pipelines.Sockets.Unofficial.Arenas
@@ -701,6 +702,63 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             if (obj == null && offset == 0) return "(nil)";
             return $"obj: {obj}; offset: {offset}";
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static LeasedSegment<T> GetLeaseHead<T>(this in Sequence<T> sequence) => sequence.Start.GetObject() as LeasedSegment<T>;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static LeasedSegment<T> GetLeaseTail<T>(this in Sequence<T> sequence) => sequence.End.GetObject() as LeasedSegment<T>;
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static Sequence<T> ExpandCapacity<T>(this in Sequence<T> sequence, long length, long maxCapacity)
+        {
+            var head = sequence.GetLeaseHead();
+            var tail = sequence.GetLeaseTail();
+
+            const int MinBlockSize = 1024, MaxBlockSize = 256 * 1024;
+
+            long capacity = sequence.Length;
+            long needed = length - capacity;
+            Debug.Assert(needed > 0, "expected to grow capacity");
+
+            int takeFromTail = -1;
+            while (needed > 0)
+            {
+                int delta;
+                if (needed >= MaxBlockSize | capacity >= MaxBlockSize)
+                {   // nice and simple
+                    delta = MaxBlockSize;
+                }
+                else
+                {
+                    // we don't want tiny little blocks; let's take the larger
+                    // of "what we want" and "half again the current capacity"
+                    // (note we know that both values are in "int" range now)
+                    delta = (int)Math.Max(needed, capacity / 2);
+
+                    // apply a hard lower limit
+                    delta = Math.Max(delta, MinBlockSize);
+                }
+
+                if (capacity + delta > maxCapacity)
+                {
+                    delta = checked((int)(maxCapacity - capacity));
+                }
+
+                if (delta <= 0) Throw.InvalidOperation("Error expanding chain");
+
+                tail = LeasedSegment<T>.Create(delta, tail);
+                if (head == null) head = tail;
+
+                // note: we might not want to take all of what we are given, because of max-capacity
+                // (the lease can be larger than what we actually ask for)
+                takeFromTail = capacity + tail.Length <= maxCapacity ? tail.Length : delta;
+                needed -= takeFromTail;
+                capacity += takeFromTail;
+            }
+
+            return new Sequence<T>(head, tail, 0, takeFromTail);
         }
     }
 }
