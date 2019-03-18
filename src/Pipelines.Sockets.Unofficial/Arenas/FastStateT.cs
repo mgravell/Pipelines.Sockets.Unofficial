@@ -65,8 +65,5 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             _offset += items;
             return true;
         }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal void Invalidate() => _count = 0;
     }
 }
