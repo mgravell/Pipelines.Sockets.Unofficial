@@ -14,7 +14,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 int offset = position.GetInteger();
                 _array = array.Array;
-                _offset = offset; // the net offset into the array
+                _offset = offset + array.Offset; // the net offset into the array
                 _count = (int)Math.Min( // the smaller of (noting it will always be an int)
                         array.Count - offset, // the amount left in this buffer
                         remaining); // the logical amount left in the stream
@@ -65,5 +65,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             _offset += items;
             return true;
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void Invalidate() => _count = 0;
     }
 }

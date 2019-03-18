@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace Pipelines.Sockets.Unofficial.Arenas
@@ -13,6 +14,52 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public static SequenceList<T> Create(int capacity = 0)
             => new MutableSequenceList<T>(capacity);
+
+        ///// <summary>
+        ///// Allows optimized append to a sequence-based list
+        ///// </summary>
+        //[MethodImpl(MethodImplOptions.AggressiveInlining)]
+        //public virtual Appender GetAppender() => GetAppenderImpl();
+
+        //private protected virtual Appender GetAppenderImpl()
+        //{
+        //    Throw.NotSupported();
+        //    return default;
+        //}
+
+        ///// <summary>
+        ///// Allows optimized append to a sequence-based list
+        ///// </summary>
+        //public ref struct Appender
+        //{
+        //    private readonly MutableSequenceList<T> _parent;
+        //    private Span<T> _span;
+        //    int _offset, _count;
+        //    internal Appender(MutableSequenceList<T> parent)
+        //    {
+        //        _parent = parent;
+        //        _span = parent.GetAppendState(out _offset, out _count);
+        //    }
+
+        //    /// <summary>
+        //    /// Add a value to the list
+        //    /// </summary>
+        //    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        //    public void Add(in T value)
+        //    {
+        //        if (_count == 0) Expand();
+        //        _span[_offset++] = value;
+        //        _count--;
+        //        _parent.OnAdded();
+        //    }
+
+        //    [MethodImpl(MethodImplOptions.NoInlining)]
+        //    private void Expand()
+        //    {
+        //        if (_parent.Count == _parent.Capacity) _parent.Expand();
+        //        _span = _parent.GetAppendState(out _offset, out _count);
+        //    }
+        //}
     }
 
     internal sealed class MutableSequenceList<T> : SequenceList<T>
@@ -20,6 +67,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         Sequence<T> _sequence;
         int _count, _capacity;
         FastState<T> _appendState;
+
+        // private protected override Appender GetAppenderImpl() => new Appender(this);
 
         internal MutableSequenceList(int capacity)
         {
@@ -35,6 +84,20 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void InitAppendState() => _appendState.Init(_sequence.GetPosition(_count), _capacity - _count);
+
+        //internal Span<T> GetAppendState(out int offset, out int count)
+        //{
+        //    var position = _sequence.GetPosition(_count);
+        //    if (position.GetObject() is SequenceSegment<T> segment)
+        //    {
+        //        var span = segment.Memory.Span;
+        //        offset = position.GetInteger(); // the net offset into the array
+        //        count = span.Length - offset;
+        //        return span;
+        //    }
+        //    offset = count = 0;
+        //    return default;
+        //}
 
         private protected override int CapacityImpl() => _capacity;
         private protected override int CountImpl() => _count;
@@ -70,7 +133,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             _sequence[_count++] = value;
         }
 
-        private void Expand()
+        internal void Expand()
         {
             _sequence = _sequence.ExpandCapacity(
                 length: _capacity + 20,
@@ -97,5 +160,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 _capacity = checked((int)_sequence.Length);
             }
         }
+
+        //[MethodImpl(MethodImplOptions.AggressiveInlining)]
+        //internal void OnAdded()
+        //{
+        //    _count++;
+        //    _appendState.Invalidate();
+        //}
     }
 }

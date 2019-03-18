@@ -51,6 +51,28 @@ namespace Benchmark
             list.Clear(trim: true);
             return count.AssertIs(SIZE);
         }
+        //[Benchmark]
+        //public int SeqeunceListDefault_Int32_Appender()
+        //{
+        //    var list = SequenceList<int>.Create();
+        //    var appender = list.GetAppender();
+        //    for (int i = 0; i < SIZE; i++)
+        //        appender.Add(_value32);
+        //    int count = list.Count;
+        //    list.Clear(trim: true);
+        //    return count.AssertIs(SIZE);
+        //}
+        //[Benchmark]
+        //public int SeqeunceListPresized_Int32_Appender()
+        //{
+        //    var list = SequenceList<int>.Create(SIZE);
+        //    var appender = list.GetAppender();
+        //    for (int i = 0; i < SIZE; i++)
+        //        appender.Add(_value32);
+        //    int count = list.Count;
+        //    list.Clear(trim: true);
+        //    return count.AssertIs(SIZE);
+        //}
 
         private int _value32;
         private long _value64;
@@ -91,5 +113,27 @@ namespace Benchmark
             list.Clear(trim: true);
             return count.AssertIs(SIZE);
         }
+        //[Benchmark]
+        //public int SeqeunceListDefault_Int64_Appender()
+        //{
+        //    var list = SequenceList<long>.Create();
+        //    var appender = list.GetAppender();
+        //    for (int i = 0; i < SIZE; i++)
+        //        appender.Add(_value64);
+        //    int count = list.Count;
+        //    list.Clear(trim: true);
+        //    return count.AssertIs(SIZE);
+        //}
+        //[Benchmark]
+        //public int SeqeunceListPresized_Int64_Appender()
+        //{
+        //    var list = SequenceList<long>.Create(SIZE);
+        //    var appender = list.GetAppender();
+        //    for (int i = 0; i < SIZE; i++)
+        //        appender.Add(_value64);
+        //    int count = list.Count;
+        //    list.Clear(trim: true);
+        //    return count.AssertIs(SIZE);
+        //}
     }
 }

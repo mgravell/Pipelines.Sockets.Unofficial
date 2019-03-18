@@ -150,9 +150,13 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact] public Task ListPresized_Int32() => Run(_ => _.ListPresized_Int32());
         [Fact] public Task SeqeunceListDefault_Int32() => Run(_ => _.SeqeunceListDefault_Int32());
         [Fact] public Task SeqeunceListPresized_Int32() => Run(_ => _.SeqeunceListPresized_Int32());
+        //[Fact] public Task SeqeunceListDefault_Int32_Appender() => Run(_ => _.SeqeunceListDefault_Int32_Appender());
+        //[Fact] public Task SeqeunceListPresized_Int32_Appender() => Run(_ => _.SeqeunceListPresized_Int32_Appender());
         [Fact] public Task ListDefault_Int64() => Run(_ => _.ListDefault_Int64());
         [Fact] public Task ListPresized_Int64() => Run(_ => _.ListPresized_Int64());
         [Fact] public Task SeqeunceListDefault_Int64() => Run(_ => _.SeqeunceListDefault_Int64());
         [Fact] public Task SeqeunceListPresized_Int64() => Run(_ => _.SeqeunceListPresized_Int64());
+        //[Fact] public Task SeqeunceListDefault_Int64_Appender() => Run(_ => _.SeqeunceListDefault_Int64_Appender());
+        //[Fact] public Task SeqeunceListPresized_Int64_Appender() => Run(_ => _.SeqeunceListPresized_Int64_Appender());
     }
 }
