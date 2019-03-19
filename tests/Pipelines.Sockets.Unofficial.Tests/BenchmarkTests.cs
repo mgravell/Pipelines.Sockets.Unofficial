@@ -146,13 +146,13 @@ namespace Pipelines.Sockets.Unofficial.Tests
     {
         public ListBenchmarkTests(ITestOutputHelper output) : base(output, 10) { }
 
-        [Fact] public Task ListDefault_Int32() => Run(_ => _.ListDefault_Int32());
-        [Fact] public Task ListPresized_Int32() => Run(_ => _.ListPresized_Int32());
-        [Fact] public Task SeqeunceListDefault_Int32() => Run(_ => _.SeqeunceListDefault_Int32());
-        [Fact] public Task SeqeunceListPresized_Int32() => Run(_ => _.SeqeunceListPresized_Int32());
-        [Fact] public Task ListDefault_Int64() => Run(_ => _.ListDefault_Int64());
-        [Fact] public Task ListPresized_Int64() => Run(_ => _.ListPresized_Int64());
-        [Fact] public Task SeqeunceListDefault_Int64() => Run(_ => _.SeqeunceListDefault_Int64());
-        [Fact] public Task SeqeunceListPresized_Int64() => Run(_ => _.SeqeunceListPresized_Int64());
+        [Fact] public Task ListDefault_Add() => Run(_ => _.ListDefault_Add());
+        [Fact] public Task ListPresized_Add() => Run(_ => _.ListPresized_Add());
+        [Fact] public Task ListDefault_AddRange() => Run(_ => _.ListDefault_AddRange());
+        [Fact] public Task ListPresized_AddRange() => Run(_ => _.ListPresized_AddRange());
+        [Fact] public Task SequenceListDefault_Add() => Run(_ => _.SequenceListDefault_Add());
+        [Fact] public Task SequenceListPresized_Add() => Run(_ => _.SequenceListPresized_Add());
+        [Fact] public Task SequenceListDefault_AddRange() => Run(_ => _.SequenceListDefault_AddRange());
+        [Fact] public Task SequenceListPresized_AddRange() => Run(_ => _.SequenceListPresized_AddRange());
     }
 }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -29,6 +30,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         T[] _array;
         int _count, _offset;
+
+        public bool IsEmpty
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => _count == 0;
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool TryAdd(in T item)
@@ -64,6 +71,20 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             _count -= items;
             _offset += items;
             return true;
+        }
+
+        internal int AddRange(IEnumerator<T> iter)
+        {
+            // to get here, we are expecting at least one element in iter
+            int added = 0;
+            do
+            {
+                if (_count == 0) return ~added;
+                _array[_offset++] = iter.Current;
+                _count--;
+                added++;
+            } while (iter.MoveNext());
+            return added;
         }
     }
 }

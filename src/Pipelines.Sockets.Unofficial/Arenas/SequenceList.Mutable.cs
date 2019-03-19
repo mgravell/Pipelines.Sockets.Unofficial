@@ -1,4 +1,6 @@
-﻿using System;
+﻿using Pipelines.Sockets.Unofficial.Internal;
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
@@ -14,6 +16,15 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public static SequenceList<T> Create(int capacity = 0)
             => new MutableSequenceList<T>(capacity);
+
+        /// <summary>
+        /// Add a range of elements
+        /// </summary>
+        public void AddRange(IEnumerable<T> collection)
+            => AddRangeImpl(collection);
+
+        private protected virtual void AddRangeImpl(IEnumerable<T> collection)
+            => Throw.NotSupported();
     }
 
     internal sealed class MutableSequenceList<T> : SequenceList<T>
@@ -52,6 +63,44 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
 
         private protected override ref T GetByIndex(int index) => ref _sequence[index];
+
+        private protected override void AddRangeImpl(IEnumerable<T> collection)
+        {
+            using (var iter = collection.GetEnumerator())
+            {
+                if (iter.MoveNext())
+                {
+                    while(true)
+                    {
+                        int added = _appendState.AddRange(iter);
+                        if (added < 0)
+                        {
+                            _count += ~added;
+                            Expand();
+                            if (added == ~0 && _appendState.IsEmpty)
+                            {
+                                SlowAdd(iter);
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            _count += added;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        private void SlowAdd(IEnumerator<T> iter)
+        {
+            do
+            {
+                T value = iter.Current;
+                SlowAdd(in value);
+            } while (iter.MoveNext());
+        }
 
         private protected override void AddImpl(in T value)
         {
