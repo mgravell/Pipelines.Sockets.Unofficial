@@ -114,6 +114,14 @@ namespace Pipelines.Sockets.Unofficial
         }
 
         /// <summary>
+        /// Get the number of pending work items in the queue
+        /// </summary>
+        public int PendingWorkItemCount
+        {
+            get { lock (_queue) { return _queue.Count; } }
+        }
+
+        /// <summary>
         /// Requests <paramref name="action"/> to be run on scheduler with <paramref name="state"/> being passed in
         /// </summary>
         public override void Schedule(Action<object> action, object state)
