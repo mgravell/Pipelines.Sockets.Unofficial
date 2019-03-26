@@ -17,17 +17,13 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Start listening as a server
         /// </summary>
-        public void Listen(
-            EndPoint endPoint,
-            AddressFamily addressFamily = AddressFamily.InterNetwork,
-            SocketType socketType = SocketType.Stream,
-            ProtocolType protocolType = ProtocolType.Tcp,
-            PipeOptions sendOptions = null, PipeOptions receiveOptions = null)
+        public void Listen(EndPoint endPoint, AddressFamily addressFamily, SocketType socketType,
+            ProtocolType protocolType, int listenBacklog, PipeOptions sendOptions, PipeOptions receiveOptions)
         {
             if (_listener != null) Throw.InvalidOperation("Server is already running");
             Socket listener = new Socket(addressFamily, socketType, protocolType);
             listener.Bind(endPoint);
-            listener.Listen(20);
+            listener.Listen(listenBacklog);
 
             _listener = listener;
             StartOnScheduler(receiveOptions?.ReaderScheduler, _ => FireAndForget(ListenForConnectionsAsync(
@@ -35,6 +31,17 @@ namespace Pipelines.Sockets.Unofficial
 
             OnStarted(endPoint);
         }
+
+        /// <summary>
+        /// Start listening as a server
+        /// </summary>
+        public void Listen(
+            EndPoint endPoint,
+            AddressFamily addressFamily = AddressFamily.InterNetwork,
+            SocketType socketType = SocketType.Stream,
+            ProtocolType protocolType = ProtocolType.Tcp,
+            PipeOptions sendOptions = null, PipeOptions receiveOptions = null)
+            => Listen(endPoint, addressFamily, socketType, protocolType, 20, sendOptions, receiveOptions);
 
         /// <summary>
         /// Stop listening as a server
