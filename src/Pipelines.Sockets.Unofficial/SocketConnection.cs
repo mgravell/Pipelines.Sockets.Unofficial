@@ -1,9 +1,11 @@
 ﻿using Pipelines.Sockets.Unofficial.Internal;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -125,7 +127,7 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// When the ShutdownKind relates to a socket error, may contain the socket error code
         /// </summary>
-        public SocketError SocketError {get; private set;}
+        public SocketError SocketError { get; private set; }
 
         private bool TrySetShutdown(PipeShutdownKind kind) => kind != PipeShutdownKind.None
             && Interlocked.CompareExchange(ref _socketShutdownKind, (int)kind, 0) == 0;
@@ -226,6 +228,94 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public Socket Socket { get; }
 
+        /// <summary>
+        /// Obtain performance monitoring counters about this connection
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        [Browsable(false)]
+        public Counters GetCounters()
+        {
+            int available;
+            try
+            {
+                available = Socket?.Available ?? 0;
+            }
+            catch { available = 0; }
+
+            long sendLength = Counters.GetPipeLength(_sendToSocket),
+                receiveLength = Counters.GetPipeLength(_receiveFromSocket);
+
+            return new Counters(available, sendLength, receiveLength);
+        }
+
+        /// <summary>
+        /// Exposes performance monitoring counters about a connection
+        /// </summary>
+        public readonly struct Counters
+        {
+            private static readonly Func<Pipe, long> s_pipeLengthReader;
+            static Counters()
+            {
+                try
+                {
+                    // theoretically there's a problem here on x86; I'm... "comfortable enough" with it
+                    // not to try to do anything more clever, though - if an x86 client has gone over 2GiB
+                    // then they deserve a clap - a slow clap
+                    var method = typeof(Pipe).GetProperty("Length",
+                        BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)?.GetGetMethod(true);
+                    if (method == null)
+                    {
+                        s_pipeLengthReader = _ => 0L;
+                    }
+                    else
+                    {
+                        s_pipeLengthReader = (Func<Pipe, long>)Delegate.CreateDelegate(typeof(Func<Pipe, long>), method);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine(ex.Message);
+                    s_pipeLengthReader = _ => 0L;
+                }
+            }
+
+            /// <summary>
+            /// Get the number of bytes currently held in a pipe instance
+            /// </summary>
+            public static long GetPipeLength(Pipe pipe)
+            {
+                if (pipe == null) return 0;
+                try
+                {
+                    return s_pipeLengthReader(pipe);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine(ex.Message);
+                    return 0;
+                }
+            }
+
+            /// <summary>
+            /// The number of bytes available on the socket that have not yet been consumed into the pipe
+            /// </summary>
+            public long BytesAvailableOnSocket { get; }
+            /// <summary>
+            /// The number of bytes available on the send pipe that have not yet been sent to the socket
+            /// </summary>
+            public long BytesWaitingToBeSent { get; }
+            /// <summary>
+            /// The number of bytes available on the receive pipe, i.e. they have been processed from the socket, but not yet read
+            /// </summary>
+            public long BytesWaitingToBeRead { get; }
+            internal Counters(int available, long sendLength, long receiveLength)
+            {
+                BytesAvailableOnSocket = available;
+                BytesWaitingToBeSent = sendLength;
+                BytesWaitingToBeRead = receiveLength;
+            }
+        }
+
         private readonly Pipe _sendToSocket, _receiveFromSocket;
         // TODO: flagify and fully implement
 #pragma warning disable CS0414, CS0649, IDE0044, IDE0051, IDE0052
@@ -290,7 +380,8 @@ namespace Pipelines.Sockets.Unofficial
                 return ex is SocketException se ? sc.TrySetShutdown(kind, se.SocketErrorCode)
                     : sc.TrySetShutdown(kind);
             }
-            catch {
+            catch
+            {
                 return false;
             }
         }
