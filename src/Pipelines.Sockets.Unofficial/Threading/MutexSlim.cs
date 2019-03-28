@@ -253,6 +253,15 @@ namespace Pipelines.Sockets.Unofficial.Threading
             return next;
         }
 
+        /// <summary>
+        /// Indicates whether the lock is currently available
+        /// </summary>
+        public bool IsAvailable
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => LockState.GetState(Volatile.Read(ref _token)) == LockState.Pending;
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int TryTakeOnceOnly()
         {

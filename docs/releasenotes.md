@@ -1,8 +1,13 @@
 # Release Notes
 
+## 2.0.10
+
+- add API to query length of a `Pipe`, and to query the state of a `SocketConnection`
+- add API to query whether a `MutexSlim` is available without changing the state or requiring disposal
+
 ## 2.0.5
 
-fix issue #26 - `SocketConnection.DoSend` causing intermittent problems with invalid buffer re-use
+- fix issue #26 - `SocketConnection.DoSend` causing intermittent problems with invalid buffer re-use
 
 ## 2.0.1
 
