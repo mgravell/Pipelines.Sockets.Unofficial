@@ -224,18 +224,20 @@ namespace Pipelines.Sockets.Unofficial.Tests
             // can obtain when not contested (outer)
             // can not obtain when contested, even if re-entrant (inner)
             // can obtain after released (loop)
-
             for (int i = 0; i < 2; i++)
             {
+                Assert.True(_zeroTimeoutMux.IsAvailable);
                 using (var outer = _zeroTimeoutMux.TryWait())
                 {
                     Assert.True(outer.Success);
+                    Assert.False(_zeroTimeoutMux.IsAvailable);
                     using (var inner = _zeroTimeoutMux.TryWait())
                     {
                         Assert.False(inner.Success);
                     }
                 }
             }
+            Assert.True(_zeroTimeoutMux.IsAvailable);
 
             for (int i = 0; i < 2; i++)
             {

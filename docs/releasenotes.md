@@ -1,5 +1,9 @@
 # Release Notes
 
+## 2.0.11
+
+- add ability to control the listen-backlog size on `SocketServer` (via [su21](https://github.com/sillyousu))
+
 ## 2.0.10
 
 - add API to query length of a `Pipe`, and to query the state of a `SocketConnection`
