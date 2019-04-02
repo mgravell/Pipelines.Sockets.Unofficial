@@ -1,5 +1,9 @@
 # Release Notes
 
+## 2.0.16
+
+- fix: avoid stall condition on `MutexSlim`
+
 ## 2.0.11
 
 - add ability to control the listen-backlog size on `SocketServer` (via [su21](https://github.com/sillyousu))
