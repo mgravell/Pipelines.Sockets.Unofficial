@@ -332,37 +332,42 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
                 item = SyncPendingLockToken.GetPerThreadLockObject();
 
-                // we want to have the item-lock *before* we put anything in the queue
-                // (and we only want to do that once we've checked we can reset it)
-                Monitor.TryEnter(item, 0, ref itemLockTaken);
-                if (!itemLockTaken)
-                {
-                    // this should have been available immediately; if it isn't, something
-                    // is very wrong; we can try again, though
-                    item = SyncPendingLockToken.GetNewPerThreadLockObject();
-                    Monitor.TryEnter(item, 0, ref itemLockTaken);
-                    Debug.Assert(itemLockTaken);
-                    if (!itemLockTaken) return LockToken.Fail(TimeoutReason.UnableToGetItemLock); // just give up!
-                }
-
-                // otherwise enqueue the pending item, and release
+                // enqueue the pending item, and release
                 // the global queue *before* we wait
                 const short KEY = 0;
-                var queueItem = new PendingLockItem(start, KEY, item);
+                var queueItem = new PendingLockItem(start, KEY, item); // note this resets the item
                 _queue.Enqueue(queueItem);
                 Monitor.Exit(_queue);
                 queueLockTaken = false;
 
-                // k, the item is now in the queue; we're going to
-                // wait to see if it gets pulsed; note: we're not
-                // going to depend on the result here - the value
-                // inside the object is the single source of truth here
-                // because otherwise we could get a race condition where it
-                // gets a token *just after* the Wait times out, which
-                // could lead to a dropped token, and a blocked mux
-                Monitor.Wait(item, UpdateTimeOut(start, TimeoutMilliseconds));
-                Monitor.Exit(item);
-                itemLockTaken = false;
+                // k, the item is now in the queue; we can use a spin-lock to see if it
+                // gets assigned a value *without* needing to take a lock (because we
+                // don't want to tie the releasing thread into the spin-lock) by checking
+                // IsPending; if it is *still* pending after a spin-lock, take an actual
+                // lock and try a Wait; if *that* fails - we've failed
+                var wait = new SpinWait();
+                do
+                {
+                    wait.SpinOnce();
+                } while (item.IsPending & !wait.NextSpinWillYield);
+
+                if (item.IsPending)
+                {
+                    Monitor.Enter(item, ref itemLockTaken); // we need to wait like "lock" here to not risk dropped tokens
+                    if (item.IsPending) // double-checked (when assigning, state update comes first)
+                    {
+                        int remaining = UpdateTimeOut(start, TimeoutMilliseconds);
+                        if (remaining > 0)
+                        {
+                            // note that the *outcome* isn't important - just
+                            // that we waited; it is GetResult() that seals
+                            // the fate here
+                            Monitor.Wait(item, remaining);
+                        }
+                    }
+                    Monitor.Exit(item);
+                    itemLockTaken = false;
+                }
 
                 var result = item.GetResult();
                 if (LockState.GetState(result) == LockState.Success)

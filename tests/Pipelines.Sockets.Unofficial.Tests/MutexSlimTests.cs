@@ -716,9 +716,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
 #if DEBUG
         const int ITERATIONS_PER_WORKER = 5000; // small because of the logging
 #else
-        const int ITERATIONS_PER_WORKER = 2500000; // enough to take about 10s on my desktop
+        const int ITERATIONS_PER_WORKER = 50000000; // enough to take about 10s on my laptop
 #endif
-        const int ITERATIONS_PER_WORKER_ASYNC = 10 * ITERATIONS_PER_WORKER; // much faster, seriously
+        const int ITERATIONS_PER_WORKER_ASYNC = 10000000; // async is slower
         const int BUCKET_COUNT = 50;
         readonly int[] _buckets = new int[BUCKET_COUNT];
         int _failCount, _successCount, _maxGetLock, _attempts;

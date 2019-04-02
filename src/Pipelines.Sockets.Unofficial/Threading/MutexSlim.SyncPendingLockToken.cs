@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace Pipelines.Sockets.Unofficial.Threading
@@ -27,6 +28,12 @@ namespace Pipelines.Sockets.Unofficial.Threading
             public static void ResetPerThreadLockObject() => s_perThreadLockObject = null;
 
             internal int GetResult() => LockState.GetResult(ref _token);
+
+            internal bool IsPending
+            {
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                get => LockState.GetState(Volatile.Read(ref _token)) == LockState.Pending;
+            }
 
             bool IPendingLockToken.TrySetResult(short key, int token)
             {
