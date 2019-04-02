@@ -331,8 +331,6 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 if (TimeoutMilliseconds == 0) return LockToken.Fail(TimeoutReason.ZeroTimeout);
 
                 item = SyncPendingLockToken.GetPerThreadLockObject();
-                const short KEY = 0;
-                var queueItem = new PendingLockItem(start, KEY, item);
 
                 // we want to have the item-lock *before* we put anything in the queue
                 // (and we only want to do that once we've checked we can reset it)
@@ -346,9 +344,11 @@ namespace Pipelines.Sockets.Unofficial.Threading
                     Debug.Assert(itemLockTaken);
                     if (!itemLockTaken) return LockToken.Fail(TimeoutReason.UnableToGetItemLock); // just give up!
                 }
-                
+
                 // otherwise enqueue the pending item, and release
                 // the global queue *before* we wait
+                const short KEY = 0;
+                var queueItem = new PendingLockItem(start, KEY, item);
                 _queue.Enqueue(queueItem);
                 Monitor.Exit(_queue);
                 queueLockTaken = false;
