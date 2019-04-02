@@ -353,20 +353,27 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
                 if (item.IsPending)
                 {
-                    Monitor.Enter(item, ref itemLockTaken); // we need to wait like "lock" here to not risk dropped tokens
-                    if (item.IsPending) // double-checked (when assigning, state update comes first)
+                    int remaining = UpdateTimeOut(start, TimeoutMilliseconds);
+                    if (remaining > 0)
                     {
-                        int remaining = UpdateTimeOut(start, TimeoutMilliseconds);
-                        if (remaining > 0)
+                        Monitor.TryEnter(item, remaining, ref itemLockTaken);
+                        if (itemLockTaken)
                         {
-                            // note that the *outcome* isn't important - just
-                            // that we waited; it is GetResult() that seals
-                            // the fate here
-                            Monitor.Wait(item, remaining);
+                            if (item.IsPending) // double-checked (when assigning, state update comes first)
+                            {
+                                remaining = UpdateTimeOut(start, TimeoutMilliseconds);
+                                if (remaining > 0)
+                                {
+                                    // note that the *outcome* isn't important - just
+                                    // that we waited; it is GetResult() that seals
+                                    // the fate here
+                                    Monitor.Wait(item, remaining);
+                                }
+                            }
+                            Monitor.Exit(item);
+                            itemLockTaken = false;
                         }
                     }
-                    Monitor.Exit(item);
-                    itemLockTaken = false;
                 }
 
                 var result = item.GetResult();

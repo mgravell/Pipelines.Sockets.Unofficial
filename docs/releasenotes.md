@@ -1,6 +1,6 @@
 # Release Notes
 
-## 2.0.16
+## 2.0.17
 
 - fix: avoid stall condition on `MutexSlim`
 
