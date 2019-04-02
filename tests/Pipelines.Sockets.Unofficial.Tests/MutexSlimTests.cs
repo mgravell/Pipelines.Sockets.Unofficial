@@ -195,29 +195,6 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
         }
 
-#if DEBUG
-        [Theory] // only makes sense with fast-path disabled, a debug-only option
-        [InlineData(WaitOptions.None | DisableFastPath)]
-        [InlineData(WaitOptions.DisableAsyncContext | DisableFastPath)]
-        public async Task CanTimeoutLotsOfTimes(WaitOptions waitOptions)
-        {
-            var fastMux = new MutexSlim(1);
-            fastMux.Logged += Log;
-            using (var outer = fastMux.TryWait())
-            {
-                Assert.True(outer.Success);
-
-                for(int i = 0; i < 280; i++) // see: SlabSize - 2+ slabs, basically
-                {
-                    using (var inner = await fastMux.TryWaitAsync(options: waitOptions).ConfigureAwait(false))
-                    {
-                        Assert.False(inner.Success);
-                    }
-                }
-            }
-        }
-#endif
-
         [Fact]
         public void CanObtain()
         {
@@ -230,9 +207,11 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 using (var outer = _zeroTimeoutMux.TryWait())
                 {
                     Assert.True(outer.Success);
+                    Log(outer.ToString());
                     Assert.False(_zeroTimeoutMux.IsAvailable);
                     using (var inner = _zeroTimeoutMux.TryWait())
                     {
+                        Log(inner.ToString());
                         Assert.False(inner.Success);
                     }
                 }
@@ -673,6 +652,133 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Assert.Throws<TaskCanceledException>(() => ct.Result);
 
             await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct).ConfigureAwait(false);
+        }
+
+        [Fact]
+        public void DuelingThreadsShouldNotStall()
+        {
+            Volatile.Write(ref _failCount, 0);
+            Volatile.Write(ref _successCount, 0);
+            Array.Clear(_buckets, 0, _buckets.Length);
+            var other = new Thread(RunAcquireReleaseLoop)
+            {
+                Priority = ThreadPriority.AboveNormal,
+                IsBackground = true,
+                Name = nameof(DuelingThreadsShouldNotStall)
+            };
+            other.Start();
+            RunAcquireReleaseLoop(); // we are the other party here
+            Assert.True(other.Join(10000), "failure to join");
+
+            int failCount = Volatile.Read(ref _failCount);
+            int successCount = Volatile.Read(ref _successCount);
+            int maxTaken = Volatile.Read(ref _maxGetLock);
+            Log($"success: {successCount}, failure: {failCount}, max get lock: {_maxGetLock}");
+            Assert.Equal(0, failCount);
+            Assert.Equal(ITERATIONS_PER_WORKER * 2, successCount);
+            int endBucket;
+            for(endBucket = _buckets.Length - 1; endBucket >= 0; endBucket--)
+            {
+                if (_buckets[endBucket] != 0) break;
+            }
+            for(int i = 0; i <= endBucket; i++)
+            {
+                Log($"{i}ms: {Volatile.Read(ref _buckets[i])}");
+            }
+        }
+
+        [Fact]
+        public async Task DuelingThreadsShouldNotStallAsync()
+        {
+            Volatile.Write(ref _failCount, 0);
+            Volatile.Write(ref _successCount, 0);
+            Array.Clear(_buckets, 0, _buckets.Length);
+            var other = Task.Run(() => RunAcquireReleaseLoopAsync());
+            await RunAcquireReleaseLoopAsync(); // we are the other party here
+            Assert.True(other.Wait(10000), "failure to join");
+
+            int failCount = Volatile.Read(ref _failCount);
+            int successCount = Volatile.Read(ref _successCount);
+            int maxTaken = Volatile.Read(ref _maxGetLock);
+            Log($"success: {successCount}, failure: {failCount}, max get lock: {_maxGetLock}");
+            Assert.Equal(0, failCount);
+            Assert.Equal(ITERATIONS_PER_WORKER_ASYNC * 2, successCount);
+            int endBucket;
+            for (endBucket = _buckets.Length - 1; endBucket >= 0; endBucket--)
+            {
+                if (_buckets[endBucket] != 0) break;
+            }
+            for (int i = 0; i <= endBucket; i++)
+            {
+                Log($"{i}ms: {Volatile.Read(ref _buckets[i])}");
+            }
+        }
+#if DEBUG
+        const int ITERATIONS_PER_WORKER = 5000; // small because of the logging
+#else
+        const int ITERATIONS_PER_WORKER = 2500000; // enough to take about 10s on my desktop
+#endif
+        const int ITERATIONS_PER_WORKER_ASYNC = 10 * ITERATIONS_PER_WORKER; // much faster, seriously
+        const int BUCKET_COUNT = 50;
+        readonly int[] _buckets = new int[BUCKET_COUNT];
+        int _failCount, _successCount, _maxGetLock, _attempts;
+        void RunAcquireReleaseLoop()
+        {
+            for (int i = 0; i < ITERATIONS_PER_WORKER; i++)
+            {
+                int startedTakingLock = Environment.TickCount;
+                var attempt = Interlocked.Increment(ref _attempts);
+                using (var token = _timeoutMux.TryWait())
+                {
+                    var gotLock = Environment.TickCount;
+                    int taken = unchecked(gotLock - startedTakingLock), oldMax;
+                    int aggregate = taken < 0 ? 0 : taken >= BUCKET_COUNT ? (BUCKET_COUNT - 1) : taken;
+                    Interlocked.Increment(ref _buckets[aggregate]);
+                    do
+                    {
+                        oldMax = Volatile.Read(ref _maxGetLock);
+                    } while (taken > oldMax && Interlocked.CompareExchange(ref _maxGetLock, taken, oldMax) != oldMax);
+
+                    if (token.Success) Interlocked.Increment(ref _successCount);
+                    else
+                    {
+                        var nowAttempt = Volatile.Read(ref _attempts);
+                        _log.WriteLine($"failure: {token}, available: {_timeoutMux.IsAvailable}; attempts before: {attempt}, now: {nowAttempt}");
+                        Interlocked.Increment(ref _failCount);
+                        return; // give up promptly if we start failing
+                    }
+                    GC.KeepAlive(null);
+                }
+            }
+        }
+        async Task RunAcquireReleaseLoopAsync()
+        {
+            for (int i = 0; i < ITERATIONS_PER_WORKER_ASYNC; i++)
+            {
+                int startedTakingLock = Environment.TickCount;
+                var attempt = Interlocked.Increment(ref _attempts);
+                using (var token = await _timeoutMux.TryWaitAsync())
+                {
+                    var gotLock = Environment.TickCount;
+                    int taken = unchecked(gotLock - startedTakingLock), oldMax;
+                    int aggregate = taken < 0 ? 0 : taken >= BUCKET_COUNT ? (BUCKET_COUNT - 1) : taken;
+                    Interlocked.Increment(ref _buckets[aggregate]);
+                    do
+                    {
+                        oldMax = Volatile.Read(ref _maxGetLock);
+                    } while (taken > oldMax && Interlocked.CompareExchange(ref _maxGetLock, taken, oldMax) != oldMax);
+
+                    if (token.Success) Interlocked.Increment(ref _successCount);
+                    else
+                    {
+                        var nowAttempt = Volatile.Read(ref _attempts);
+                        _log.WriteLine($"failure: {token}, available: {_timeoutMux.IsAvailable}; attempts before: {attempt}, now: {nowAttempt}");
+                        Interlocked.Increment(ref _failCount);
+                        return; // give up promptly if we start failing
+                    }
+                    GC.KeepAlive(null);
+                }
+            }
         }
     }
 }

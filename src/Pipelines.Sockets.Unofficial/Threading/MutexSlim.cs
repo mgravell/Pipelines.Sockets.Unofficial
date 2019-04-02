@@ -6,6 +6,7 @@ using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using static Pipelines.Sockets.Unofficial.Threading.MutexSlim.LockToken;
 
 namespace Pipelines.Sockets.Unofficial.Threading
 {
@@ -26,7 +27,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
          *   (I'm looking at you, SemaphoreSlim... you know what you did)
          * - must be low allocation
          * - should allow control of the threading model for async callback
-         * - fairness would be nice, but is not a hard demand
+         * - fairness is needed
          * - timeout support is required
          *   value can be per mutex - doesn't need to be per-Wait[Async]
          * - a "using"-style API is a nice-to-have, to avoid try/finally
@@ -65,7 +66,6 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
         private readonly PipeScheduler _scheduler;
         private readonly Queue<PendingLockItem> _queue = new Queue<PendingLockItem>();
-        private volatile bool _mayHavePendingItems; // note: can false-positive; shouldn't false-negative
         private int _token; // the current status of the mutex - first 2 bits indicate if currently owned; rest is counter for conflict detection
         private int _pendingAsyncOperations; // the number of outstanding async ops; used to know whether we need to have an async timeout
 
@@ -109,6 +109,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
         private PendingLockItem DequeueInsideLock()
         {
             var item = _queue.Dequeue();
+            _pendingItemEstimate = _queue.Count;
             if (item.IsAsync) _pendingAsyncOperations--;
             return item;
         }
@@ -125,8 +126,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 return;
             }
 
-            if (_mayHavePendingItems) ActivateNextQueueItem();
-            else Log($"no pending items to activate");
+            ActivateNextQueueItem();
         }
 
         private void ActivateNextQueueItem()
@@ -134,11 +134,16 @@ namespace Pipelines.Sockets.Unofficial.Threading
             // see if we can nudge the next waiter
             lock (_queue)
             {
+                if (_queue.Count == 0)
+                {
+                     Log($"no pending items to activate");
+                    return;
+                }
                 try
                 {
                     int token; // if work to do, try and get a new token
                     Log($"pending items: {_queue.Count}");
-                    if (_queue.Count == 0 || (token = TryTakeLoopIfChanges()) == 0) return;
+                    if ((token = TryTakeLoopIfChanges()) == 0) return;
 
                     while (_queue.Count != 0)
                     {
@@ -160,7 +165,6 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 }
                 finally
                 {
-                    FixMayHavePendingItemsInsideLock();
                     SetNextAsyncTimeoutInsideLock();
                 }
             }
@@ -190,7 +194,6 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 }
                 finally
                 {
-                    FixMayHavePendingItemsInsideLock();
                     SetNextAsyncTimeoutInsideLock();
                 }
             }
@@ -271,20 +274,6 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 ? next : 0;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int TryTakeBySpinning()
-        {
-            // try a SpinWait to see if we can avoid the expensive bits
-            SpinWait spin = new SpinWait();
-            do
-            {
-                spin.SpinOnce();
-                var token = TryTakeOnceOnly();
-                if (token != 0) return token;
-            } while (!spin.NextSpinWillYield);
-            return default;
-        }
-
         private static uint GetTime() => (uint)Environment.TickCount;
         // borrowed from SpinWait
         private static int UpdateTimeOut(uint startTime, int originalWaitMillisecondsTimeout)
@@ -307,34 +296,44 @@ namespace Pipelines.Sockets.Unofficial.Threading
             return currentWaitTimeout;
         }
 
-        private void FixMayHavePendingItemsInsideLock() => _mayHavePendingItems = _queue.Count != 0;
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool HasFlag(WaitOptions options, WaitOptions flag) => (options & flag) != 0;
 
-        private int TakeWithTimeout(WaitOptions options)
+        private LockToken TakeWithTimeout(WaitOptions options)
         {
-            int token;
-            var start = GetTime(); // read this promptly to include any time spent spinning as part of our timeout interval
-
-            // try and get by spinning
-#if DEBUG
-            token = HasFlag(options, DisableFastPath) ? 0 : TryTakeBySpinning();
-#else
-            token = TryTakeBySpinning();
-#endif
-            // if we succesded by spinning, or we're using "now or never", exit
-#pragma warning disable RCS1233 // Use short-circuiting operator.
-            if (token != 0 | TimeoutMilliseconds == 0) return token; // no need to short-circuit
-#pragma warning restore RCS1233 // Use short-circuiting operator.
-
-            bool itemLockTaken = false, queueLockTaken = false;
-
-            var item = SyncPendingLockToken.GetPerThreadLockObject();
-            const short KEY = 0;
-            var queueItem = new PendingLockItem(start, KEY, item);
+            bool itemLockTaken = false;
+            bool queueLockTaken = false;
+            SyncPendingLockToken item = null;
             try
             {
+                var start = GetTime(); // read this promptly to include any time spent getting locks as part of our timeout interval
+                if (HasFlag(options, WaitOptions.NoDelay))
+                {
+                    Monitor.TryEnter(_queue, 0, ref queueLockTaken);
+                    if (!queueLockTaken) return LockToken.Fail(TimeoutReason.NoDelayImmediateTimeout);
+                }
+                else
+                {
+                    Monitor.TryEnter(_queue, UpdateTimeOut(start, TimeoutMilliseconds), ref queueLockTaken);
+                    if (!queueLockTaken) return LockToken.Fail(TimeoutReason.UnableToGetQueueLock);
+                }
+
+                // touch the item count *right now* to force any other competitors away from the fast path
+                _pendingItemEstimate++;
+
+                int token;
+                if (_queue.Count == 0) // we now have the queue lock; are we fighting anyone? if not, we don't need to enqueue etc
+                {
+                    token = TryTakeOnceOnly();
+                    if (token != 0) return new LockToken(this, token);
+                }
+                if (HasFlag(options, WaitOptions.NoDelay)) return LockToken.Fail(TimeoutReason.NoDelayImmediateTimeout);
+                if (TimeoutMilliseconds == 0) return LockToken.Fail(TimeoutReason.ZeroTimeout);
+
+                item = SyncPendingLockToken.GetPerThreadLockObject();
+                const short KEY = 0;
+                var queueItem = new PendingLockItem(start, KEY, item);
+
                 // we want to have the item-lock *before* we put anything in the queue
                 // (and we only want to do that once we've checked we can reset it)
                 Monitor.TryEnter(item, 0, ref itemLockTaken);
@@ -345,25 +344,9 @@ namespace Pipelines.Sockets.Unofficial.Threading
                     item = SyncPendingLockToken.GetNewPerThreadLockObject();
                     Monitor.TryEnter(item, 0, ref itemLockTaken);
                     Debug.Assert(itemLockTaken);
-                    if (!itemLockTaken) return default; // just give up!
+                    if (!itemLockTaken) return LockToken.Fail(TimeoutReason.UnableToGetItemLock); // just give up!
                 }
-
-                // now lock the global queue, and then have a final stab at getting it cheaply
-                _mayHavePendingItems = true; // set this *before* getting the lock
-                Monitor.TryEnter(_queue, UpdateTimeOut(start, TimeoutMilliseconds), ref queueLockTaken);
-                if (!queueLockTaken) return default; // couldn't even get the lock, let alone the mutex
-
-#if DEBUG
-                token = HasFlag(options, DisableFastPath) ? 0 : TryTakeOnceOnly();
-#else
-                token = TryTakeOnceOnly();
-#endif
-                if (token != 0)
-                {
-                    FixMayHavePendingItemsInsideLock();
-                    return token;
-                }
-
+                
                 // otherwise enqueue the pending item, and release
                 // the global queue *before* we wait
                 _queue.Enqueue(queueItem);
@@ -382,7 +365,11 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 itemLockTaken = false;
 
                 var result = item.GetResult();
-                if (LockState.GetState(result) != LockState.Success)
+                if (LockState.GetState(result) == LockState.Success)
+                {
+                    return new LockToken(this, result);
+                }
+                else
                 {
                     // if we *didn't* get the lock, we *could* still be in the queue;
                     // since we're in the failure path, let's take a moment to see if we can
@@ -404,19 +391,22 @@ namespace Pipelines.Sockets.Unofficial.Threading
                             // and we don't want the sync object getting treated oddly; nuke it
                             SyncPendingLockToken.ResetPerThreadLockObject();
                         }
-                        FixMayHavePendingItemsInsideLock();
                     }
                     else // we didn't get the queue lock; no idea whether we're still in the queue
                     {
                         SyncPendingLockToken.ResetPerThreadLockObject();
                     }
+                    return LockToken.Fail(TimeoutReason.NotHandedLockInsideTimeout);
                 }
-                return result;
             }
             finally
             {
-                if (queueLockTaken) Monitor.Exit(_queue);
                 if (itemLockTaken) Monitor.Exit(item);
+                if (queueLockTaken)
+                {
+                    _pendingItemEstimate = _queue.Count; // if we still have the lock, fix this on the way out
+                    Monitor.Exit(_queue);
+                }
             }
         }
 
@@ -424,32 +414,37 @@ namespace Pipelines.Sockets.Unofficial.Threading
         private ValueTask<LockToken> TakeWithTimeoutAsync(CancellationToken cancellationToken, WaitOptions options)
 #pragma warning restore RCS1231 // Make parameter ref read-only.
         {
-            // if "now or never", bail
-            if (TimeoutMilliseconds == 0) return default;
-            int token;
-            var start = GetTime();
+            if (cancellationToken.IsCancellationRequested) return GetCanceled();
 
-            // do *not* spin on the async path - under highly concurrent load, this causes pool exhaustion
-
-            // lock the global queue; then have a final stab at getting it cheaply
             bool queueLockTaken = false;
             try
             {
-                _mayHavePendingItems = true; // set this *before* getting the lock
-                Monitor.TryEnter(_queue, TimeoutMilliseconds, ref queueLockTaken);
-                if (!queueLockTaken) return default; // couldn't even get the lock, let alone the mutex
+                var start = GetTime(); // read this promptly to include any time spent getting locks as part of our timeout interval
+                if (HasFlag(options, WaitOptions.NoDelay))
+                {
+                    Monitor.TryEnter(_queue, 0, ref queueLockTaken);
+                    if (!queueLockTaken) return LockToken.FailAsync(TimeoutReason.NoDelayImmediateTimeout);
+                }
+                else
+                {
+                    Monitor.TryEnter(_queue, TimeoutMilliseconds, ref queueLockTaken);
+                    if (!queueLockTaken) return LockToken.FailAsync(TimeoutReason.UnableToGetQueueLock);
+                }
+
+                // check if it became cancelled while we were busy
                 if (cancellationToken.IsCancellationRequested) return GetCanceled();
 
-#if DEBUG
-                token = HasFlag(options, DisableFastPath) ? 0 : TryTakeOnceOnly();
-#else
-                token = TryTakeOnceOnly();
-#endif
-                if (token != 0)
+                // touch the item count *right now* to force any other competitors away from the fast path
+                _pendingItemEstimate++;
+
+                int token;
+                if (_queue.Count == 0) // we now have the queue lock; are we fighting anyone? if not, we don't need to enqueue etc
                 {
-                    FixMayHavePendingItemsInsideLock();
-                    return new ValueTask<LockToken>(new LockToken(this, token));
+                    token = TryTakeOnceOnly();
+                    if (token != 0) return new ValueTask<LockToken>(new LockToken(this, token));
                 }
+                if (HasFlag(options, WaitOptions.NoDelay)) return LockToken.FailAsync(TimeoutReason.NoDelayImmediateTimeout);
+                if (TimeoutMilliseconds == 0) return LockToken.FailAsync(TimeoutReason.ZeroTimeout);
 
                 // otherwise we'll need an async pending lock token
                 IAsyncPendingLockToken asyncItem;
@@ -480,7 +475,11 @@ namespace Pipelines.Sockets.Unofficial.Threading
             }
             finally
             {
-                if (queueLockTaken) Monitor.Exit(_queue);
+                if (queueLockTaken)
+                {
+                    _pendingItemEstimate = _queue.Count; // if we still have the lock, fix this on the way out
+                    Monitor.Exit(_queue);
+                }
             }
         }
 
@@ -514,23 +513,15 @@ namespace Pipelines.Sockets.Unofficial.Threading
         public ValueTask<LockToken> TryWaitAsync(CancellationToken cancellationToken = default, WaitOptions options = WaitOptions.None)
 #pragma warning restore RCS1231 // Make parameter ref read-only.
         {
-            if (cancellationToken.IsCancellationRequested) return GetCanceled();
-#if DEBUG
-            var token = HasFlag(options, DisableFastPath) ? 0 : TryTakeOnceOnly();
-#else
-            var token = TryTakeOnceOnly();
-#endif
-
-#pragma warning disable RCS1233
-            if (token != 0 | HasFlag(options, WaitOptions.NoDelay))
+            int token;
+            if ((!cancellationToken.IsCancellationRequested & _pendingItemEstimate == 0) && (token = TryTakeOnceOnly()) != 0)
                 return new ValueTask<LockToken>(new LockToken(this, token));
-#pragma warning restore RCS1233
 
-            // otherwise, do things the hard way
             return TakeWithTimeoutAsync(cancellationToken, options);
         }
 
         private static Task<LockToken> s_canceledTask;
+        [MethodImpl(MethodImplOptions.NoInlining)]
         internal static ValueTask<LockToken> GetCanceled() => new ValueTask<LockToken>(s_canceledTask ?? (s_canceledTask = CreateCanceledLockTokenTask()));
         private static Task<LockToken> CreateCanceledLockTokenTask()
         {
@@ -545,16 +536,14 @@ namespace Pipelines.Sockets.Unofficial.Threading
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public LockToken TryWait(WaitOptions options = WaitOptions.None)
         {
-#if DEBUG
-            var token = HasFlag(options, DisableFastPath) ? 0 : TryTakeOnceOnly();
-#else
-            var token = TryTakeOnceOnly();
-#endif
+            int token;
+            if (_pendingItemEstimate == 0 && (token = TryTakeOnceOnly()) != 0)
+                return new LockToken(this, token);
 
-#pragma warning disable RCS1233 // Use short-circuiting operator.
-            return new LockToken(this, (token != 0 | HasFlag(options, WaitOptions.NoDelay)) ? token : TakeWithTimeout(options));
-#pragma warning restore RCS1233 // Use short-circuiting operator.
+            return TakeWithTimeout(options);
         }
+
+        volatile int _pendingItemEstimate;
 
         /// <summary>
         /// Additional options that influence how TryWait/TryWaitAsync operate
@@ -577,7 +566,5 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
             // note: MSB is reserved for debugging
         }
-
-        internal const WaitOptions DisableFastPath = unchecked((WaitOptions)0x80000000); // MSB
     }
 }

@@ -115,10 +115,12 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 var id = ((uint)token) >> 2;
                 switch(GetState(token))
                 {
-                    case Timeout: return $"(#{id},timeout)";
-                    case Pending: return $"(#{id},pending)";
+                    case Timeout:
+                        var reason = (LockToken.TimeoutReason)id;
+                        return $"(timeout:{reason})";
+                    case Pending: return "(pending)";
                     case Success: return $"(#{id},success)";
-                    default: return $"(#{id},canceled)";
+                    default: return "(canceled)";
                 }
             }
         }

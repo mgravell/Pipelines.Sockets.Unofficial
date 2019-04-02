@@ -87,6 +87,23 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 _token = token;
             }
 
+            // we don't *expose* this, but: tracking the reason we couldn't
+            // issue a lock is very useful for debugging
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private LockToken(TimeoutReason failure)
+            {
+                _parent = null;
+                _token = LockState.ChangeState((int)failure << 2, LockState.Timeout);
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            internal static LockToken Fail(TimeoutReason failure)
+                => new LockToken(failure);
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            internal static ValueTask<LockToken> FailAsync(TimeoutReason failure)
+                => new ValueTask<LockToken>(new LockToken(failure));
+
             /// <summary>
             /// Release the mutex, if obtained
             /// </summary>
@@ -101,6 +118,16 @@ namespace Pipelines.Sockets.Unofficial.Threading
             {
                 if (LockState.IsCanceled(_token)) Throw.TaskCanceled();
                 return this;
+            }
+
+            internal enum TimeoutReason
+            {
+                Unknown = 0,
+                NoDelayImmediateTimeout = 1,
+                ZeroTimeout = 2,
+                UnableToGetItemLock = 3,
+                UnableToGetQueueLock = 4,
+                NotHandedLockInsideTimeout = 5,
             }
         }
     }
