@@ -654,28 +654,33 @@ namespace Pipelines.Sockets.Unofficial.Tests
             await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct).ConfigureAwait(false);
         }
 
-        [Fact]
-        public void DuelingThreadsShouldNotStall()
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void DuelingThreadsShouldNotStall(bool fight)
         {
             Volatile.Write(ref _failCount, 0);
             Volatile.Write(ref _successCount, 0);
             Array.Clear(_buckets, 0, _buckets.Length);
-            var other = new Thread(RunAcquireReleaseLoop)
+            var other = fight ? new Thread(RunAcquireReleaseLoop)
             {
                 Priority = ThreadPriority.AboveNormal,
                 IsBackground = true,
                 Name = nameof(DuelingThreadsShouldNotStall)
-            };
-            other.Start();
+            } : null;
+            other?.Start();
             RunAcquireReleaseLoop(); // we are the other party here
-            Assert.True(other.Join(10000), "failure to join");
+            if (other != null)
+            {
+                Assert.True(other.Join(10000), "failure to join");
+            }
 
             int failCount = Volatile.Read(ref _failCount);
             int successCount = Volatile.Read(ref _successCount);
             int maxTaken = Volatile.Read(ref _maxGetLock);
             Log($"success: {successCount}, failure: {failCount}, max get lock: {_maxGetLock}");
             Assert.Equal(0, failCount);
-            Assert.Equal(ITERATIONS_PER_WORKER * 2, successCount);
+            Assert.Equal(ITERATIONS_PER_WORKER * (fight ? 2 : 1), successCount);
             int endBucket;
             for(endBucket = _buckets.Length - 1; endBucket >= 0; endBucket--)
             {
@@ -687,22 +692,27 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
         }
 
-        [Fact]
-        public async Task DuelingThreadsShouldNotStallAsync()
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task DuelingThreadsShouldNotStallAsync(bool fight)
         {
             Volatile.Write(ref _failCount, 0);
             Volatile.Write(ref _successCount, 0);
             Array.Clear(_buckets, 0, _buckets.Length);
-            var other = Task.Run(() => RunAcquireReleaseLoopAsync());
+            var other = fight ? Task.Run(() => RunAcquireReleaseLoopAsync()) : null;
             await RunAcquireReleaseLoopAsync(); // we are the other party here
-            Assert.True(other.Wait(10000), "failure to join");
+            if (other != null)
+            {
+                Assert.True(other.Wait(10000), "failure to join");
+            }
 
             int failCount = Volatile.Read(ref _failCount);
             int successCount = Volatile.Read(ref _successCount);
             int maxTaken = Volatile.Read(ref _maxGetLock);
             Log($"success: {successCount}, failure: {failCount}, max get lock: {_maxGetLock}");
             Assert.Equal(0, failCount);
-            Assert.Equal(ITERATIONS_PER_WORKER_ASYNC * 2, successCount);
+            Assert.Equal(ITERATIONS_PER_WORKER_ASYNC * (fight ? 2 : 1), successCount);
             int endBucket;
             for (endBucket = _buckets.Length - 1; endBucket >= 0; endBucket--)
             {
