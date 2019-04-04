@@ -27,7 +27,8 @@ namespace Pipelines.Sockets.Unofficial.Threading
          *   (I'm looking at you, SemaphoreSlim... you know what you did)
          * - must be low allocation
          * - should allow control of the threading model for async callback
-         * - fairness is needed
+         * - *reasonable* "fairness" is needed (we won't get fussy if there
+         *   are rare scenarios that don't guarantee absolute fairness)
          * - timeout support is required
          *   value can be per mutex - doesn't need to be per-Wait[Async]
          * - a "using"-style API is a nice-to-have, to avoid try/finally
@@ -141,9 +142,18 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 }
                 try
                 {
-                    int token; // if work to do, try and get a new token
+                    // there's work to do; try and get a new token
                     Log($"pending items: {_queue.Count}");
-                    if ((token = TryTakeLoopIfChanges()) == 0) return;
+                    int token = TryTakeLoopIfChanges();
+                    if (token == 0)
+                    {
+                        // despite it being contested, somebody else
+                        // won the lock while we were busy thinking;
+                        // this is staggeringly rare, and means the
+                        // mutex isn't *absolteuly* fair, but it is
+                        // "fair enough" to be useful and practical
+                        return;
+                    }
 
                     while (_queue.Count != 0)
                     {
@@ -614,8 +624,6 @@ namespace Pipelines.Sockets.Unofficial.Threading
             /// Disable full TPL flow; more efficient, but no sync-context or execution-context guarantees
             /// </summary>
             DisableAsyncContext = 2,
-
-            // note: MSB is reserved for debugging
         }
     }
 }
