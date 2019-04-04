@@ -32,7 +32,9 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 return success;
             }
 
-            bool IAsyncPendingLockToken.IsCanceled(short key) => LockState.IsCanceled(_token);
+            bool IPendingLockToken.HasResult(short key) => LockState.GetState(Volatile.Read(ref _token)) != LockState.Pending;
+
+            int IPendingLockToken.GetResult(short key) => LockState.GetResult(ref _token);
 
             private void OnAssigned()
             {
@@ -54,7 +56,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
             private void OnAssignedImpl() // make sure this happens on the
             { // scheduler's thread to avoid the release thread being stolen
                 var token = LockState.GetResult(ref _token);
-                if (LockState.IsCanceled(token)) TrySetCanceled();
+                if (LockState.GetState(token) == LockState.Canceled) TrySetCanceled();
                 else TrySetResult(new LockToken(_mutex, token));
             }
         }

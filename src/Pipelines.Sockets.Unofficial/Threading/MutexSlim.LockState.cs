@@ -58,9 +58,6 @@ namespace Pipelines.Sockets.Unofficial.Threading
             public static bool IsCompletedSuccessfully(int token) => (token & 1) == 0;
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static bool IsCanceled(int token) => (token & 3) == Canceled;
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static bool TrySetResult(ref int token, int value)
             {
                 int oldValue = Volatile.Read(ref token);

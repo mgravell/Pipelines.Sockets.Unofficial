@@ -27,7 +27,12 @@ namespace Pipelines.Sockets.Unofficial.Threading
             public static SyncPendingLockToken GetNewPerThreadLockObject() => s_perThreadLockObject = new SyncPendingLockToken();
             public static void ResetPerThreadLockObject() => s_perThreadLockObject = null;
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             internal int GetResult() => LockState.GetResult(ref _token);
+
+            int IPendingLockToken.GetResult(short key) => GetResult();
+
+            bool IPendingLockToken.HasResult(short key) => !IsPending;
 
             internal bool IsPending
             {

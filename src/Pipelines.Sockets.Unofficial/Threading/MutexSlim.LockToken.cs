@@ -116,7 +116,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             internal LockToken AssertNotCanceled()
             {
-                if (LockState.IsCanceled(_token)) Throw.TaskCanceled();
+                if (LockState.GetState(_token) == LockState.Canceled) Throw.TaskCanceled();
                 return this;
             }
 

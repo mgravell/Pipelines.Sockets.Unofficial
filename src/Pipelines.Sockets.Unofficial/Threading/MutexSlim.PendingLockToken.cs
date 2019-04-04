@@ -1,4 +1,6 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial.Threading
@@ -44,6 +46,17 @@ namespace Pipelines.Sockets.Unofficial.Threading
             public override int GetHashCode() => _key ^ (Pending?.GetHashCode() ?? 0);
 
             public override string ToString() => $"[{Start}]: {Pending}#{_key}";
+
+            internal bool TrySpinWait()
+            {
+                var wait = new SpinWait();
+                do
+                {
+                    wait.SpinOnce();
+                    if(Pending.HasResult(_key)) return true;
+                } while (!wait.NextSpinWillYield);
+                return false;
+            }
         }
 
         internal interface IPendingLockToken
@@ -51,12 +64,13 @@ namespace Pipelines.Sockets.Unofficial.Threading
             bool TrySetResult(short key, int token);
             bool TryCancel(short key);
             void Reset(short key);
+            bool HasResult(short key);
+            int GetResult(short key);
         }
 
         internal interface IAsyncPendingLockToken : IPendingLockToken
         {
             ValueTask<LockToken> GetTask(short key);
-            bool IsCanceled(short key);
         }
     }
 }

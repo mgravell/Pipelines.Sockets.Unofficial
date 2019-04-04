@@ -655,24 +655,36 @@ namespace Pipelines.Sockets.Unofficial.Tests
         }
 
         [Theory]
-        [InlineData(true)]
-        [InlineData(false)]
-        public void DuelingThreadsShouldNotStall(bool fight)
+        [InlineData(1, 50000000)] // uncontested
+        [InlineData(2, 25000000)] // duel
+        [InlineData(10, 100000)] // battle royale
+        public void DuelingThreadsShouldNotStall(int workerCount, int perWorker)
         {
+#if DEBUG
+            perworker /= 100;
+#endif
             Volatile.Write(ref _failCount, 0);
             Volatile.Write(ref _successCount, 0);
             Array.Clear(_buckets, 0, _buckets.Length);
-            var other = fight ? new Thread(RunAcquireReleaseLoop)
+            Thread[] workers = new Thread[workerCount - 1];
+            ThreadStart work = () => RunAcquireReleaseLoop(perWorker);
+            for (int i = 0; i < workers.Length; i++)
             {
-                Priority = ThreadPriority.AboveNormal,
-                IsBackground = true,
-                Name = nameof(DuelingThreadsShouldNotStall)
-            } : null;
-            other?.Start();
-            RunAcquireReleaseLoop(); // we are the other party here
-            if (other != null)
+                workers[i] = new Thread(work)
+                {
+                    Priority = ThreadPriority.AboveNormal,
+                    IsBackground = true,
+                    Name = nameof(DuelingThreadsShouldNotStall)
+                };
+            }
+            for (int i = 0; i < workers.Length; i++)
             {
-                Assert.True(other.Join(10000), "failure to join");
+                workers[i].Start();
+            }
+            work(); // we are the final worker
+            for (int i = 0; i < workers.Length; i++)
+            {
+                Assert.True(workers[i].Join(10000), "failure to join worker " + i);
             }
 
             int failCount = Volatile.Read(ref _failCount);
@@ -680,7 +692,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             int maxTaken = Volatile.Read(ref _maxGetLock);
             Log($"success: {successCount}, failure: {failCount}, max get lock: {_maxGetLock}");
             Assert.Equal(0, failCount);
-            Assert.Equal(ITERATIONS_PER_WORKER * (fight ? 2 : 1), successCount);
+            Assert.Equal(workerCount * perWorker, successCount);
             int endBucket;
             for(endBucket = _buckets.Length - 1; endBucket >= 0; endBucket--)
             {
@@ -693,26 +705,33 @@ namespace Pipelines.Sockets.Unofficial.Tests
         }
 
         [Theory]
-        [InlineData(true)]
-        [InlineData(false)]
-        public async Task DuelingThreadsShouldNotStallAsync(bool fight)
+        [InlineData(1, 30000000)] // uncontested
+        [InlineData(2, 15000000)] // duel
+        [InlineData(10, 150000)] // battle royale
+        public async Task DuelingThreadsShouldNotStallAsync(int workerCount, int perWorker)
         {
+#if DEBUG
+            perworker /= 100;
+#endif
             Volatile.Write(ref _failCount, 0);
             Volatile.Write(ref _successCount, 0);
             Array.Clear(_buckets, 0, _buckets.Length);
-            var other = fight ? Task.Run(() => RunAcquireReleaseLoopAsync()) : null;
-            await RunAcquireReleaseLoopAsync(); // we are the other party here
-            if (other != null)
+            Task[] workers = new Task[workerCount];
+            Func<Task> work = () => RunAcquireReleaseLoopAsync(perWorker);
+            for (int i = 0; i < workers.Length; i++)
             {
-                Assert.True(other.Wait(10000), "failure to join");
+                workers[i] = Task.Run(work);
             }
+            var allDone = Task.WhenAll(workers);
+            Assert.True(allDone.Wait(10000), "failure to join");
+            await allDone;
 
             int failCount = Volatile.Read(ref _failCount);
             int successCount = Volatile.Read(ref _successCount);
             int maxTaken = Volatile.Read(ref _maxGetLock);
             Log($"success: {successCount}, failure: {failCount}, max get lock: {_maxGetLock}");
             Assert.Equal(0, failCount);
-            Assert.Equal(ITERATIONS_PER_WORKER_ASYNC * (fight ? 2 : 1), successCount);
+            Assert.Equal(workerCount * perWorker, successCount);
             int endBucket;
             for (endBucket = _buckets.Length - 1; endBucket >= 0; endBucket--)
             {
@@ -723,18 +742,13 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 Log($"{i}ms: {Volatile.Read(ref _buckets[i])}");
             }
         }
-#if DEBUG
-        const int ITERATIONS_PER_WORKER = 5000; // small because of the logging
-#else
-        const int ITERATIONS_PER_WORKER = 50000000; // enough to take about 10s on my laptop
-#endif
-        const int ITERATIONS_PER_WORKER_ASYNC = 10000000; // async is slower
+
         const int BUCKET_COUNT = 50;
         readonly int[] _buckets = new int[BUCKET_COUNT];
         int _failCount, _successCount, _maxGetLock, _attempts;
-        void RunAcquireReleaseLoop()
+        void RunAcquireReleaseLoop(int count)
         {
-            for (int i = 0; i < ITERATIONS_PER_WORKER; i++)
+            for (int i = 0; i < count; i++)
             {
                 int startedTakingLock = Environment.TickCount;
                 var attempt = Interlocked.Increment(ref _attempts);
@@ -761,9 +775,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 }
             }
         }
-        async Task RunAcquireReleaseLoopAsync()
+        async Task RunAcquireReleaseLoopAsync(int count)
         {
-            for (int i = 0; i < ITERATIONS_PER_WORKER_ASYNC; i++)
+            for (int i = 0; i < count; i++)
             {
                 int startedTakingLock = Environment.TickCount;
                 var attempt = Interlocked.Increment(ref _attempts);

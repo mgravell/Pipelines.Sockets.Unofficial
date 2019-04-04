@@ -109,7 +109,6 @@ namespace Pipelines.Sockets.Unofficial.Threading
         private PendingLockItem DequeueInsideLock()
         {
             var item = _queue.Dequeue();
-            _pendingItemEstimate = _queue.Count;
             if (item.IsAsync) _pendingAsyncOperations--;
             return item;
         }
@@ -137,6 +136,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 if (_queue.Count == 0)
                 {
                      Log($"no pending items to activate");
+                    _uncontested = true;
                     return;
                 }
                 try
@@ -165,10 +165,12 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 }
                 finally
                 {
+                    _uncontested = _queue.Count == 0;
                     SetNextAsyncTimeoutInsideLock();
                 }
             }
         }
+
         private void DequeueExpired()
         {
             lock (_queue)
@@ -194,6 +196,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 }
                 finally
                 {
+                    _uncontested = _queue.Count == 0;
                     SetNextAsyncTimeoutInsideLock();
                 }
             }
@@ -306,6 +309,9 @@ namespace Pipelines.Sockets.Unofficial.Threading
             SyncPendingLockToken item = null;
             try
             {
+                // mark as contested to force any other competitors away from the fast path
+                _uncontested = false;
+
                 var start = GetTime(); // read this promptly to include any time spent getting locks as part of our timeout interval
                 if (HasFlag(options, WaitOptions.NoDelay))
                 {
@@ -318,8 +324,8 @@ namespace Pipelines.Sockets.Unofficial.Threading
                     if (!queueLockTaken) return LockToken.Fail(TimeoutReason.UnableToGetQueueLock);
                 }
 
-                // touch the item count *right now* to force any other competitors away from the fast path
-                _pendingItemEstimate++;
+                // re-iterate just in case something changed while we were getting the lock
+                _uncontested = false;
 
                 int token;
                 if (_queue.Count == 0) // we now have the queue lock; are we fighting anyone? if not, we don't need to enqueue etc
@@ -337,22 +343,18 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 const short KEY = 0;
                 var queueItem = new PendingLockItem(start, KEY, item); // note this resets the item
                 _queue.Enqueue(queueItem);
+                bool useSpinWait = _queue.Count == 1; // only spin if we're the next contestant
                 Monitor.Exit(_queue);
                 queueLockTaken = false;
 
                 // k, the item is now in the queue; we can use a spin-lock to see if it
                 // gets assigned a value *without* needing to take a lock (because we
                 // don't want to tie the releasing thread into the spin-lock) by checking
-                // IsPending; if it is *still* pending after a spin-lock, take an actual
-                // lock and try a Wait; if *that* fails - we've failed
-                var wait = new SpinWait();
-                do
+                // IsPending
+                if (!(useSpinWait && queueItem.TrySpinWait()))
                 {
-                    wait.SpinOnce();
-                } while (item.IsPending & !wait.NextSpinWillYield);
-
-                if (item.IsPending)
-                {
+                    // if we didn't get it via spin wait (perhaps because we didn't try) - 
+                    // then see if we can wait on a pulse instead
                     int remaining = UpdateTimeOut(start, TimeoutMilliseconds);
                     if (remaining > 0)
                     {
@@ -379,6 +381,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 var result = item.GetResult();
                 if (LockState.GetState(result) == LockState.Success)
                 {
+                    // to have a successful result, it must have been dequeued
                     return new LockToken(this, result);
                 }
                 else
@@ -416,7 +419,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 if (itemLockTaken) Monitor.Exit(item);
                 if (queueLockTaken)
                 {
-                    _pendingItemEstimate = _queue.Count; // if we still have the lock, fix this on the way out
+                    _uncontested = _queue.Count == 0; // if we still have the lock, fix this on the way out
                     Monitor.Exit(_queue);
                 }
             }
@@ -431,6 +434,9 @@ namespace Pipelines.Sockets.Unofficial.Threading
             bool queueLockTaken = false;
             try
             {
+                // mark as contested to force any other competitors away from the fast path
+                _uncontested = false;
+
                 var start = GetTime(); // read this promptly to include any time spent getting locks as part of our timeout interval
                 if (HasFlag(options, WaitOptions.NoDelay))
                 {
@@ -446,8 +452,8 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 // check if it became cancelled while we were busy
                 if (cancellationToken.IsCancellationRequested) return GetCanceled();
 
-                // touch the item count *right now* to force any other competitors away from the fast path
-                _pendingItemEstimate++;
+                // re-iterate just in case something changed while we were getting the lock
+                _uncontested = false;
 
                 int token;
                 if (_queue.Count == 0) // we now have the queue lock; are we fighting anyone? if not, we don't need to enqueue etc
@@ -472,27 +478,60 @@ namespace Pipelines.Sockets.Unofficial.Threading
                     key = 0;
                 }
 
-                // enqueue the pending item, and release the global queue
+                // enqueue the pending item and release the queue
                 var queueItem = new PendingLockItem(start, key, asyncItem);
+                _queue.Enqueue(queueItem);
+                bool useSpinWait = _queue.Count == 1; // only spin if we're the next contestant
+                if (_pendingAsyncOperations++ == 0) SetNextAsyncTimeoutInsideLock(); // first async op
+                Monitor.Exit(_queue);
+                queueLockTaken = false;
+
+                // if just one contendor, we might be able to wait it out
+                if (useSpinWait)
+                {
+                    if (queueItem.TrySpinWait())
+                    {
+                        // we win; that's the lot
+                        return FromTokenAsync(asyncItem.GetResult(key));
+                    }
+                    else if (cancellationToken.IsCancellationRequested)
+                    {
+                        // while we were spinning, cancelation happened
+                        return GetCanceled();
+                    }
+                }
+
+                // if we get here, either we didn't wait (multiple competitors), or waiting didn't help
                 if (cancellationToken.CanBeCanceled)
                 {
-                    cancellationToken.Register(GetCancelationCallback(key), asyncItem);
+                    // register for cancelation
+                    cancellationToken.Register(GetCancelationCallback(key), asyncItem);   
                 }
-                if (!asyncItem.IsCanceled(key)) // Register can invoke directly if it became canceled already
+
+                // technically, Register can cause completion; this is an extreme outlier, but
+                // it simplifies the logic if we deal with it now rather than later
+                if (asyncItem.HasResult(key))
                 {
-                    _queue.Enqueue(queueItem);
-                    if (_pendingAsyncOperations++ == 0) SetNextAsyncTimeoutInsideLock(); // first async op
+                    return FromTokenAsync(asyncItem.GetResult(key));
                 }
+
+                // give the caller an awaitable item
                 return asyncItem.GetTask(key);
             }
             finally
             {
                 if (queueLockTaken)
                 {
-                    _pendingItemEstimate = _queue.Count; // if we still have the lock, fix this on the way out
+                    _uncontested = _queue.Count == 0; // if we still have the lock, fix this on the way out
                     Monitor.Exit(_queue);
                 }
             }
+        }
+
+        private ValueTask<LockToken> FromTokenAsync(int token)
+        {
+            if (LockState.GetState(token) == LockState.Canceled) return GetCanceled();
+            return new ValueTask<LockToken>(new LockToken(this, token));
         }
 
         private AsyncDirectPendingLockSlab _directSlab;
@@ -526,7 +565,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
 #pragma warning restore RCS1231 // Make parameter ref read-only.
         {
             int token;
-            if ((!cancellationToken.IsCancellationRequested & _pendingItemEstimate == 0) && (token = TryTakeOnceOnly()) != 0)
+            if (_uncontested && !cancellationToken.IsCancellationRequested && (token = TryTakeOnceOnly()) != 0)
                 return new ValueTask<LockToken>(new LockToken(this, token));
 
             return TakeWithTimeoutAsync(cancellationToken, options);
@@ -549,13 +588,13 @@ namespace Pipelines.Sockets.Unofficial.Threading
         public LockToken TryWait(WaitOptions options = WaitOptions.None)
         {
             int token;
-            if (_pendingItemEstimate == 0 && (token = TryTakeOnceOnly()) != 0)
+            if (_uncontested && (token = TryTakeOnceOnly()) != 0)
                 return new LockToken(this, token);
 
             return TakeWithTimeout(options);
         }
 
-        volatile int _pendingItemEstimate;
+        volatile bool _uncontested = true;
 
         /// <summary>
         /// Additional options that influence how TryWait/TryWaitAsync operate

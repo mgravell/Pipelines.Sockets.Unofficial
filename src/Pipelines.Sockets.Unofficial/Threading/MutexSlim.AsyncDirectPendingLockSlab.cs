@@ -63,11 +63,13 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 else if (oldContinuation != null) Throw.MultipleContinuations();
             }
 
+            bool IPendingLockToken.HasResult(short key) => LockState.GetState(Volatile.Read(ref _items[key].Token)) != LockState.Pending;
+
+            int IPendingLockToken.GetResult(short key) => LockState.GetResult(ref _items[key].Token);
+
             LockToken IValueTaskSource<LockToken>.GetResult(short token) => new LockToken(_mutex, LockState.GetResult(ref _items[token].Token));
 
             ValueTask<LockToken> IAsyncPendingLockToken.GetTask(short key) => new ValueTask<LockToken>(this, key);
-
-            bool IAsyncPendingLockToken.IsCanceled(short key) => LockState.IsCanceled(Volatile.Read(ref _items[key].Token));
 
             bool IPendingLockToken.TrySetResult(short key, int token)
             {
