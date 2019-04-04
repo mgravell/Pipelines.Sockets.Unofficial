@@ -22,6 +22,9 @@
   <PropertyGroup Condition="'$(TargetFramework)'=='netcoreapp2.1'">
     <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS</DefineConstants>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)'=='netcoreapp2.2'">
+    <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS</DefineConstants>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(TargetFramework)'=='netcoreapp3.0'">
     <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS</DefineConstants><!--;RANGES-->
   </PropertyGroup>

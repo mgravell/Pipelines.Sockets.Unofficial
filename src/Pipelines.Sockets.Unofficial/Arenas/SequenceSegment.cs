@@ -64,8 +64,20 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Creates a new SequenceSegment, optionally attaching the segment to an existing chain
         /// </summary>
         protected SequenceSegment(Memory<T> memory, SequenceSegment<T> previous = null)
+            => Init(memory, previous);
+
+        /// <summary>
+        /// Reconfigure an existing SequenceSegment; this may result in undefined behaviour in existing chains,
+        /// and should only be used if you control the lifetime of the sequences using this segment
+        /// </summary>
+        protected void Init(Memory<T> memory, SequenceSegment<T> previous = null)
         {
-            if (previous != null)
+            Next = null;
+            if (previous == null)
+            {
+                RunningIndex = 0;
+            }
+            else
             {
                 var oldNext = previous.Next;
                 if (oldNext != null) Throw.InvalidOperation("The previous segment already has an onwards chain");
@@ -74,6 +86,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
             Memory = memory; // also sets Length
         }
+
+        /// <summary>
+        /// Reconfigure an existing SequenceSegment; this may result in undefined behaviour in existing chains,
+        /// and should only be used if you control the lifetime of the sequences using this segment
+        /// </summary>
+        protected void SetNext(SequenceSegment<T> next) => Next = next;
 
         int ISegment.ElementSize => Unsafe.SizeOf<T>();
         void IDisposable.Dispose() { } // just to satisfy IMemoryOwner<T>
@@ -135,6 +153,28 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             get => (SequenceSegment<T>)base.Next;
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             private set => base.Next = value;
+        }
+        
+        /// <summary>
+        /// Resets the Memory associated with this sequence; this may result in undefined behaviour in existing chains,
+        /// and should only be used if you control the lifetime of the sequences using this segment
+        /// </summary>
+        protected Memory<T> ResetMemory()
+        {
+            var old = Memory;
+            Memory = default;
+            return old;
+        }
+
+        /// <summary>
+        /// Resets the next segment associated with this sequence; this may result in undefined behaviour in existing chains,
+        /// and should only be used if you control the lifetime of the sequences using this segment
+        /// </summary>
+        protected SequenceSegment<T> ResetNext()
+        {
+            var old = Next;
+            Next = default;
+            return old;
         }
 
         /// <summary>

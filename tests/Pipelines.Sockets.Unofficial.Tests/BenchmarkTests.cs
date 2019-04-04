@@ -130,4 +130,29 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact] public Task SemaphoreSlim_ConcurrentLoadAsync() => Run(_ => _.SemaphoreSlim_ConcurrentLoadAsync());
         [Fact] public Task SemaphoreSlim_Sync() => Run(_ => _.SemaphoreSlim_Sync());
     }
+
+    public class StreamBenchmarkTests : BenchmarkTests<StreamBenchmarks>
+    {
+        public StreamBenchmarkTests(ITestOutputHelper output) : base(output, 10) { }
+        [Fact] public Task MemoryStreamDefault() => Run(_ => _.MemoryStreamDefault());
+        [Fact] public Task MemoryStreamPreSize() => Run(_ => _.MemoryStreamPreSize());
+        [Fact] public Task RecyclableMemoryStreamDefault() => Run(_ => _.RecyclableMemoryStreamDefault());
+        [Fact] public Task RecyclableMemoryStreamPreSize() => Run(_ => _.RecyclableMemoryStreamPreSize());
+        [Fact] public Task SequenceStreamDefault() => Run(_ => _.SequenceStreamDefault());
+        [Fact] public Task SequenceStreamPreSize() => Run(_ => _.SequenceStreamPreSize());
+    }
+
+    public class ListBenchmarkTests : BenchmarkTests<ListBenchmarks>
+    {
+        public ListBenchmarkTests(ITestOutputHelper output) : base(output, 10) { }
+
+        [Fact] public Task ListDefault_Add() => Run(_ => _.ListDefault_Add());
+        [Fact] public Task ListPresized_Add() => Run(_ => _.ListPresized_Add());
+        [Fact] public Task ListDefault_AddRange() => Run(_ => _.ListDefault_AddRange());
+        [Fact] public Task ListPresized_AddRange() => Run(_ => _.ListPresized_AddRange());
+        [Fact] public Task SequenceListDefault_Add() => Run(_ => _.SequenceListDefault_Add());
+        [Fact] public Task SequenceListPresized_Add() => Run(_ => _.SequenceListPresized_Add());
+        [Fact] public Task SequenceListDefault_AddRange() => Run(_ => _.SequenceListDefault_AddRange());
+        [Fact] public Task SequenceListPresized_AddRange() => Run(_ => _.SequenceListPresized_AddRange());
+    }
 }
