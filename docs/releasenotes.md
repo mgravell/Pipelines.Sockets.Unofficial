@@ -1,8 +1,8 @@
 # Release Notes
 
-## unreleased
+## 2.0.22
 
-- add API to iterate multi-cast delegates without allocating
+- add APIs to work with multi-cast delegates without allocating
 
 ## 2.0.20
 
