@@ -27,8 +27,7 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\Benchmark\ArenaBenchmarks.cs" />
-    <Compile Include="..\Benchmark\LockBenchmarks.cs" />
+    <Compile Include="..\Benchmark\*Benchmarks.cs" />
     <Compile Include="..\Benchmark\Utils.cs" />
   </ItemGroup>
   <ItemGroup>
