@@ -1,5 +1,9 @@
 # Release Notes
 
+## unreleased
+
+- add API to iterate multi-cast delegates without allocating
+
 ## 2.0.20
 
 - performance: improve high-congestion performance of Wait and improve low-congestion performance of WaitAsync (both paths now try spin-wait on first competitor **only**)
