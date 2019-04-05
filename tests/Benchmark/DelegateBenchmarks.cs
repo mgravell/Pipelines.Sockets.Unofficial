@@ -67,5 +67,37 @@ namespace Benchmark
             }
             return count;
         }
+
+        [Benchmark(OperationsPerInvoke = PER_TEST)]
+        [BenchmarkCategory(nameof(GetEnumerator_CheckSingle))]
+        public void GetEnumerator_CheckSingle_Nil() => GetEnumerator_CheckSingle(_nil).AssertIs(0);
+        [Benchmark(OperationsPerInvoke = PER_TEST)]
+        [BenchmarkCategory(nameof(GetEnumerator_CheckSingle))]
+        public void GetEnumerator_CheckSingle_Single() => GetEnumerator_CheckSingle(_single).AssertIs(1);
+        [Benchmark(OperationsPerInvoke = PER_TEST)]
+        [BenchmarkCategory(nameof(GetEnumerator_CheckSingle))]
+        public void GetEnumerator_CheckSingle_Dual() => GetEnumerator_CheckSingle(_dual).AssertIs(2);
+
+        private static int GetEnumerator_CheckSingle(Func<int> handler)
+        {
+            int count = -1;
+            for (int i = 0; i < PER_TEST; i++)
+            {
+                count = 0;
+                if (handler == null) {}
+                else if (handler.IsSingle())
+                {
+                    count = handler();
+                }
+                else
+                {
+                    foreach (var sub in handler.AsEnumerable())
+                    {
+                        count += sub();
+                    }
+                }
+            }
+            return count;
+        }
     }
 }

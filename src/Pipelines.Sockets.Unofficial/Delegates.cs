@@ -27,11 +27,18 @@ namespace Pipelines.Sockets.Unofficial
         public static DelegateEnumerable<T> AsEnumerable<T>(this T handler) where T : MulticastDelegate
             => new DelegateEnumerable<T>(handler);
 
-        private static readonly Func<MulticastDelegate, object> _getArr = GetGetter<object>("_invocationList");
-        private static readonly Func<MulticastDelegate, IntPtr> _getCount = GetGetter<IntPtr>("_invocationCount");
-        private static readonly bool _isOptimized = _getArr != null & _getCount != null;
+        /// <summary>
+        /// Indicates whether a particular delegate is known to be a single-target delegate
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsSingle(this MulticastDelegate handler)
+            => s_getArr != null && s_getArr(handler) == null;
 
-        internal static bool IsOptimized => _isOptimized;
+        private static readonly Func<MulticastDelegate, object> s_getArr = GetGetter<object>("_invocationList");
+        private static readonly Func<MulticastDelegate, IntPtr> s_getCount = GetGetter<IntPtr>("_invocationCount");
+        private static readonly bool s_isAvailable = s_getArr != null & s_getCount != null;
+
+        internal static bool IsAvailable => s_isAvailable;
 
         private static Func<MulticastDelegate, T> GetGetter<T>(string fieldName)
         {
@@ -94,16 +101,16 @@ namespace Pipelines.Sockets.Unofficial
             {
                 Debug.Assert(handler != null);
                 _handler = handler;
-                if (_isOptimized)
+                if (s_isAvailable)
                 {
-                    _arr = (object[])_getArr(handler);
+                    _arr = (object[])s_getArr(handler);
                     if (_arr == null)
                     {
                         _count = 1;
                     }
                     else
                     {
-                        _count = (int)_getCount(handler);
+                        _count = (int)s_getCount(handler);
                     }
                 }
                 else

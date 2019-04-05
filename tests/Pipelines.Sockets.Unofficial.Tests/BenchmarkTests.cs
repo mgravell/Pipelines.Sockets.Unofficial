@@ -142,7 +142,18 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact] public Task GetInvocationList_Single() => Run(_ => _.GetInvocationList_Single());
         [Fact] public Task GetInvocationList_Dual() => Run(_ => _.GetInvocationList_Dual());
 
-        [Fact] public void IsOptimized() => Assert.True(Delegates.IsOptimized);
+        [Fact] public Task GetEnumerator_CheckSingle_Nil() => Run(_ => _.GetEnumerator_CheckSingle_Nil());
+        [Fact] public Task GetEnumerator_CheckSingle_Single() => Run(_ => _.GetEnumerator_CheckSingle_Single());
+        [Fact] public Task GetEnumerator_CheckSingle_Dual() => Run(_ => _.GetEnumerator_CheckSingle_Dual());
+
+        [Fact]
+        public void IsAvailable() => Assert.True(Delegates.IsAvailable);
+
+        static readonly Action _single = () => { }, _dual = _single + _single;
+        [Fact]
+        public void Single_Ack() => Assert.True(_single.IsSingle());
+        [Fact]
+        public void Single_Nack() => Assert.False(_dual.IsSingle());
 
     }
 }
