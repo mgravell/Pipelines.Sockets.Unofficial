@@ -130,4 +130,30 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact] public Task SemaphoreSlim_ConcurrentLoadAsync() => Run(_ => _.SemaphoreSlim_ConcurrentLoadAsync());
         [Fact] public Task SemaphoreSlim_Sync() => Run(_ => _.SemaphoreSlim_Sync());
     }
+    public class DelegateBenchmarkTests : BenchmarkTests<DelegateBenchmarks>
+    {
+        public DelegateBenchmarkTests(ITestOutputHelper output) : base(output, 10) { }
+
+        [Fact] public Task GetEnumerator_Nil() => Run(_ => _.GetEnumerator_Nil());
+        [Fact] public Task GetEnumerator_Single() => Run(_ => _.GetEnumerator_Single());
+        [Fact] public Task GetEnumerator_Dual() => Run(_ => _.GetEnumerator_Dual());
+
+        [Fact] public Task GetInvocationList_Nil() => Run(_ => _.GetInvocationList_Nil());
+        [Fact] public Task GetInvocationList_Single() => Run(_ => _.GetInvocationList_Single());
+        [Fact] public Task GetInvocationList_Dual() => Run(_ => _.GetInvocationList_Dual());
+
+        [Fact] public Task GetEnumerator_CheckSingle_Nil() => Run(_ => _.GetEnumerator_CheckSingle_Nil());
+        [Fact] public Task GetEnumerator_CheckSingle_Single() => Run(_ => _.GetEnumerator_CheckSingle_Single());
+        [Fact] public Task GetEnumerator_CheckSingle_Dual() => Run(_ => _.GetEnumerator_CheckSingle_Dual());
+
+        [Fact]
+        public void IsAvailable() => Assert.True(Delegates.IsAvailable);
+
+        static readonly Action _single = () => { }, _dual = _single + _single;
+        [Fact]
+        public void Single_Ack() => Assert.True(_single.IsSingle());
+        [Fact]
+        public void Single_Nack() => Assert.False(_dual.IsSingle());
+
+    }
 }
