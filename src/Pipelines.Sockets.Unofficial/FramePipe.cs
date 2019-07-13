@@ -14,68 +14,17 @@ using System.Diagnostics;
 #pragma warning disable CS1591
 namespace Pipelines.Sockets.Unofficial
 {
+    public interface IMarshaller<T>
+    {
+        T Read(ReadOnlySequence<byte> payload);
+        void Write(IBufferWriter<byte> writer);
+    }
     public interface IDuplexChannel<TWrite, TRead>
     {
         ChannelReader<TRead> Input { get; }
         ChannelWriter<TWrite> Output { get; }
     }
     public interface IDuplexChannel<T> : IDuplexChannel<T, T> { }
-
-    public readonly struct Frame : IDisposable
-    {
-        public override string ToString() => $"{Payload.Length} bytes, flags: {_socketFlags}";
-        public override bool Equals(object obj) => throw new NotSupportedException();
-        public override int GetHashCode() => throw new NotSupportedException();
-
-        private readonly SocketFlags _socketFlags;
-        private readonly ReadOnlySequence<byte> _payload;
-        private readonly object _onDispose;
-        public Frame(ReadOnlySequence<byte> payload, Action<ReadOnlySequence<byte>> onDispose = null, SocketFlags socketFlags = SocketFlags.None)
-        {
-            _payload = payload;
-            _socketFlags = socketFlags;
-            _onDispose = onDispose;
-        }
-        public Frame(ReadOnlyMemory<byte> payload, Action<ReadOnlyMemory<byte>> onDispose = null, SocketFlags socketFlags = SocketFlags.None)
-        {
-            _payload = new ReadOnlySequence<byte>(payload);
-            _socketFlags = socketFlags;
-            _onDispose = onDispose;
-        }
-        public Frame(ReadOnlyMemory<byte> payload, IDisposable onDispose, SocketFlags socketFlags = SocketFlags.None)
-        {
-            _payload = new ReadOnlySequence<byte>(payload);
-            _socketFlags = socketFlags;
-            _onDispose = onDispose;
-        }
-        public Frame(IMemoryOwner<byte> payload, SocketFlags socketFlags = SocketFlags.None)
-        {
-            _payload = new ReadOnlySequence<byte>(payload.Memory);
-            _socketFlags = socketFlags;
-            _onDispose = payload;
-        }
-        public Frame(ArraySegment<byte> payload, Action<ArraySegment<byte>> onDispose = null, SocketFlags socketFlags = SocketFlags.None)
-        {
-            var memory = new ReadOnlyMemory<byte>(payload.Array, payload.Offset, payload.Count);
-            _payload = new ReadOnlySequence<byte>(memory);
-            _socketFlags = socketFlags;
-            _onDispose = onDispose;
-        }
-
-        public SocketFlags SocketFlags => _socketFlags;
-        public ReadOnlySequence<byte> Payload => _payload;
-        public void Dispose()
-        {
-            switch (_onDispose)
-            {
-                case null: break;
-                case IMemoryOwner<byte> mo: mo.Dispose(); break;
-                case Action<ReadOnlySequence<byte>> aros: aros(_payload); break;
-                case Action<ReadOnlyMemory<byte>> aas: aas(_payload.First); break;
-                case Action<ArraySegment<byte>> aas: aas(_payload.First.GetArray()); break;
-            }
-        }
-    }
 
     public sealed class FrameConnectionOptions
     {
@@ -104,14 +53,26 @@ namespace Pipelines.Sockets.Unofficial
         public BoundedChannelOptions ChannelOptions { get; }
         public bool UseSynchronizationContext { get; }
     }
-    public abstract class SocketFrameConnection : IDuplexChannel<Frame>, IDisposable
+    static class DatagramConnection
     {
-        public abstract ChannelReader<Frame> Input { get; }
-
-        public abstract ChannelWriter<Frame> Output { get; }
-
-        public static SocketFrameConnection Create(
+        public static IDuplexChannel<TMessage> Create<TMarshaller, TMessage>(
             EndPoint endpoint,
+            TMarshaller marshaller) where TMarshaller : IMarshaller<TMessage>
+        {
+            return SocketFrameConnection<TMarshaller, TMessage>.Create(
+                endpoint,
+                marshaller);
+        }
+    }
+    internal abstract class SocketFrameConnection<TMarshaller, TMessage> : IDuplexChannel<TMessage>, IDisposable
+    {
+        public abstract ChannelReader<TMessage> Input { get; }
+
+        public abstract ChannelWriter<TMessage> Output { get; }
+
+        public static SocketFrameConnection<TMarshaller, TMessage> Create(
+            EndPoint endpoint,
+            TMarshaller marshaller,
             FrameConnectionOptions sendOptions = null,
             FrameConnectionOptions receiveOptions = null,
             string name = null,
@@ -135,13 +96,16 @@ namespace Pipelines.Sockets.Unofficial
 
         private readonly SocketConnectionOptions _options;
         private readonly string _name;
+        private readonly TMarshaller _marshaller;
 #if DEBUG
         private readonly Action<string> _log;
 #endif
         [Conditional("DEBUG")]
         protected internal void DebugLog(string message)
         {
+#if DEBUG
             if (_log != null) _log.Invoke("[" + _name + "]: " + message);
+#endif
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -186,18 +150,26 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public SocketError SocketError { get; protected set; }
 
-        protected SocketFrameConnection(string name, SocketConnectionOptions options, Action<string> log)
+        protected SocketFrameConnection(string name, SocketConnectionOptions options,
+            TMarshaller marshaller
+#if DEBUG
+            , Action<string> log
+#endif
+            )
         {
             _name = string.IsNullOrWhiteSpace(name) ? GetType().FullName : name.Trim();
             _options = options;
+            _marshaller = marshaller;
+#if DEBUG
             _log = log;
+#endif
         }
 
         public override string ToString() => _name;
 
         public abstract void Dispose();
 
-        private sealed class DefaultSocketFrameConnection : SocketFrameConnection
+        private sealed class DefaultSocketFrameConnection : SocketFrameConnection<TMarshaller, TMessage>
         {
             private static readonly BoundedChannelOptions s_DefaultSendChannelOptions = new BoundedChannelOptions(capacity: 1024)
             { SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait, AllowSynchronousContinuations = true };
@@ -207,15 +179,16 @@ namespace Pipelines.Sockets.Unofficial
             private readonly Socket _socket;
             private readonly FrameConnectionOptions _sendOptions;
             private readonly FrameConnectionOptions _receiveOptions;
-            private readonly Channel<Frame> _sendToSocket;
-            private readonly Channel<Frame> _receivedFromSocket;
-            internal DefaultSocketFrameConnection(Socket socket, string name,
+            private readonly Channel<TMessage> _sendToSocket;
+            private readonly Channel<TMessage> _receivedFromSocket;
+            internal DefaultSocketFrameConnection(
+                Socket socket, string name, TMarshaller marshaller,
                 FrameConnectionOptions sendOptions, FrameConnectionOptions receiveOptions,
                 SocketConnectionOptions connectionOptions
 #if DEBUG
                 , Action<string> log
 #endif
-                ) : base(name, connectionOptions
+                ) : base(name, connectionOptions, marshaller
 #if DEBUG
                     , log
 #endif
@@ -225,8 +198,8 @@ namespace Pipelines.Sockets.Unofficial
                 _sendOptions = sendOptions ?? FrameConnectionOptions.Default;
                 _receiveOptions = receiveOptions ?? FrameConnectionOptions.Default;
 
-                _sendToSocket = Channel.CreateBounded<Frame>(_sendOptions.ChannelOptions ?? s_DefaultSendChannelOptions);
-                _receivedFromSocket = Channel.CreateBounded<Frame>(_receiveOptions.ChannelOptions ?? s_DefaultReceiveChannelOptions);
+                _sendToSocket = Channel.CreateBounded<TMessage>(_sendOptions.ChannelOptions ?? s_DefaultSendChannelOptions);
+                _receivedFromSocket = Channel.CreateBounded<TMessage>(_receiveOptions.ChannelOptions ?? s_DefaultReceiveChannelOptions);
 
                 _sendOptions.ReaderScheduler.Schedule(s_DoSendAsync, this);
                 _receiveOptions.ReaderScheduler.Schedule(s_DoReceiveAsync, this);
