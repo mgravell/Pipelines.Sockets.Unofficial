@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.IO;
 using System.Diagnostics;
+using System.Text;
 
 #pragma warning disable CS1591
 namespace Pipelines.Sockets.Unofficial
@@ -17,7 +18,7 @@ namespace Pipelines.Sockets.Unofficial
     public interface IMarshaller<T>
     {
         T Read(ReadOnlySequence<byte> payload);
-        void Write(IBufferWriter<byte> writer);
+        void Write(T payload, IBufferWriter<byte> writer);
     }
     public interface IDuplexChannel<TWrite, TRead>
     {
@@ -57,13 +58,63 @@ namespace Pipelines.Sockets.Unofficial
     {
         public static IDuplexChannel<TMessage> Create<TMarshaller, TMessage>(
             EndPoint endpoint,
-            TMarshaller marshaller) where TMarshaller : IMarshaller<TMessage>
+            TMarshaller marshaller,
+            string name
+#if DEBUG
+            , Action<string> log
+#endif
+
+            ) where TMarshaller : IMarshaller<TMessage>
         {
             return SocketFrameConnection<TMarshaller, TMessage>.Create(
                 endpoint,
-                marshaller);
+                marshaller, name: name
+#if DEBUG
+                , log: log
+#endif
+                );
         }
     }
+    static class Marshaller
+    {
+        public static StringMarshaller ASCII { get; } = new StringMarshaller(Encoding.ASCII);
+        public static StringMarshaller UTF8 { get; } = new StringMarshaller(Encoding.UTF8);
+        public struct StringMarshaller : IMarshaller<string>
+        {
+            public override string ToString() => _encoding?.EncodingName ?? nameof(StringMarshaller);
+
+            public unsafe string Read(ReadOnlySequence<byte> payload)
+            {
+                if (payload.IsEmpty) return "";
+                if (!payload.IsSingleSegment) throw new NotImplementedException();
+                var span = payload.First.Span;
+                fixed (byte* bPtr = span)
+                {
+                    return _encoding.GetString(bPtr, span.Length);
+                }
+            }
+
+            public unsafe void Write(string payload, IBufferWriter<byte> writer)
+            {
+                if (string.IsNullOrEmpty(payload)) return;
+                var span = writer.GetSpan(_encoding.GetByteCount(payload));
+                fixed (char* cPtr = payload)
+                fixed (byte* bPtr = span)
+                {
+                    int bytes = _encoding.GetBytes(cPtr, payload.Length, bPtr, span.Length);
+                    writer.Advance(bytes);
+                }
+            }
+
+            private Encoding _encoding;
+
+            public StringMarshaller(Encoding encoding)
+            {
+                _encoding = encoding ?? throw new ArgumentNullException(nameof(encoding));
+            }
+        }
+    }
+
     internal abstract class SocketFrameConnection<TMarshaller, TMessage> : IDuplexChannel<TMessage>, IDisposable
         where TMarshaller : IMarshaller<TMessage>
     {
@@ -170,7 +221,8 @@ namespace Pipelines.Sockets.Unofficial
 
         public abstract void Dispose();
 
-        private sealed class DefaultSocketFrameConnection : SocketFrameConnection<TMarshaller, TMessage>
+        private sealed class DefaultSocketFrameConnection : SocketFrameConnection<TMarshaller, TMessage>,
+            IBufferWriter<byte>
         {
             private static readonly BoundedChannelOptions s_DefaultChannelOptions = new BoundedChannelOptions(capacity: 1024)
             { SingleReader = false, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait, AllowSynchronousContinuations = true };
@@ -221,6 +273,19 @@ namespace Pipelines.Sockets.Unofficial
 
             byte[] _writeBuffer;
             int _writeOffset;
+            Span<byte> IBufferWriter<byte>.GetSpan(int sizeHint)
+                => new Span<byte>(_writeBuffer, _writeOffset, _sendOptions.MaximumFrameSize - _writeOffset);
+            Memory<byte> IBufferWriter<byte>.GetMemory(int sizeHint)
+                => new Memory<byte>(_writeBuffer, _writeOffset, _sendOptions.MaximumFrameSize - _writeOffset);
+
+            void IBufferWriter<byte>.Advance(int bytes)
+            {
+                if (bytes < 0 | (bytes + _writeOffset) > _sendOptions.MaximumFrameSize)
+                    throw new ArgumentOutOfRangeException(nameof(bytes));
+                _writeOffset += bytes;
+            }
+
+
             void RentWriteBuffer()
             {
                 _writeBuffer = ArrayPool<byte>.Shared.Rent(_sendOptions.MaximumFrameSize);
@@ -247,20 +312,17 @@ namespace Pipelines.Sockets.Unofficial
                         RentWriteBuffer();
                         DebugLog("Reading sync frames...");
                         bool isFirst = true;
-                        while (_sendToSocket.Reader.TryRead(out var frame))
+                        while (_sendToSocket.Reader.TryRead(out var message))
                         {
-                            DebugLog($"Received {frame}");
+                            DebugLog($"Received {message}");
 
                             ResetWriteBuffer();
-                            _marshaller.Write(this);
+                            _marshaller.Write(message, this);
 
                             if (_writeOffset == 0) continue; // empty payload
                             if (args == null)
                             {
-                                args = new SocketAwaitableEventArgs(InlineWrites ? null : _sendOptions.ReaderScheduler)
-                                {
-                                    BufferList = new List<ArraySegment<byte>>()
-                                };
+                                args = new SocketAwaitableEventArgs(InlineWrites ? null : _sendOptions.ReaderScheduler);
                             }
 
                             if (isFirst) args.SetBuffer(_writeBuffer, 0, _writeOffset);

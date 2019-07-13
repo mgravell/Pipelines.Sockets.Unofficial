@@ -27,8 +27,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
         {
             var endpoint = new IPEndPoint(IPAddress.Loopback, 10134);
             Action<string> log = Log;
-            using (var server = SocketFrameConnection.Create(endpoint, name: "server", log: log))
-            using (var client = SocketFrameConnection.Create(endpoint, name: "client", log: log))
+            var server = DatagramConnection.Create(endpoint, Marshaller.UTF8, name: "server", log: log);
+            var client = DatagramConnection.Create(endpoint, Marshaller.UTF8, name: "client", log: log);
             {
                 var serverShutdown = Task.Run(() => RunPingServer(server));
 
