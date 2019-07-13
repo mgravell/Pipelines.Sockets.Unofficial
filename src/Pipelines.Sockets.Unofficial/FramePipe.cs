@@ -65,6 +65,7 @@ namespace Pipelines.Sockets.Unofficial
         }
     }
     internal abstract class SocketFrameConnection<TMarshaller, TMessage> : IDuplexChannel<TMessage>, IDisposable
+        where TMarshaller : IMarshaller<TMessage>
     {
         public abstract ChannelReader<TMessage> Input { get; }
 
@@ -87,7 +88,7 @@ namespace Pipelines.Sockets.Unofficial
 
             var socket = new Socket(addressFamily, SocketType.Dgram, protocolType);
             SocketConnection.SetRecommendedServerOptions(socket); // fine for client too
-            return new DefaultSocketFrameConnection(socket, name, sendOptions, receiveOptions, connectionOptions
+            return new DefaultSocketFrameConnection(socket, name, marshaller, sendOptions, receiveOptions, connectionOptions
 #if DEBUG
                 , log
 #endif
@@ -171,10 +172,8 @@ namespace Pipelines.Sockets.Unofficial
 
         private sealed class DefaultSocketFrameConnection : SocketFrameConnection<TMarshaller, TMessage>
         {
-            private static readonly BoundedChannelOptions s_DefaultSendChannelOptions = new BoundedChannelOptions(capacity: 1024)
-            { SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait, AllowSynchronousContinuations = true };
-            private static readonly BoundedChannelOptions s_DefaultReceiveChannelOptions = new BoundedChannelOptions(capacity: 1024)
-            { SingleReader = false, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait, AllowSynchronousContinuations = true };
+            private static readonly BoundedChannelOptions s_DefaultChannelOptions = new BoundedChannelOptions(capacity: 1024)
+            { SingleReader = false, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait, AllowSynchronousContinuations = true };
 
             private readonly Socket _socket;
             private readonly FrameConnectionOptions _sendOptions;
@@ -198,8 +197,8 @@ namespace Pipelines.Sockets.Unofficial
                 _sendOptions = sendOptions ?? FrameConnectionOptions.Default;
                 _receiveOptions = receiveOptions ?? FrameConnectionOptions.Default;
 
-                _sendToSocket = Channel.CreateBounded<TMessage>(_sendOptions.ChannelOptions ?? s_DefaultSendChannelOptions);
-                _receivedFromSocket = Channel.CreateBounded<TMessage>(_receiveOptions.ChannelOptions ?? s_DefaultReceiveChannelOptions);
+                _sendToSocket = Channel.CreateBounded<TMessage>(_sendOptions.ChannelOptions ?? s_DefaultChannelOptions);
+                _receivedFromSocket = Channel.CreateBounded<TMessage>(_receiveOptions.ChannelOptions ?? s_DefaultChannelOptions);
 
                 _sendOptions.ReaderScheduler.Schedule(s_DoSendAsync, this);
                 _receiveOptions.ReaderScheduler.Schedule(s_DoReceiveAsync, this);
@@ -214,12 +213,28 @@ namespace Pipelines.Sockets.Unofficial
                 try { _receivedFromSocket.Writer.TryComplete(); } catch { }
             }
 
-            public override ChannelReader<Frame> Input => _receivedFromSocket.Reader;
-            public override ChannelWriter<Frame> Output => _sendToSocket.Writer;
+            public override ChannelReader<TMessage> Input => _receivedFromSocket.Reader;
+            public override ChannelWriter<TMessage> Output => _sendToSocket.Writer;
 
             static readonly Action<object> s_DoSendAsync = state => _ = ((DefaultSocketFrameConnection)state).DoSendAsync();
             static readonly Action<object> s_DoReceiveAsync = state => _ = ((DefaultSocketFrameConnection)state).DoReceiveAsync();
 
+            byte[] _writeBuffer;
+            int _writeOffset;
+            void RentWriteBuffer()
+            {
+                _writeBuffer = ArrayPool<byte>.Shared.Rent(_sendOptions.MaximumFrameSize);
+            }
+            void ResetWriteBuffer()
+            {
+                _writeOffset = 0;
+            }
+            void ReturnWriteBuffer()
+            {
+                if (_writeBuffer != null)
+                    ArrayPool<byte>.Shared.Return(_writeBuffer);
+                _writeBuffer = null;
+            }
             private async Task DoSendAsync()
             {
                 Exception error = null;
@@ -229,33 +244,40 @@ namespace Pipelines.Sockets.Unofficial
                     DebugLog("Starting send loop...");
                     while (await _sendToSocket.Reader.WaitToReadAsync())
                     {
+                        RentWriteBuffer();
                         DebugLog("Reading sync frames...");
+                        bool isFirst = true;
                         while (_sendToSocket.Reader.TryRead(out var frame))
                         {
                             DebugLog($"Received {frame}");
 
-                            using (frame)
+                            ResetWriteBuffer();
+                            _marshaller.Write(this);
+
+                            if (_writeOffset == 0) continue; // empty payload
+                            if (args == null)
                             {
-                                if (args == null)
+                                args = new SocketAwaitableEventArgs(InlineWrites ? null : _sendOptions.ReaderScheduler)
                                 {
-                                    args = new SocketAwaitableEventArgs(InlineWrites ? null : _sendOptions.ReaderScheduler)
-                                    {
-                                        BufferList = new List<ArraySegment<byte>>()
-                                    };
-                                }
-                                SetBuffer(args, frame);
-                                if (_socket.SendAsync(args))
-                                {
-                                    // will complete asynchronously
-                                }
-                                else
-                                {
-                                    // completed synchronously - need to mark completed
-                                    args.Complete();
-                                }
-                                await args;
+                                    BufferList = new List<ArraySegment<byte>>()
+                                };
                             }
+
+                            if (isFirst) args.SetBuffer(_writeBuffer, 0, _writeOffset);
+                            else args.SetBuffer(0, _writeOffset);
+
+                            if (_socket.SendAsync(args))
+                            {
+                                // will complete asynchronously
+                            }
+                            else
+                            {
+                                // completed synchronously - need to mark completed
+                                args.Complete();
+                            }
+                            await args;
                         }
+                        ReturnWriteBuffer();
                     }
                     TrySetShutdown(PipeShutdownKind.WriteEndOfStream);
                 }
@@ -291,91 +313,46 @@ namespace Pipelines.Sockets.Unofficial
                     try { _socket.Shutdown(SocketShutdown.Send); } catch { }
                     try { _sendToSocket.Writer.TryComplete(error); } catch { }
                     if (args != null) try { args.Dispose(); } catch { }
+                    ReturnWriteBuffer();
                 }
             }
 
-
-            private sealed class CountedLease : IDisposable
+            async ValueTask OnReceivedAsync(byte[] payload, int bytes)
             {
-                private IMemoryOwner<byte> _memoryOwner;
-                int _refCount;
-                public CountedLease(IMemoryOwner<byte> memoryOwner)
+                try
                 {
-                    _memoryOwner = memoryOwner;
-                    _refCount = 1;
+                    await Task.Yield();
+                    DebugLog("Deserializing payload...");
+                    var message = _marshaller.Read(new ReadOnlySequence<byte>(payload, 0, bytes));
+                    DebugLog("Writing received message to channel...");
+                    await _receivedFromSocket.Writer.WriteAsync(message);
                 }
-
-                public Memory<byte> Memory => _memoryOwner.Memory;
-                public void AddRef() => Interlocked.Increment(ref _refCount);
-                public void Release()
+                catch (Exception ex)
                 {
-                    if (Interlocked.Decrement(ref _refCount) == 0)
-                    {
-                        var tmp = Interlocked.Exchange(ref _memoryOwner, null);
-                        tmp?.Dispose();
-                    }
+                    DebugLog(ex.Message);
+                    TrySetShutdown(PipeShutdownKind.ReadException);
                 }
-
-                void IDisposable.Dispose() => Release();
-            }
-
-            // TODO: merge CountedLeaseSegment and CountedLease
-
-            sealed class CountedLeaseSegment : ReadOnlySequenceSegment<byte>
-            {
-                private readonly CountedLease _lease;
-                public CountedLeaseSegment(CountedLease lease, long runningIndex)
+                finally
                 {
-                    lease.AddRef();
-                    Memory = lease.Memory;
-                    RunningIndex = runningIndex;
-                    _lease = lease;
+                    if (payload != null)
+                        ArrayPool<byte>.Shared.Return(payload);
                 }
-                internal void SetNext(CountedLeaseSegment next)
-                {
-                    Next = next;
-                }
-
-                internal static readonly Action<ReadOnlySequence<byte>> ReleaseChain = ros =>
-                {
-                    var start = ros.Start;
-                    var node = start.GetObject() as CountedLeaseSegment;
-                    long remaining = ros.Length + start.GetInteger();
-
-                    while(remaining > 0)
-                    {
-                        remaining -= node.Memory.Length;
-                        node._lease.Release();
-                        node = (CountedLeaseSegment)node.Next;
-                    }
-                };
             }
 
             private async Task DoReceiveAsync()
             {
                 Exception error = null;
-                LinkedList<CountedLease> chunks = new LinkedList<CountedLease>();
-                var args = new SocketAwaitableEventArgs(InlineReads ? null : _receiveOptions.WriterScheduler)
-                {
-                    BufferList = new List<ArraySegment<byte>>()
-                };
+                var args = new SocketAwaitableEventArgs(InlineReads ? null : _receiveOptions.WriterScheduler);
+                byte[] rented = null;
+                ValueTask pending = default;
                 try
                 {
                     DebugLog("Starting receive loop...");
-                    int bytesAvailable = 0, start = 0;
                     while (true)
                     {
-                        DebugLog($"Preparing buffer; {bytesAvailable} available, need {_receiveOptions.MaximumFrameSize}");
-                        // make sure we have sufficient capacity for the receive frame
-                        while (bytesAvailable < _receiveOptions.MaximumFrameSize)
-                        {
-                            var lease = _receiveOptions.Pool.Rent(Math.Min(_receiveOptions.BlockSize, _receiveOptions.Pool.MaxBufferSize));
-                            chunks.AddLast(new CountedLease(lease));
-                            bytesAvailable += lease.Memory.Length;
-                        }
-                        DebugLog($"Buffer prepared; {bytesAvailable} available");
-
-                        SetBuffer(args, chunks, start);
+                        rented = ArrayPool<byte>.Shared.Rent(_receiveOptions.MaximumFrameSize);
+                        DebugLog($"Rented buffer; {rented.Length} available");
+                        args.SetBuffer(rented, 0, _receiveOptions.MaximumFrameSize);
 
                         DebugLog($"Args configured; calling ReceiveAsync");
                         int bytes;
@@ -396,28 +373,10 @@ namespace Pipelines.Sockets.Unofficial
                         DebugLog($"Received: {bytes} bytes");
                         if (bytes <= 0) break;
 
-                        // create a payload
-                        var frame = CreateFrame(chunks, start, bytes, args.SocketFlags);
-                        await _receivedFromSocket.Writer.WriteAsync(frame);
-
-                        // release the chunks that are full
-                        while (bytes > 0)
-                        {
-                            var firstChunk = chunks.First.Value;
-                            int len = firstChunk.Memory.Length;
-                            if (bytes >= len)
-                            {
-                                // fully used; drop it
-                                chunks.RemoveFirst();
-                                bytes -= len;
-                                start = 0;
-                            }
-                            else
-                            {
-                                start += bytes;
-                                break;
-                            }
-                        }
+                        // we'll have at most one message deserializing while we fetch new data
+                        await pending; // wait for the last queued item to finish (backlog etc)
+                        pending = OnReceivedAsync(rented, bytes); // don't await the new one yet
+                        rented = null; // ownership transferred
                     }
                     TrySetShutdown(PipeShutdownKind.ReadEndOfStream);
                 }
@@ -452,92 +411,7 @@ namespace Pipelines.Sockets.Unofficial
                     try { _socket.Shutdown(SocketShutdown.Receive); } catch { }
                     try { _receivedFromSocket.Writer.Complete(error); } catch { }
                     try { args.Dispose(); } catch { }
-                    try
-                    {
-                        foreach (var chunk in chunks)
-                        {
-                            try { chunk.Release(); } catch { }
-                        }
-                    }
-                    catch { }
-                }
-            }
-
-            private Frame CreateFrame(LinkedList<CountedLease> chunks, int start, int bytes, SocketFlags socketFlags)
-            {
-                if (bytes == 0)
-                {
-                    return new Frame(new ReadOnlyMemory<byte>(Array.Empty<byte>()), socketFlags: socketFlags);
-                }
-                var node = chunks.First;
-
-                var lease = node.Value;
-                var mem = lease.Memory;
-                int len = mem.Length - start;
-                if (len >= bytes)
-                {
-                    lease.AddRef();
-                    return new Frame(mem.Slice(start, bytes), lease, socketFlags);
-                }
-
-                // multi-segment
-                var firstSegment = new CountedLeaseSegment(lease, 0L);
-                var endSegment = firstSegment;
-                var runningIndex = len;
-                bytes -= len;
-
-                while (bytes > 0)
-                {
-                    node = node.Next;
-                    lease = node.Value;
-                    mem = lease.Memory;
-                    len = Math.Min(mem.Length, bytes);
-                    var newSegment = new CountedLeaseSegment(lease, runningIndex);
-                    runningIndex += len;
-                    bytes -= len;
-
-                    endSegment.SetNext(newSegment);
-                    endSegment = newSegment;
-                }
-                return new Frame(new ReadOnlySequence<byte>(firstSegment, start, endSegment, len), CountedLeaseSegment.ReleaseChain, socketFlags);
-            }
-
-            private void SetBuffer(SocketAwaitableEventArgs args, LinkedList<CountedLease> chunks, int start)
-            {
-                var list = args.BufferList;
-                list.Clear();
-                foreach (var chunk in chunks)
-                {
-                    var segment = chunk.Memory.GetArray();
-                    if (start != 0)
-                    {
-                        segment = new ArraySegment<byte>(segment.Array, segment.Offset + start, segment.Count - start);
-                        start = 0;
-                    }
-                    list.Add(segment);
-                }
-            }
-        }
-
-        private static void SetBuffer(SocketAwaitableEventArgs args, Frame frame)
-        {
-            args.SocketFlags = frame.SocketFlags;
-            var payload = frame.Payload;
-            var list = args.BufferList;
-            list.Clear();
-            if (payload.IsEmpty)
-            {
-                // nothing to do
-            }
-            else if (payload.IsSingleSegment)
-            {
-                list.Add(payload.First.GetArray());
-            }
-            else
-            {
-                foreach (var segment in payload)
-                {
-                    list.Add(segment.GetArray());
+                    if (rented != null) try { ArrayPool<byte>.Shared.Return(rented); } catch { }
                 }
             }
         }
