@@ -54,9 +54,9 @@ namespace Pipelines.Sockets.Unofficial
         public BoundedChannelOptions ChannelOptions { get; }
         public bool UseSynchronizationContext { get; }
     }
-    static class DatagramConnection
+    internal static class DatagramConnection<TMessage>
     {
-        public static IDuplexChannel<TMessage> Create<TMarshaller, TMessage>(
+        public static IDuplexChannel<TMessage> Create<TMarshaller>(
             EndPoint endpoint,
             TMarshaller marshaller,
             string name

@@ -27,18 +27,14 @@ namespace Pipelines.Sockets.Unofficial.Tests
         {
             var endpoint = new IPEndPoint(IPAddress.Loopback, 10134);
             Action<string> log = Log;
-            var server = DatagramConnection.Create(endpoint, Marshaller.UTF8, name: "server", log: log);
-            var client = DatagramConnection.Create(endpoint, Marshaller.UTF8, name: "client", log: log);
+            var server = DatagramConnection<string>.Create(endpoint, Marshaller.UTF8, name: "server", log: log);
+            var client = DatagramConnection<string>.Create(endpoint, Marshaller.UTF8, name: "client", log: log);
             {
                 var serverShutdown = Task.Run(() => RunPingServer(server));
 
-                // TODO: create a frame-builder that provides IBufferWriter<byte>
-                // API for constructing frames using the pool
-                var bytes = Encoding.ASCII.GetBytes("hello");
-                var frame = new Frame(bytes);
-
-                Log($"Client sending {frame.Payload.Length} bytes");
-                await client.Output.WriteAsync(frame);
+                const string message = "hello";
+                Log($"Client sending '{message}'");
+                await client.Output.WriteAsync(message);
                 Log($"Client sent, awaiting reply");
 
                 using (var reply = await client.Input.ReadAsync())
@@ -53,7 +49,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
         }
 
-        private async Task RunPingServer(IDuplexChannel<Frame> channel)
+        private async Task RunPingServer(IDuplexChannel<string> channel)
         {
             try
             {
@@ -64,10 +60,10 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 while (await channel.Input.WaitToReadAsync())
                 {
                     Log("Server reading frames...");
-                    while (channel.Input.TryRead(out var frame))
+                    while (channel.Input.TryRead(out var message))
                     {
-                        Log($"Server received {frame.Payload.Length} bytes");
-                        await channel.Output.WriteAsync(frame);
+                        Log($"Server received {message} bytes");
+                        await channel.Output.WriteAsync(message);
                         Log($"Server sent reply");
                     }
                 }
