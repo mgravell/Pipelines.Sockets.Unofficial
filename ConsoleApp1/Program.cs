@@ -1,34 +1,34 @@
 ﻿using System;
-using System.Buffers;
 using System.Net;
-using System.Text;
 using System.Threading.Tasks;
-using Xunit;
-using Xunit.Abstractions;
 
 namespace Pipelines.Sockets.Unofficial.Tests
 {
-    public class UdpTests
+    static class Program
     {
-        public UdpTests(ITestOutputHelper log) => _log = log;
-
-        private readonly ITestOutputHelper _log;
-
+        static Task Main()
+        {
+            var client = new TestClient();
+            return client.Basics();
+        }
+    }
+    public class TestClient
+    {
+        
         private void Log(string message)
         {
-            if (_log != null)
+            lock (this)
             {
-                lock (_log) { _log.WriteLine(message); }
+                Console.WriteLine(message);
             }
         }
 
-        [Fact]
         public async Task Basics()
         {
-            const int Port = 10134;
+            var endpoint = new IPEndPoint(IPAddress.Loopback, 10134);
             Action<string> log = Log;
-            using (var server = DatagramConnection<string>.Create(new IPEndPoint(IPAddress.Any, Port), Marshaller.UTF8, name: "server", log: log))
-            using (var client = DatagramConnection<string>.Create(new IPEndPoint(IPAddress.Loopback, Port), Marshaller.UTF8, name: "client", log: log))
+            var server = DatagramConnection<string>.Create(endpoint, Marshaller.UTF8, name: "server", log: log);
+            var client = DatagramConnection<string>.Create(endpoint, Marshaller.UTF8, name: "client", log: log);
             {
                 var serverShutdown = Task.Run(() => RunPingServer(server));
 
@@ -40,7 +40,6 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 var reply = await client.Input.ReadAsync();
                 {
                     Log($"Client received '{reply}'");
-                    Assert.Equal("hello", reply);
                 }
 
                 await serverShutdown;
@@ -51,22 +50,15 @@ namespace Pipelines.Sockets.Unofficial.Tests
         {
             try
             {
-                Assert.NotNull(channel);
-                Assert.NotNull(channel.Input);
-
                 Log("Server starting...");
                 while (await channel.Input.WaitToReadAsync())
                 {
                     Log("Server reading frames...");
                     while (channel.Input.TryRead(out var frame))
                     {
-                        using (frame)
-                        {
-                            string message = frame;
-                            Log($"Server received {message} bytes");
-                            await channel.Output.WriteAsync(message);
-                            Log($"Server sent reply");
-                        }
+                        Log($"Server received '{frame.Payload}' from {frame.Peer}, flags: {frame.Flags}");
+                        await channel.Output.WriteAsync(frame);
+                        Log($"Server sent reply");
                     }
                 }
                 Log("Server exiting");

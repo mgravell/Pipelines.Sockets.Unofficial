@@ -30,6 +30,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{3AC0FFD3-9
 		docs\releasenotes.md = docs\releasenotes.md
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleApp1", "ConsoleApp1\ConsoleApp1.csproj", "{B0E1F536-572C-4418-B01C-AAB575001CF9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -52,6 +54,10 @@ Global
 		{4D36C61E-8CBC-427F-AFEE-D810DCF81A90}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4D36C61E-8CBC-427F-AFEE-D810DCF81A90}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4D36C61E-8CBC-427F-AFEE-D810DCF81A90}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B0E1F536-572C-4418-B01C-AAB575001CF9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B0E1F536-572C-4418-B01C-AAB575001CF9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B0E1F536-572C-4418-B01C-AAB575001CF9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B0E1F536-572C-4418-B01C-AAB575001CF9}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
