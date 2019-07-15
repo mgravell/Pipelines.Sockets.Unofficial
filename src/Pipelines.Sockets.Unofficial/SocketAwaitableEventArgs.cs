@@ -18,6 +18,9 @@ namespace Pipelines.Sockets.Unofficial
     /// Awaitable SocketAsyncEventArgs, where awaiting the args yields either the BytesTransferred or throws the relevant socket exception
     /// </summary>
     public class SocketAwaitableEventArgs : SocketAsyncEventArgs, ICriticalNotifyCompletion
+#if NETCOREAPP3_0
+        , IThreadPoolWorkItem
+#endif
     {
         /// <summary>
         /// Abort the current async operation (and prevent future operations)
@@ -26,7 +29,7 @@ namespace Pipelines.Sockets.Unofficial
         {
             if (error == SocketError.Success) Throw.Argument(nameof(error));
             _forcedError = error;
-            OnCompleted(this);
+            OnCompletedImpl();
         }
 
         private volatile SocketError _forcedError; // Success = 0, no field init required
@@ -119,15 +122,30 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Marks the operation as complete - this should be invoked whenever a SocketAsyncEventArgs operation returns false
         /// </summary>
-        public void Complete()
-        {
-            OnCompleted(this);
-        }
+        public void Complete() => OnCompletedImpl();
 
+#if NETCOREAPP3_0
+        void IThreadPoolWorkItem.Execute()
+        {
+            var continuation = Interlocked.Exchange(ref _callback, _callbackCompleted);
+            continuation?.Invoke();
+        }
+#endif
         /// <summary>
         /// Invoked automatically when an operation completes asynchronously
         /// </summary>
         protected override void OnCompleted(SocketAsyncEventArgs e)
+        {
+#if NETCOREAPP3_0
+            if (_ioScheduler == PipeScheduler.ThreadPool)
+            {
+                ThreadPool.UnsafeQueueUserWorkItem(this, false);
+                return;
+            }
+#endif
+            OnCompletedImpl();
+        }
+        private void OnCompletedImpl()
         {
             var continuation = Interlocked.Exchange(ref _callback, _callbackCompleted);
 

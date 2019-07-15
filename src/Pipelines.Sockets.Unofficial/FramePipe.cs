@@ -595,7 +595,7 @@ namespace Pipelines.Sockets.Unofficial
 
                         bool isPending;
                         DebugLog($"Receiving from {args.RemoteEndPoint}...");
-                        args.RemoteEndPoint = _endpoint;
+                        // args.RemoteEndPoint = _endpoint;
                         isPending = _socket.ReceiveFromAsync(args);
 
                         int bytes;
