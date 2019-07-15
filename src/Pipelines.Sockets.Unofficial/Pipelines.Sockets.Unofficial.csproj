@@ -26,6 +26,7 @@
     <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS</DefineConstants><!--;RANGES-->
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="PooledAwait" Version="1.0.41" />
     <PackageReference Include="System.IO.Pipelines" Version="4.5.1" />
     <PackageReference Include="System.Buffers" Version="4.4.0" />
     <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="4.5.2" />

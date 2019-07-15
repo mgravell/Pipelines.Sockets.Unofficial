@@ -1,4 +1,5 @@
-﻿using System;
+﻿using PooledAwait;
+using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.IO;
@@ -6,6 +7,7 @@ using System.IO.Pipelines;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Channels;
@@ -97,7 +99,7 @@ namespace Pipelines.Sockets.Unofficial
         }
     }
 
-    public struct Frame<T> : IDisposable
+    public readonly struct Frame<T> : IDisposable
     {
         public override string ToString() => Payload?.ToString() ?? "";
         public override bool Equals(object obj) => throw new NotSupportedException();
@@ -106,16 +108,16 @@ namespace Pipelines.Sockets.Unofficial
         public EndPoint Peer { get; }
         public SocketFlags Flags { get; }
         public T Payload { get; }
-
+        public long LocalIndex { get; }
         private readonly Action<T> _onDispose;
 
-
-        public Frame(T payload, SocketFlags flags = SocketFlags.None, EndPoint peer = null, Action<T> onDispose = null)
+        public Frame(T payload, SocketFlags flags = SocketFlags.None, EndPoint peer = null, Action<T> onDispose = null, long localIndex = -1)
         {
             Payload = payload;
             Flags = flags;
             Peer = peer;
             _onDispose = onDispose;
+            LocalIndex = localIndex;
         }
 
         public static implicit operator Frame<T>(T payload) => new Frame<T>(payload);
@@ -127,7 +129,9 @@ namespace Pipelines.Sockets.Unofficial
     {
         public static StringMarshaller ASCII => new StringMarshaller(Encoding.ASCII);
         public static StringMarshaller UTF8 => default;
-        public struct StringMarshaller : IMarshaller<string>
+        public static CharMemoryMarshaller CharMemoryUTF8 => default;
+        
+        public readonly struct StringMarshaller : IMarshaller<string>
         {
             private Encoding Encoding
             {
@@ -161,9 +165,71 @@ namespace Pipelines.Sockets.Unofficial
                 }
             }
 
-            private Encoding _encoding;
+            private readonly Encoding _encoding;
 
             public StringMarshaller(Encoding encoding)
+            {
+                _encoding = encoding;
+            }
+            public override bool Equals(object obj) => obj is StringMarshaller other && other.Encoding == Encoding;
+            public override int GetHashCode() => Encoding.GetHashCode();
+        }
+
+        public readonly struct CharMemoryMarshaller : IMarshaller<ReadOnlyMemory<char>>
+        {
+            private readonly Encoding _encoding;
+            private Encoding Encoding
+            {
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                get => _encoding ?? Encoding.UTF8;
+            }
+            public override string ToString() => Encoding.EncodingName;
+            public override bool Equals(object obj) => obj is CharMemoryMarshaller other && other.Encoding == Encoding;
+            public override int GetHashCode() => Encoding.GetHashCode();
+            public unsafe ReadOnlyMemory<char> Read(ReadOnlySequence<byte> payload, out Action<ReadOnlyMemory<char>> onDispose)
+            {
+                if (payload.IsEmpty)
+                {
+                    onDispose = null;
+                    return Array.Empty<char>();
+                }
+                if (!payload.IsSingleSegment) throw new NotImplementedException();
+                var bSpan = payload.First.Span;
+                var enc = Encoding;
+
+                var arr = ArrayPool<char>.Shared.Rent(enc.GetMaxCharCount(bSpan.Length));
+                fixed (byte* bPtr = bSpan)
+                fixed (char* cPtr = arr)
+                {
+                    var charCount = enc.GetChars(bPtr, bSpan.Length, cPtr, arr.Length);
+                    onDispose = s_ReleaseToPool;
+                    return new ReadOnlyMemory<char>(arr, 0, charCount);
+                }
+            }
+            static readonly Action<ReadOnlyMemory<char>> s_ReleaseToPool = memory =>
+            {
+                if (MemoryMarshal.TryGetArray(memory, out var segment) && segment.Array != null)
+                    ArrayPool<char>.Shared.Return(segment.Array);
+            };
+
+            public unsafe void Write(ReadOnlyMemory<char> payload, IBufferWriter<byte> writer)
+            {
+                if (payload.IsEmpty) return;
+                var enc = Encoding;
+                var cSpan = payload.Span;
+                
+                fixed (char* cPtr = cSpan)
+                {
+                    var bSpan = writer.GetSpan(enc.GetByteCount(cPtr, cSpan.Length));
+                    fixed (byte* bPtr = bSpan)
+                    {
+                        int bytes = enc.GetBytes(cPtr, payload.Length, bPtr, cSpan.Length);
+                        writer.Advance(bytes);
+                    }
+                }
+            }
+
+            public CharMemoryMarshaller(Encoding encoding)
             {
                 _encoding = encoding;
             }
@@ -195,8 +261,8 @@ namespace Pipelines.Sockets.Unofficial
 
             var socket = new Socket(addressFamily, SocketType.Dgram, protocolType);
             socket.EnableBroadcast = true;
-            socket.Bind(localEndpoint ?? EphemeralEndpoint);
             SocketConnection.SetRecommendedClientOptions(socket);
+            socket.Bind(localEndpoint ?? EphemeralEndpoint);
             
             // SocketConnection.SetRecommendedServerOptions(socket); // fine for client too
             return new DefaultSocketFrameConnection(socket, remoteEndpoint, name, marshaller, sendOptions, receiveOptions, connectionOptions, false
@@ -226,10 +292,13 @@ namespace Pipelines.Sockets.Unofficial
 
             var socket = new Socket(addressFamily, SocketType.Dgram, protocolType);
             socket.EnableBroadcast = true;
-            socket.Bind(endpoint);
-            socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.PacketInformation, true); // server will need client IP
-            socket.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.PacketInformation, true);
+            //socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.PacketInformation, true);
+            //socket.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.PacketInformation, true);
+            socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.ReuseAddress, true);
+            socket.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.ReuseAddress, true);
             SocketConnection.SetRecommendedServerOptions(socket);
+            socket.Bind(endpoint);
+
             return new DefaultSocketFrameConnection(socket, endpoint, name, marshaller, sendOptions, receiveOptions, connectionOptions, true
 #if DEBUG
                 , log
@@ -395,7 +464,7 @@ namespace Pipelines.Sockets.Unofficial
                     ArrayPool<byte>.Shared.Return(_writeBuffer);
                 _writeBuffer = null;
             }
-            private async Task DoSendAsync()
+            private async FireAndForget DoSendAsync()
             {
                 Exception error = null;
                 SocketAwaitableEventArgs args = null;
@@ -484,7 +553,7 @@ namespace Pipelines.Sockets.Unofficial
                 }
             }
 
-            async ValueTask OnReceivedAsync(byte[] payload, int bytes, SocketFlags flags, EndPoint peer)
+            async PooledValueTask OnReceivedAsync(byte[] payload, int bytes, SocketFlags flags, EndPoint peer, long localIndex)
             {
                 try
                 {
@@ -492,7 +561,7 @@ namespace Pipelines.Sockets.Unofficial
                     DebugLog("Deserializing payload...");
                     var message = _marshaller.Read(new ReadOnlySequence<byte>(payload, 0, bytes), out var onDispose);
                     DebugLog("Writing received message to channel...");
-                    await _receivedFromSocket.Writer.WriteAsync(new Frame<TMessage>(message, flags, peer, onDispose));
+                    await _receivedFromSocket.Writer.WriteAsync(new Frame<TMessage>(message, flags, peer, onDispose, localIndex));
                 }
                 catch (Exception ex)
                 {
@@ -506,13 +575,14 @@ namespace Pipelines.Sockets.Unofficial
                 }
             }
 
-            private async Task DoReceiveAsync()
+            private async FireAndForget DoReceiveAsync()
             {
                 Exception error = null;
                 var args = new SocketAwaitableEventArgs(InlineReads ? null : _receiveOptions.WriterScheduler);
                 args.RemoteEndPoint = _endpoint;
                 byte[] rented = null;
                 ValueTask pending = default;
+                long localIndex = 0;
                 try
                 {
                     DebugLog("Starting receive loop...");
@@ -524,18 +594,9 @@ namespace Pipelines.Sockets.Unofficial
                         args.SocketFlags = SocketFlags.None;
 
                         bool isPending;
-                        if (_isServer)
-                        {
-                            DebugLog($"Receiving...");
-                            args.RemoteEndPoint = null;
-                            isPending = _socket.ReceiveAsync(args);
-                        }
-                        else
-                        {
-                            DebugLog($"Receiving from {args.RemoteEndPoint}...");
-                            args.RemoteEndPoint = _endpoint;
-                            isPending = _socket.ReceiveFromAsync(args);
-                        }
+                        DebugLog($"Receiving from {args.RemoteEndPoint}...");
+                        args.RemoteEndPoint = _endpoint;
+                        isPending = _socket.ReceiveFromAsync(args);
 
                         int bytes;
                         if (isPending)
@@ -556,7 +617,7 @@ namespace Pipelines.Sockets.Unofficial
 
                         // we'll have at most one message deserializing while we fetch new data
                         await pending; // wait for the last queued item to finish (backlog etc)
-                        pending = OnReceivedAsync(rented, bytes, args.SocketFlags, args.RemoteEndPoint); // don't await the new one yet
+                        pending = OnReceivedAsync(rented, bytes, args.SocketFlags, args.RemoteEndPoint, localIndex++); // don't await the new one yet
                         rented = null; // ownership transferred
                     }
                     TrySetShutdown(PipeShutdownKind.ReadEndOfStream);
