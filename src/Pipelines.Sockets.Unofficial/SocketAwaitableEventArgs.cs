@@ -125,11 +125,7 @@ namespace Pipelines.Sockets.Unofficial
         public void Complete() => OnCompletedImpl();
 
 #if NETCOREAPP3_0
-        void IThreadPoolWorkItem.Execute()
-        {
-            var continuation = Interlocked.Exchange(ref _callback, _callbackCompleted);
-            continuation?.Invoke();
-        }
+        void IThreadPoolWorkItem.Execute() => OnCompletedImpl();
 #endif
         /// <summary>
         /// Invoked automatically when an operation completes asynchronously
