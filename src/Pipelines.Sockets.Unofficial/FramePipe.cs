@@ -416,8 +416,8 @@ namespace Pipelines.Sockets.Unofficial
                 _sendToSocket = Channel.CreateBounded<Frame<TMessage>>(_sendOptions.ChannelOptions ?? s_DefaultChannelOptions);
                 _receivedFromSocket = Channel.CreateBounded<Frame<TMessage>>(_receiveOptions.ChannelOptions ?? s_DefaultChannelOptions);
 
-                _sendOptions.ReaderScheduler.Schedule(s_DoSendAsync, this);
-                _receiveOptions.ReaderScheduler.Schedule(s_DoReceiveAsync, this);
+                _ = DoSendAsync();
+                _ = DoReceiveAsync();
             }
 
             public override void Dispose()
@@ -431,9 +431,6 @@ namespace Pipelines.Sockets.Unofficial
 
             public override ChannelReader<Frame<TMessage>> Input => _receivedFromSocket.Reader;
             public override ChannelWriter<Frame<TMessage>> Output => _sendToSocket.Writer;
-
-            static readonly Action<object> s_DoSendAsync = state => _ = ((DefaultSocketFrameConnection)state).DoSendAsync();
-            static readonly Action<object> s_DoReceiveAsync = state => _ = ((DefaultSocketFrameConnection)state).DoReceiveAsync();
 
             byte[] _writeBuffer;
             int _writeOffset;
@@ -466,6 +463,7 @@ namespace Pipelines.Sockets.Unofficial
             }
             private async FireAndForget DoSendAsync()
             {
+                await _sendOptions.ReaderScheduler.Yield();
                 Exception error = null;
                 SocketAwaitableEventArgs args = null;
                 try
@@ -577,6 +575,7 @@ namespace Pipelines.Sockets.Unofficial
 
             private async FireAndForget DoReceiveAsync()
             {
+                await _receiveOptions.ReaderScheduler.Yield();
                 Exception error = null;
                 var args = new SocketAwaitableEventArgs(InlineReads ? null : _receiveOptions.WriterScheduler);
                 args.RemoteEndPoint = _endpoint;
