@@ -5,3 +5,4 @@ obj/
 .nupkgs/
 BenchmarkDotNet.Artifacts/
 *.diagsession
+*.user

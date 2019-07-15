@@ -23,6 +23,9 @@ namespace Pipelines.Sockets.Unofficial
     }
     public interface IDuplexChannel<TWrite, TRead> : IDisposable
     {
+        long TotalBytesSent { get; } // this is just somewhere to help me debug; not a real thing that should be here
+        long TotalBytesReceived { get; } // this is just somewhere to help me debug; not a real thing that should be here
+
         ChannelReader<TRead> Input { get; }
         ChannelWriter<TWrite> Output { get; }
     }
@@ -242,6 +245,11 @@ namespace Pipelines.Sockets.Unofficial
         public abstract ChannelReader<Frame<TMessage>> Input { get; }
 
         public abstract ChannelWriter<Frame<TMessage>> Output { get; }
+
+
+        private long _totalBytesSent, _totalBytesReceived;
+        long IDuplexChannel<Frame<TMessage>, Frame<TMessage>>.TotalBytesSent => Interlocked.Read(ref _totalBytesSent);
+        long IDuplexChannel<Frame<TMessage>, Frame<TMessage>>.TotalBytesReceived => Interlocked.Read(ref _totalBytesReceived);
 
         public static SocketFrameConnection<TMarshaller, TMessage> CreateClient(
             EndPoint remoteEndpoint,
@@ -508,6 +516,7 @@ namespace Pipelines.Sockets.Unofficial
                                 }
                                 int bytes = await args;
                                 DebugLog($"Sent: {bytes} bytes");
+                                if (bytes > 0) Interlocked.Add(ref _totalBytesSent, bytes);
                             } while (_sendToSocket.Reader.TryRead(out frame));
                             ReturnWriteBuffer();
                         }
@@ -613,6 +622,8 @@ namespace Pipelines.Sockets.Unofficial
                         }
                         DebugLog($"Received: {bytes} bytes");
                         if (bytes <= 0) break;
+
+                        Interlocked.Add(ref _totalBytesReceived, bytes);
 
                         // we'll have at most one message deserializing while we fetch new data
                         await pending; // wait for the last queued item to finish (backlog etc)

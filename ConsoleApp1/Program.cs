@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 
@@ -43,11 +44,12 @@ namespace Pipelines.Sockets.Unofficial.Tests
 #endif
                 ))
             {
-                const int SEND = 10000;
+                const int SEND = 500000;
                 var serverShutdown = Task.Run(() => RunPingServer(server));
                 var receiveShutdown = Task.Run(async () =>
                 {
                     int count = 0;
+                    var start = DateTime.UtcNow;
                     while (await client.Input.WaitToReadAsync())
                     {
                         while (client.Input.TryRead(out var frame))
@@ -55,22 +57,27 @@ namespace Pipelines.Sockets.Unofficial.Tests
                             using (frame) { }
 
                             count++;
-                            if ((count % 250) == 0)
+                            if ((count % 5000) == 0)
                             {
-                                Console.WriteLine($"{count}, {frame.LocalIndex}");
+                                var now = DateTime.UtcNow;
+                                var totalBytes = client.TotalBytesReceived;
+                                double megabytes = ((double)totalBytes) / (1024 * 1024);
+                                var time = now - start;
+                                Console.WriteLine($"{count}: {megabytes} MB in {time.TotalMilliseconds}ms; {megabytes / time.TotalSeconds} MB/s");
                             }
                             
                             if (count >= SEND - 1)
                             {
                                 Console.WriteLine("Got all or most of them");
                                 client.Dispose();
+                                
                                 return;
                             }
                         }
                     }
                 });
 
-                const string message = "hello";
+                string message = string.Join("", Enumerable.Range(0, 40).Select(i => "hello"));
 
 
                 var memory = message.AsMemory();
