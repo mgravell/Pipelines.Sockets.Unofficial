@@ -55,17 +55,39 @@ namespace Pipelines.Sockets.Unofficial
     }
     public static class DatagramConnection<TMessage>
     {
-        public static IDuplexChannel<Frame<TMessage>> Create<TMarshaller>(
-            EndPoint endpoint,
+        public static IDuplexChannel<Frame<TMessage>> CreateClient<TMarshaller>(
+            EndPoint remoteEndpoint,
             TMarshaller marshaller,
-            string name
+            string name = null,
+            EndPoint localEndpoint = null
 #if DEBUG
-            , Action<string> log
+            , Action<string> log = null
 #endif
 
             ) where TMarshaller : IMarshaller<TMessage>
         {
-            return SocketFrameConnection<TMarshaller, TMessage>.Create(
+            return SocketFrameConnection<TMarshaller, TMessage>.CreateClient(
+                remoteEndpoint,
+                marshaller, name: name,
+                localEndpoint: localEndpoint
+                
+#if DEBUG
+                , log: log
+#endif
+                );
+        }
+
+        public static IDuplexChannel<Frame<TMessage>> CreateServer<TMarshaller>(
+            EndPoint endpoint,
+            TMarshaller marshaller,
+            string name = null
+#if DEBUG
+            , Action<string> log = null
+#endif
+
+        ) where TMarshaller : IMarshaller<TMessage>
+        {
+            return SocketFrameConnection<TMarshaller, TMessage>.CreateServer(
                 endpoint,
                 marshaller, name: name
 #if DEBUG
@@ -155,7 +177,38 @@ namespace Pipelines.Sockets.Unofficial
 
         public abstract ChannelWriter<Frame<TMessage>> Output { get; }
 
-        public static SocketFrameConnection<TMarshaller, TMessage> Create(
+        public static SocketFrameConnection<TMarshaller, TMessage> CreateClient(
+            EndPoint remoteEndpoint,
+            TMarshaller marshaller,
+            FrameConnectionOptions sendOptions = null,
+            FrameConnectionOptions receiveOptions = null,
+            string name = null,
+            SocketConnectionOptions connectionOptions = SocketConnectionOptions.None,
+            EndPoint localEndpoint = null
+#if DEBUG
+            , Action<string> log = null
+#endif
+            )
+        {
+            var addressFamily = remoteEndpoint.AddressFamily == AddressFamily.Unspecified ? AddressFamily.InterNetwork : remoteEndpoint.AddressFamily;
+            const ProtocolType protocolType = ProtocolType.Udp; // needs linux test addressFamily == AddressFamily.Unix ? ProtocolType.Unspecified : ProtocolType.Udp;
+
+            var socket = new Socket(addressFamily, SocketType.Dgram, protocolType);
+            socket.EnableBroadcast = true;
+            socket.Bind(localEndpoint ?? EphemeralEndpoint);
+            SocketConnection.SetRecommendedClientOptions(socket);
+            
+            // SocketConnection.SetRecommendedServerOptions(socket); // fine for client too
+            return new DefaultSocketFrameConnection(socket, remoteEndpoint, name, marshaller, sendOptions, receiveOptions, connectionOptions, false
+#if DEBUG
+                , log
+#endif
+                );
+        }
+
+        static readonly EndPoint EphemeralEndpoint = new IPEndPoint(IPAddress.Any, 0);
+
+        public static SocketFrameConnection<TMarshaller, TMessage> CreateServer(
             EndPoint endpoint,
             TMarshaller marshaller,
             FrameConnectionOptions sendOptions = null,
@@ -168,12 +221,16 @@ namespace Pipelines.Sockets.Unofficial
             )
         {
             var addressFamily = endpoint.AddressFamily == AddressFamily.Unspecified ? AddressFamily.InterNetwork : endpoint.AddressFamily;
+            
             const ProtocolType protocolType = ProtocolType.Udp; // needs linux test addressFamily == AddressFamily.Unix ? ProtocolType.Unspecified : ProtocolType.Udp;
 
             var socket = new Socket(addressFamily, SocketType.Dgram, protocolType);
             socket.EnableBroadcast = true;
-            // SocketConnection.SetRecommendedServerOptions(socket); // fine for client too
-            return new DefaultSocketFrameConnection(socket, endpoint, name, marshaller, sendOptions, receiveOptions, connectionOptions
+            socket.Bind(endpoint);
+            socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.PacketInformation, true); // server will need client IP
+            socket.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.PacketInformation, true);
+            SocketConnection.SetRecommendedServerOptions(socket);
+            return new DefaultSocketFrameConnection(socket, endpoint, name, marshaller, sendOptions, receiveOptions, connectionOptions, true
 #if DEBUG
                 , log
 #endif
@@ -260,6 +317,7 @@ namespace Pipelines.Sockets.Unofficial
         private sealed class DefaultSocketFrameConnection : SocketFrameConnection<TMarshaller, TMessage>,
             IBufferWriter<byte>
         {
+            private readonly bool _isServer;
             private static readonly BoundedChannelOptions s_DefaultChannelOptions = new BoundedChannelOptions(capacity: 1024)
             { SingleReader = false, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait, AllowSynchronousContinuations = true };
 
@@ -271,7 +329,7 @@ namespace Pipelines.Sockets.Unofficial
             internal DefaultSocketFrameConnection(
                 Socket socket, EndPoint endpoint, string name, TMarshaller marshaller,
                 FrameConnectionOptions sendOptions, FrameConnectionOptions receiveOptions,
-                SocketConnectionOptions connectionOptions
+                SocketConnectionOptions connectionOptions, bool isServer
 #if DEBUG
                 , Action<string> log
 #endif
@@ -281,6 +339,7 @@ namespace Pipelines.Sockets.Unofficial
 #endif
                     )
             {
+                _isServer = isServer;
                 _socket = socket;
                 _sendOptions = sendOptions ?? FrameConnectionOptions.Default;
                 _receiveOptions = receiveOptions ?? FrameConnectionOptions.Default;
@@ -343,46 +402,50 @@ namespace Pipelines.Sockets.Unofficial
                 try
                 {
                     DebugLog("Starting send loop...");
-                    while (await _sendToSocket.Reader.WaitToReadAsync())
+                    do
                     {
-                        RentWriteBuffer();
-                        DebugLog("Processing sync send frames...");
-                        bool isFirst = true;
-                        while (_sendToSocket.Reader.TryRead(out var frame))
+                        if (_sendToSocket.Reader.TryRead(out var frame))
                         {
-                            using (frame)
+                            DebugLog("Processing sync send frames...");
+                            bool isFirst = true;
+                            RentWriteBuffer();
+                            do
                             {
-                                ResetWriteBuffer();
-                                _marshaller.Write(frame.Payload, this);
-
-                                if (_writeOffset == 0) continue; // empty payload
-                                if (args == null)
+                                using (frame)
                                 {
-                                    args = new SocketAwaitableEventArgs(InlineWrites ? null : _sendOptions.ReaderScheduler);
+                                    ResetWriteBuffer();
+                                    _marshaller.Write(frame.Payload, this);
 
+                                    if (_writeOffset == 0) continue; // empty payload
+                                    if (args == null)
+                                    {
+                                        args = new SocketAwaitableEventArgs(InlineWrites ? null : _sendOptions.ReaderScheduler);
+
+                                    }
+                                    args.SocketFlags = frame.Flags;
+                                    args.RemoteEndPoint = frame.Peer ?? _endpoint;
                                 }
-                                args.SocketFlags = frame.Flags;
-                                args.RemoteEndPoint = frame.Peer ?? _endpoint;
-                            }
 
-                            if (isFirst) args.SetBuffer(_writeBuffer, 0, _writeOffset);
-                            else args.SetBuffer(0, _writeOffset);
+                                if (isFirst) args.SetBuffer(_writeBuffer, 0, _writeOffset);
+                                else args.SetBuffer(0, _writeOffset);
 
-                            DebugLog($"Sending {frame} to {args.RemoteEndPoint}, flags: {args.SocketFlags}");
-                            if (_socket.SendToAsync(args))
-                            {
-                                // will complete asynchronously
-                            }
-                            else
-                            {
-                                // completed synchronously - need to mark completed
-                                args.Complete();
-                            }
-                            int bytes = await args;
-                            DebugLog($"Sent: {bytes} bytes");
+                                DebugLog($"Sending {frame} to {args.RemoteEndPoint}, flags: {args.SocketFlags}");
+                                if (_socket.SendToAsync(args))
+                                {
+                                    // will complete asynchronously
+                                }
+                                else
+                                {
+                                    // completed synchronously - need to mark completed
+                                    args.Complete();
+                                }
+                                int bytes = await args;
+                                DebugLog($"Sent: {bytes} bytes");
+                            } while (_sendToSocket.Reader.TryRead(out frame));
+                            ReturnWriteBuffer();
                         }
-                        ReturnWriteBuffer();
-                    }
+                        DebugLog("Awaiting async send frames...");
+                    } while (await _sendToSocket.Reader.WaitToReadAsync());
                     TrySetShutdown(PipeShutdownKind.WriteEndOfStream);
                 }
                 catch (SocketException ex) when (ex.SocketErrorCode == SocketError.OperationAborted)
@@ -458,14 +521,27 @@ namespace Pipelines.Sockets.Unofficial
                         rented = ArrayPool<byte>.Shared.Rent(_receiveOptions.MaximumFrameSize);
                         DebugLog($"Rented buffer; {rented.Length} available; allowing {_receiveOptions.MaximumFrameSize}");
                         args.SetBuffer(rented, 0, _receiveOptions.MaximumFrameSize);
-                        args.RemoteEndPoint = _endpoint;
-                        DebugLog($"Receiving asynchronously from {args.RemoteEndPoint}...");
+                        args.SocketFlags = SocketFlags.None;
+
+                        bool isPending;
+                        if (_isServer)
+                        {
+                            DebugLog($"Receiving...");
+                            args.RemoteEndPoint = null;
+                            isPending = _socket.ReceiveAsync(args);
+                        }
+                        else
+                        {
+                            DebugLog($"Receiving from {args.RemoteEndPoint}...");
+                            args.RemoteEndPoint = _endpoint;
+                            isPending = _socket.ReceiveFromAsync(args);
+                        }
+
                         int bytes;
-                        DebugLog($"Socket: {_socket}");
-                        if (_socket.ReceiveFromAsync(args))
+                        if (isPending)
                         {
                             // will complete asynchronously
-                            DebugLog($"Receiving asynchronously");
+                            DebugLog($"Receiving asynchronously...");
                             bytes = await args;
                         }
                         else
@@ -473,7 +549,7 @@ namespace Pipelines.Sockets.Unofficial
                             // completed synchronously - need to mark completed
                             args.Complete();
                             DebugLog($"Receive completed synchronously");
-                            bytes = await args;
+                            bytes = args.GetResult();
                         }
                         DebugLog($"Received: {bytes} bytes");
                         if (bytes <= 0) break;

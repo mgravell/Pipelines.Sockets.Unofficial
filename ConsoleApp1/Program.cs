@@ -25,10 +25,11 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
         public async Task Basics()
         {
-            var endpoint = new IPEndPoint(IPAddress.Loopback, 10134);
+            var serverEndpoint = new IPEndPoint(IPAddress.Loopback, 10134);
+            var clientEndpoint = new IPEndPoint(IPAddress.Loopback, 10135);
             Action<string> log = Log;
-            var server = DatagramConnection<string>.Create(endpoint, Marshaller.UTF8, name: "server", log: log);
-            var client = DatagramConnection<string>.Create(endpoint, Marshaller.UTF8, name: "client", log: log);
+            var server = DatagramConnection<string>.CreateServer(serverEndpoint, Marshaller.UTF8, name: "server", log: log);
+            var client = DatagramConnection<string>.CreateClient(serverEndpoint, Marshaller.UTF8, name: "client", localEndpoint: clientEndpoint, log: log);
             {
                 var serverShutdown = Task.Run(() => RunPingServer(server));
 

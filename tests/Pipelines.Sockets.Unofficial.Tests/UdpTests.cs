@@ -22,30 +22,30 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
         }
 
-        [Fact]
-        public async Task Basics()
-        {
-            const int Port = 10134;
-            Action<string> log = Log;
-            using (var server = DatagramConnection<string>.Create(new IPEndPoint(IPAddress.Any, Port), Marshaller.UTF8, name: "server", log: log))
-            using (var client = DatagramConnection<string>.Create(new IPEndPoint(IPAddress.Loopback, Port), Marshaller.UTF8, name: "client", log: log))
-            {
-                var serverShutdown = Task.Run(() => RunPingServer(server));
+        //[Fact]
+        //public async Task Basics()
+        //{
+        //    const int Port = 10134;
+        //    Action<string> log = Log;
+        //    using (var server = DatagramConnection<string>.Create(new IPEndPoint(IPAddress.Any, Port), Marshaller.UTF8, name: "server", log: log))
+        //    using (var client = DatagramConnection<string>.Create(new IPEndPoint(IPAddress.Loopback, Port), Marshaller.UTF8, name: "client", log: log))
+        //    {
+        //        var serverShutdown = Task.Run(() => RunPingServer(server));
 
-                const string message = "hello";
-                Log($"Client sending '{message}'");
-                await client.Output.WriteAsync(message);
-                Log($"Client sent, awaiting reply");
+        //        const string message = "hello";
+        //        Log($"Client sending '{message}'");
+        //        await client.Output.WriteAsync(message);
+        //        Log($"Client sent, awaiting reply");
 
-                var reply = await client.Input.ReadAsync();
-                {
-                    Log($"Client received '{reply}'");
-                    Assert.Equal("hello", reply);
-                }
+        //        var reply = await client.Input.ReadAsync();
+        //        {
+        //            Log($"Client received '{reply}'");
+        //            Assert.Equal("hello", reply);
+        //        }
 
-                await serverShutdown;
-            }
-        }
+        //        await serverShutdown;
+        //    }
+        //}
 
         private async Task RunPingServer(IDuplexChannel<Frame<string>> channel)
         {
