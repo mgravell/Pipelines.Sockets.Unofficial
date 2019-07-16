@@ -12,6 +12,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using System.Buffers.Text;
 
 #pragma warning disable CS1591
 namespace Pipelines.Sockets.Unofficial
@@ -130,10 +131,39 @@ namespace Pipelines.Sockets.Unofficial
 
     public static class Marshaller
     {
-        public static StringMarshaller ASCII => new StringMarshaller(Encoding.ASCII);
-        public static StringMarshaller UTF8 => default;
-        public static CharMemoryMarshaller CharMemoryUTF8 => default;
-        
+        public static StringMarshaller Ascii => new StringMarshaller(Encoding.ASCII);
+        public static StringMarshaller Utf8 => default;
+        public static CharMemoryMarshaller CharMemoryUtf8 => default;
+
+        public static Int32Utf8Marshaller Int32Utf8 => default;
+
+        public readonly struct Int32Utf8Marshaller : IMarshaller<int>
+        {
+            int IMarshaller<int>.Read(ReadOnlySequence<byte> payload, out Action<int> onDispose)
+            {
+                if (!payload.IsSingleSegment) throw new NotImplementedException();
+                if (!Utf8Parser.TryParse(payload.First.Span, out int i, out int bytes)
+                    || bytes != payload.Length) throw new FormatException();
+                onDispose = null;
+                return i;
+            }
+
+            void IMarshaller<int>.Write(int payload, IBufferWriter<byte> writer)
+            {
+                if (!Utf8Formatter.TryFormat(payload, writer.GetSpan(), out var bytes))
+                {
+                    // not enough; find out how much we *do* need
+                    // -2147483648 = 11 chars
+                    Span<byte> stack = stackalloc byte[16]; // cheaper to ask for round multiples
+                    if (!Utf8Formatter.TryFormat(payload, stack, out bytes)
+                        || !Utf8Formatter.TryFormat(payload, writer.GetSpan(bytes), out bytes))
+                    {
+                        throw new FormatException();
+                    }
+                }
+                writer.Advance(bytes);
+            }
+        }
         public readonly struct StringMarshaller : IMarshaller<string>
         {
             private Encoding Encoding
@@ -470,6 +500,20 @@ namespace Pipelines.Sockets.Unofficial
                     ArrayPool<byte>.Shared.Return(_writeBuffer);
                 _writeBuffer = null;
             }
+
+            private bool CanIgnoreSocketError(SocketError error)
+            {
+                if(_isServer)
+                {
+                    switch(error)
+                    {
+                        case SocketError.ConnectionReset:
+                        case SocketError.ConnectionAborted:
+                            return true;
+                    }
+                }
+                return false;
+            }
             private async FireAndForget DoSendAsync()
             {
                 await _sendOptions.ReaderScheduler.Yield();
@@ -507,28 +551,39 @@ namespace Pipelines.Sockets.Unofficial
                                 else args.SetBuffer(0, _writeOffset);
 
                                 DebugLog($"Sending {frame} to {args.RemoteEndPoint}, flags: {args.SocketFlags}");
-                                bool pending;
-                                if(_isServer)
+
+                                try
                                 {
-                                    args.RemoteEndPoint = target;
-                                    pending = _socket.SendToAsync(args);
+                                    bool pending;
+                                    if(_isServer)
+                                    {
+                                        if (!Equals(args.RemoteEndPoint, target))
+                                            args.RemoteEndPoint = target;
+                                        pending = _socket.SendToAsync(args);
+                                    }
+                                    else
+                                    {
+                                        pending = _socket.SendAsync(args);
+                                    }
+                                    int bytes;
+
+                                    if (pending)
+                                    {
+                                        // will complete asynchronously
+                                        bytes = await args;
+                                    }
+                                    else
+                                    {
+                                        // completed synchronously - need to mark completed
+                                        args.Complete();
+                                        bytes = args.GetResult();
+                                    }
+                                    DebugLog($"Sent: {bytes} bytes");
+                                    if (bytes > 0) Interlocked.Add(ref _totalBytesSent, bytes);
                                 }
-                                else
-                                {
-                                    pending = _socket.SendAsync(args);
+                                catch (SocketException s) when (CanIgnoreSocketError(s.SocketErrorCode))
+                                {   // not our problem
                                 }
-                                if (pending)
-                                {
-                                    // will complete asynchronously
-                                }
-                                else
-                                {
-                                    // completed synchronously - need to mark completed
-                                    args.Complete();
-                                }
-                                int bytes = await args;
-                                DebugLog($"Sent: {bytes} bytes");
-                                if (bytes > 0) Interlocked.Add(ref _totalBytesSent, bytes);
                             } while (_sendToSocket.Reader.TryRead(out frame));
                             ReturnWriteBuffer();
                         }
@@ -538,11 +593,13 @@ namespace Pipelines.Sockets.Unofficial
                 }
                 catch (SocketException ex) when (ex.SocketErrorCode == SocketError.OperationAborted)
                 {
+                    Console.WriteLine(ex.SocketErrorCode);
                     TrySetShutdown(PipeShutdownKind.WriteSocketError, ex.SocketErrorCode);
                     error = null;
                 }
                 catch (SocketException ex)
                 {
+                    Console.WriteLine(ex.SocketErrorCode);
                     TrySetShutdown(PipeShutdownKind.WriteSocketError, ex.SocketErrorCode);
                     error = ex;
                 }
@@ -572,6 +629,10 @@ namespace Pipelines.Sockets.Unofficial
                 }
             }
 
+            async FireAndForget OnReceivedAsyncFF(byte[] payload, int bytes, SocketFlags flags, EndPoint peer, long localIndex)
+            {
+                await OnReceivedAsync(payload, bytes, flags, peer, localIndex);
+            }
             async PooledValueTask OnReceivedAsync(byte[] payload, int bytes, SocketFlags flags, EndPoint peer, long localIndex)
             {
                 try
@@ -608,48 +669,62 @@ namespace Pipelines.Sockets.Unofficial
                     DebugLog("Starting receive loop...");
                     while (true)
                     {
-                        rented = ArrayPool<byte>.Shared.Rent(_receiveOptions.MaximumFrameSize);
-                        DebugLog($"Rented buffer; {rented.Length} available; allowing {_receiveOptions.MaximumFrameSize}");
-                        args.SetBuffer(rented, 0, _receiveOptions.MaximumFrameSize);
+                        if (rented == null)
+                        {
+                            rented = ArrayPool<byte>.Shared.Rent(_receiveOptions.MaximumFrameSize);
+                            DebugLog($"Rented buffer; {rented.Length} available; allowing {_receiveOptions.MaximumFrameSize}");
+                            args.SetBuffer(rented, 0, _receiveOptions.MaximumFrameSize);
+                        }
                         args.SocketFlags = SocketFlags.None;
 
-                        bool isPending;
+                        int bytes;
+                        try
+                        {
+                            bool isPending;
+                            if (_isServer)
+                            {
+                                DebugLog($"Receiving from {args.RemoteEndPoint}...");
+                                isPending = _socket.ReceiveFromAsync(args);
+                            }
+                            else
+                            {
+                                DebugLog($"Receiving...");
+                                isPending = _socket.ReceiveAsync(args);
+                            }
+                            if (isPending)
+                            {
+                                // will complete asynchronously
+                                DebugLog($"Receiving asynchronously...");
+                                bytes = await args;
+                            }
+                            else
+                            {
+                                // completed synchronously - need to mark completed
+                                args.Complete();
+                                DebugLog($"Receive completed synchronously");
+                                bytes = args.GetResult();
+                            }
+                            DebugLog($"Received: {bytes} bytes");
+                            if (bytes <= 0) break;
 
+                            Interlocked.Add(ref _totalBytesReceived, bytes);
+                        }
+                        catch (SocketException s) when (CanIgnoreSocketError(s.SocketErrorCode))
+                        {   // not our problem
+                            continue;
+                        }
+                        var frameIndex = localIndex++;
                         if (_isServer)
                         {
-                            DebugLog($"Receiving from {args.RemoteEndPoint}...");
-
-                            // args.RemoteEndPoint = _endpoint;
-                            isPending = _socket.ReceiveFromAsync(args);
+                            _= OnReceivedAsyncFF(rented, bytes, args.SocketFlags, args.RemoteEndPoint, frameIndex);
                         }
                         else
                         {
-                            DebugLog($"Receiving...");
-                            isPending = _socket.ReceiveAsync(args);
+                            // we'll have at most one message deserializing while we fetch new data
+                            await pending; // wait for the last queued item to finish (backlog etc)
+                            pending = OnReceivedAsync(rented, bytes, args.SocketFlags, args.RemoteEndPoint, frameIndex); // don't await the new one yet
                         }
 
-                        int bytes;
-                        if (isPending)
-                        {
-                            // will complete asynchronously
-                            DebugLog($"Receiving asynchronously...");
-                            bytes = await args;
-                        }
-                        else
-                        {
-                            // completed synchronously - need to mark completed
-                            args.Complete();
-                            DebugLog($"Receive completed synchronously");
-                            bytes = args.GetResult();
-                        }
-                        DebugLog($"Received: {bytes} bytes");
-                        if (bytes <= 0) break;
-
-                        Interlocked.Add(ref _totalBytesReceived, bytes);
-
-                        // we'll have at most one message deserializing while we fetch new data
-                        await pending; // wait for the last queued item to finish (backlog etc)
-                        pending = OnReceivedAsync(rented, bytes, args.SocketFlags, args.RemoteEndPoint, localIndex++); // don't await the new one yet
                         rented = null; // ownership transferred
                     }
                     TrySetShutdown(PipeShutdownKind.ReadEndOfStream);

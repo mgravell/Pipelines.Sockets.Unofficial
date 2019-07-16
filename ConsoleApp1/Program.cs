@@ -38,7 +38,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
 //                , log: log
 //#endif
 //                ))
-            using (var client = DatagramConnection<ReadOnlyMemory<char>>.CreateClient(serverEndpoint, Marshaller.CharMemoryUTF8, name: "client" // , localEndpoint: clientEndpoint
+            using (var client = DatagramConnection<int>.CreateClient(serverEndpoint, Marshaller.Int32Utf8, name: "client" // , localEndpoint: clientEndpoint
 #if DEBUG
                 , log: log
 #endif
@@ -46,7 +46,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             {
                 try
                 {
-                    const int SEND = 100000;
+                    const int ITEMCOUNT = 100000;
                     // var serverShutdown = Task.Run(() => RunPingServer(server));
                     var receiveShutdown = Task.Run(async () =>
                     {
@@ -67,10 +67,10 @@ namespace Pipelines.Sockets.Unofficial.Tests
                                         var totalBytes = client.TotalBytesReceived;
                                         double megabytes = ((double)totalBytes) / (1024 * 1024);
                                         var time = now - start;
-                                        Console.WriteLine($"{count}: {megabytes} MB in {time.TotalMilliseconds}ms; {megabytes / time.TotalSeconds} MB/s");
+                                        Console.WriteLine($"{count} [vs {frame.Payload + 1}]: {megabytes} MB in {time.TotalMilliseconds}ms; {megabytes / time.TotalSeconds} MB/s");
                                     }
 
-                                    if (count >= (SEND / 2))
+                                    if (count >= ((double)ITEMCOUNT * 0.9))
                                     {
                                         Console.WriteLine("Got enough of them");
                                         client.Dispose();
@@ -83,22 +83,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
                         catch { }
                     });
 
-                    string message = string.Join("", Enumerable.Range(0, 40).Select(i => "hello"));
-
-
-                    var memory = message.AsMemory();
-                    for (int i = 0; i < SEND; i++)
-                    {
-                        Log($"Client sending '{message}'");
-                        await client.Output.WriteAsync(memory);
-                        Log($"Client sent, awaiting reply");
-                    }
+                    // request data
+                    await client.Output.WriteAsync(ITEMCOUNT);
                     client.Output.TryComplete();
-
-                    var reply = await client.Input.ReadAsync();
-                    {
-                        Log($"Client received '{reply}'");
-                    }
 
                     await receiveShutdown;
                     // await serverShutdown;

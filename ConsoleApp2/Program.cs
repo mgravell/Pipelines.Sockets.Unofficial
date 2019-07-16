@@ -1,7 +1,11 @@
-﻿using System;
+﻿using PooledAwait;
+using System;
+using System.Buffers.Text;
 using System.Diagnostics;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial.Tests
@@ -32,7 +36,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
 #if DEBUG
             Action<string> log = null;
 #endif
-            using (var server = DatagramConnection<ReadOnlyMemory<char>>.CreateServer(serverEndpoint, Marshaller.CharMemoryUTF8, name: "server"
+            using (var server = DatagramConnection<int>.CreateServer(serverEndpoint, Marshaller.Int32Utf8, name: "server"
 #if DEBUG
                 , log: log
 #endif
@@ -48,7 +52,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
         }
 
-        private async Task RunPingServer(IDuplexChannel<Frame<ReadOnlyMemory<char>>> channel)
+        private async Task RunPingServer(IDuplexChannel<Frame<int>> channel)
         {
             try
             {
@@ -58,9 +62,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                     Log("Server reading frames...");
                     while (channel.Input.TryRead(out var frame))
                     {
-                        Log($"Server received '{frame.Payload}' from {frame.Peer}, flags: {frame.Flags}");
-                        await channel.Output.WriteAsync(frame);
-                        Log($"Server sent reply");
+                        await Amplify(channel.Output, frame.Payload, frame.Peer, frame.Flags);
                     }
                 }
                 Log("Server exiting");
@@ -70,6 +72,17 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 Log($"Server stack: {ex.StackTrace}");
                 Log($"Server faulted: {ex.Message}");
             }
+        }
+
+        private async FireAndForget Amplify(ChannelWriter<Frame<int>> output, int count, EndPoint peer, SocketFlags flags)
+        {
+            Log($"Server received '{count}' from {peer}, flags: {flags}");
+            await Task.Yield();
+            for(int i = 0; i < count; i++)
+            {
+                await output.WriteAsync(new Frame<int>(i, peer: peer, flags: flags));
+            }
+            Log($"Server sent {count} replies to {peer}");
         }
     }
 }
