@@ -406,10 +406,11 @@ namespace Pipelines.Sockets.Unofficial
             SocketConnection.SetRecommendedServerOptions(socket);
             socket.Bind(endpoint);
 
-            if (typeof(TWrite) == typeof(TRead) && ReferenceEquals(serializer, deserializer))
+            if (typeof(TWrite) == typeof(TRead))
             {
                 return (AsymmetricSocketFrameConnection<TWrite, TRead>)(object)
-                    new SymmetricSocketFrameConnection<TWrite>(socket, endpoint, name, serializer, sendOptions, receiveOptions, connectionOptions, true
+                    new SymmetricSocketFrameConnection<TWrite>(socket, endpoint, name, serializer,
+                        (IMarshaller<TWrite>)deserializer, sendOptions, receiveOptions, connectionOptions, true
 #if DEBUG
                 , log
 #endif
@@ -429,13 +430,13 @@ namespace Pipelines.Sockets.Unofficial
     internal class SymmetricSocketFrameConnection<T> : AsymmetricSocketFrameConnection<T, T>, IFrameChannel<T>
     {
         internal SymmetricSocketFrameConnection(
-            Socket socket, EndPoint endpoint, string name, IMarshaller<T> marshaller,
+            Socket socket, EndPoint endpoint, string name, IMarshaller<T> serializer, IMarshaller<T> deserializer,
             FrameConnectionOptions sendOptions, FrameConnectionOptions receiveOptions,
             SocketConnectionOptions connectionOptions, bool isServer
 #if DEBUG
                 , Action<string> log
 #endif
-                ) : base(socket, endpoint, name, marshaller, marshaller, sendOptions, receiveOptions, connectionOptions, isServer
+                ) : base(socket, endpoint, name, serializer, deserializer, sendOptions, receiveOptions, connectionOptions, isServer
 #if DEBUG
                     , log
 #endif
