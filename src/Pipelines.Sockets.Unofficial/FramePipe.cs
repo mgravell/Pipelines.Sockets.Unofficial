@@ -73,7 +73,7 @@ namespace Pipelines.Sockets.Unofficial
 
     )
         {
-            return (IFrameChannel<T>)SocketFrameConnection<T, T>.CreateClient(
+            return (IFrameChannel<T>)CreateClientImpl(
                 remoteEndpoint,
                 marshaller, marshaller, name: name,
                 localEndpoint: localEndpoint
@@ -95,7 +95,7 @@ namespace Pipelines.Sockets.Unofficial
 
             )
         {
-            return SocketFrameConnection<TWrite,TRead>.CreateClient(
+            return CreateClientImpl(
                 remoteEndpoint,
                 serializer, deserializer, name: name,
                 localEndpoint: localEndpoint
@@ -116,7 +116,7 @@ namespace Pipelines.Sockets.Unofficial
 
         )
         {
-            return (IFrameChannel<T>)SocketFrameConnection<T, T>.CreateServer(
+            return (IFrameChannel<T>)CreateServerImpl(
                 endpoint,
                 marshaller, marshaller, name: name
 #if DEBUG
@@ -135,13 +135,105 @@ namespace Pipelines.Sockets.Unofficial
 
         )
         {
-            return SocketFrameConnection<TWrite, TRead>.CreateServer(
+            return CreateServerImpl(
                 endpoint,
                 serializer, deserializer, name: name
 #if DEBUG
                 , log: log
 #endif
                 );
+        }
+
+
+        private static AsymmetricSocketFrameConnection<TWrite, TRead> CreateClientImpl<TWrite, TRead>(
+            EndPoint remoteEndpoint,
+            IMarshaller<TWrite> serializer,
+            IMarshaller<TRead> deserializer,
+            FrameConnectionOptions sendOptions = null,
+            FrameConnectionOptions receiveOptions = null,
+            string name = null,
+            SocketConnectionOptions connectionOptions = SocketConnectionOptions.None,
+            EndPoint localEndpoint = null
+#if DEBUG
+            , Action<string> log = null
+#endif
+            )
+        {
+            var addressFamily = remoteEndpoint.AddressFamily == AddressFamily.Unspecified ? AddressFamily.InterNetwork : remoteEndpoint.AddressFamily;
+            const ProtocolType protocolType = ProtocolType.Udp; // needs linux test addressFamily == AddressFamily.Unix ? ProtocolType.Unspecified : ProtocolType.Udp;
+
+            var socket = new Socket(addressFamily, SocketType.Dgram, protocolType);
+            socket.EnableBroadcast = true;
+            SocketConnection.SetRecommendedClientOptions(socket);
+            socket.Bind(localEndpoint ?? EphemeralEndpoint);
+            socket.Connect(remoteEndpoint);
+
+            if (typeof(TWrite) == typeof(TRead) && ReferenceEquals(serializer, deserializer))
+            {
+                return (AsymmetricSocketFrameConnection<TWrite, TRead>)(object)
+                    new SymmetricSocketFrameConnection<TWrite>(socket, remoteEndpoint, name, serializer,
+                    (IMarshaller<TWrite>)deserializer, sendOptions, receiveOptions, connectionOptions, false
+#if DEBUG
+                , log
+#endif
+                    );
+            }
+            else
+            {
+                return new AsymmetricSocketFrameConnection<TWrite, TRead>(socket, remoteEndpoint, name, serializer, deserializer, sendOptions, receiveOptions, connectionOptions, false
+#if DEBUG
+                , log
+#endif
+                );
+            }
+        }
+
+        private static readonly EndPoint EphemeralEndpoint = new IPEndPoint(IPAddress.Any, 0);
+
+        private static AsymmetricSocketFrameConnection<TWrite, TRead> CreateServerImpl<TWrite, TRead>(
+            EndPoint endpoint,
+            IMarshaller<TWrite> serializer,
+            IMarshaller<TRead> deserializer,
+            FrameConnectionOptions sendOptions = null,
+            FrameConnectionOptions receiveOptions = null,
+            string name = null,
+            SocketConnectionOptions connectionOptions = SocketConnectionOptions.None
+#if DEBUG
+            , Action<string> log = null
+#endif
+            )
+        {
+            var addressFamily = endpoint.AddressFamily == AddressFamily.Unspecified ? AddressFamily.InterNetwork : endpoint.AddressFamily;
+
+            const ProtocolType protocolType = ProtocolType.Udp; // needs linux test addressFamily == AddressFamily.Unix ? ProtocolType.Unspecified : ProtocolType.Udp;
+
+            var socket = new Socket(addressFamily, SocketType.Dgram, protocolType);
+            socket.EnableBroadcast = true;
+            //socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.PacketInformation, true);
+            //socket.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.PacketInformation, true);
+            socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.ReuseAddress, true);
+            socket.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.ReuseAddress, true);
+            SocketConnection.SetRecommendedServerOptions(socket);
+            socket.Bind(endpoint);
+
+            if (typeof(TWrite) == typeof(TRead))
+            {
+                return (AsymmetricSocketFrameConnection<TWrite, TRead>)(object)
+                    new SymmetricSocketFrameConnection<TWrite>(socket, endpoint, name, serializer,
+                        (IMarshaller<TWrite>)deserializer, sendOptions, receiveOptions, connectionOptions, true
+#if DEBUG
+                , log
+#endif
+                    );
+            }
+            else
+            {
+                return new AsymmetricSocketFrameConnection<TWrite, TRead>(socket, endpoint, name, serializer, deserializer, sendOptions, receiveOptions, connectionOptions, true
+#if DEBUG
+                , log
+#endif
+                );
+            }
         }
     }
 
@@ -330,99 +422,6 @@ namespace Pipelines.Sockets.Unofficial
             public CharMemoryMarshaller(Encoding encoding)
             {
                 _encoding = encoding ?? throw new ArgumentNullException(nameof(encoding));
-            }
-        }
-    }
-
-    internal static class SocketFrameConnection<TWrite, TRead>
-    {
-        public static AsymmetricSocketFrameConnection<TWrite, TRead> CreateClient(
-            EndPoint remoteEndpoint,
-            IMarshaller<TWrite> serializer,
-            IMarshaller<TRead> deserializer,
-            FrameConnectionOptions sendOptions = null,
-            FrameConnectionOptions receiveOptions = null,
-            string name = null,
-            SocketConnectionOptions connectionOptions = SocketConnectionOptions.None,
-            EndPoint localEndpoint = null
-#if DEBUG
-            , Action<string> log = null
-#endif
-            )
-        {
-            var addressFamily = remoteEndpoint.AddressFamily == AddressFamily.Unspecified ? AddressFamily.InterNetwork : remoteEndpoint.AddressFamily;
-            const ProtocolType protocolType = ProtocolType.Udp; // needs linux test addressFamily == AddressFamily.Unix ? ProtocolType.Unspecified : ProtocolType.Udp;
-
-            var socket = new Socket(addressFamily, SocketType.Dgram, protocolType);
-            socket.EnableBroadcast = true;
-            SocketConnection.SetRecommendedClientOptions(socket);
-            socket.Bind(localEndpoint ?? EphemeralEndpoint);
-            socket.Connect(remoteEndpoint);
-
-            if (typeof(TWrite) == typeof(TRead) && ReferenceEquals(serializer, deserializer))
-            {
-                return (AsymmetricSocketFrameConnection<TWrite, TRead>)(object)
-                    new SymmetricSocketFrameConnection<TWrite>(socket, remoteEndpoint, name, serializer, sendOptions, receiveOptions, connectionOptions, false
-#if DEBUG
-                , log
-#endif
-                    );
-            }
-            else
-            {
-                return new AsymmetricSocketFrameConnection<TWrite, TRead>(socket, remoteEndpoint, name, serializer, deserializer, sendOptions, receiveOptions, connectionOptions, false
-#if DEBUG
-                , log
-#endif
-                );
-            }
-        }
-
-        static readonly EndPoint EphemeralEndpoint = new IPEndPoint(IPAddress.Any, 0);
-
-        public static AsymmetricSocketFrameConnection<TWrite, TRead> CreateServer(
-            EndPoint endpoint,
-            IMarshaller<TWrite> serializer,
-            IMarshaller<TRead> deserializer,
-            FrameConnectionOptions sendOptions = null,
-            FrameConnectionOptions receiveOptions = null,
-            string name = null,
-            SocketConnectionOptions connectionOptions = SocketConnectionOptions.None
-#if DEBUG
-            , Action<string> log = null
-#endif
-            )
-        {
-            var addressFamily = endpoint.AddressFamily == AddressFamily.Unspecified ? AddressFamily.InterNetwork : endpoint.AddressFamily;
-
-            const ProtocolType protocolType = ProtocolType.Udp; // needs linux test addressFamily == AddressFamily.Unix ? ProtocolType.Unspecified : ProtocolType.Udp;
-
-            var socket = new Socket(addressFamily, SocketType.Dgram, protocolType);
-            socket.EnableBroadcast = true;
-            //socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.PacketInformation, true);
-            //socket.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.PacketInformation, true);
-            socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.ReuseAddress, true);
-            socket.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.ReuseAddress, true);
-            SocketConnection.SetRecommendedServerOptions(socket);
-            socket.Bind(endpoint);
-
-            if (typeof(TWrite) == typeof(TRead))
-            {
-                return (AsymmetricSocketFrameConnection<TWrite, TRead>)(object)
-                    new SymmetricSocketFrameConnection<TWrite>(socket, endpoint, name, serializer,
-                        (IMarshaller<TWrite>)deserializer, sendOptions, receiveOptions, connectionOptions, true
-#if DEBUG
-                , log
-#endif
-                    );
-            }
-            else
-            {
-                return new AsymmetricSocketFrameConnection<TWrite, TRead>(socket, endpoint, name, serializer, deserializer, sendOptions, receiveOptions, connectionOptions, true
-#if DEBUG
-                , log
-#endif
-                );
             }
         }
     }
