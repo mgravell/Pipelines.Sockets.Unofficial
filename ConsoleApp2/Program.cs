@@ -36,7 +36,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
 #if DEBUG
             Action<string> log = null;
 #endif
-            using (var server = DatagramConnection<int>.CreateServer(serverEndpoint, Marshaller.Int32Utf8, name: "server"
+            using (var server = DatagramConnection<string, int>.CreateServer(serverEndpoint,
+                Marshaller.Utf8,
+                Marshaller.Int32Utf8, name: "server"
 #if DEBUG
                 , log: log
 #endif
@@ -52,7 +54,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
         }
 
-        private async Task RunPingServer(IDuplexChannel<Frame<int>> channel)
+        private async Task RunPingServer(IDuplexChannel<Frame<string>, Frame<int>> channel)
         {
             try
             {
@@ -74,13 +76,14 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
         }
 
-        private async FireAndForget Amplify(ChannelWriter<Frame<int>> output, int count, EndPoint peer, SocketFlags flags)
+        private async FireAndForget Amplify(ChannelWriter<Frame<string>> output, int count, EndPoint peer, SocketFlags flags)
         {
             Log($"Server received '{count}' from {peer}, flags: {flags}");
             await Task.Yield();
             for(int i = 0; i < count; i++)
             {
-                await output.WriteAsync(new Frame<int>(i, peer: peer, flags: flags));
+                const string PAYLOAD = "lobortis mattis aliquam faucibus purus in massa tempor nec feugiat nisl pretium fusce id velit ut tortor pretium viverra suspendisse potenti nullam ac tortor vitae purus faucibus ornare";
+                await output.WriteAsync(new Frame<string>(PAYLOAD, peer: peer, flags: flags));
             }
             Log($"Server sent {count} replies to {peer}");
         }

@@ -59,22 +59,25 @@ namespace Pipelines.Sockets.Unofficial
         public BoundedChannelOptions ChannelOptions { get; }
         public bool UseSynchronizationContext { get; }
     }
-    public static class DatagramConnection<TMessage>
+    public static class DatagramConnection<TWrite, TRead>
     {
-        public static IDuplexChannel<Frame<TMessage>> CreateClient<TMarshaller>(
+        public static IDuplexChannel<Frame<TWrite>, Frame<TRead>> CreateClient<TSerializer, TDeserializer>(
             EndPoint remoteEndpoint,
-            TMarshaller marshaller,
+            TSerializer serializer,
+            TDeserializer deserializer,
             string name = null,
             EndPoint localEndpoint = null
 #if DEBUG
             , Action<string> log = null
 #endif
 
-            ) where TMarshaller : IMarshaller<TMessage>
+            )
+            where TSerializer : IMarshaller<TWrite>
+            where TDeserializer : IMarshaller<TRead>
         {
-            return SocketFrameConnection<TMarshaller, TMessage>.CreateClient(
+            return SocketFrameConnection<TWrite, TSerializer, TRead, TDeserializer>.CreateClient(
                 remoteEndpoint,
-                marshaller, name: name,
+                serializer, deserializer, name: name,
                 localEndpoint: localEndpoint
                 
 #if DEBUG
@@ -83,19 +86,22 @@ namespace Pipelines.Sockets.Unofficial
                 );
         }
 
-        public static IDuplexChannel<Frame<TMessage>> CreateServer<TMarshaller>(
+        public static IDuplexChannel<Frame<TWrite>, Frame<TRead>> CreateServer<TSerializer, TDeserializer>(
             EndPoint endpoint,
-            TMarshaller marshaller,
+            TSerializer serializer,
+            TDeserializer deserializer,
             string name = null
 #if DEBUG
             , Action<string> log = null
 #endif
 
-        ) where TMarshaller : IMarshaller<TMessage>
+        )
+            where TSerializer : IMarshaller<TWrite>
+            where TDeserializer : IMarshaller<TRead>
         {
-            return SocketFrameConnection<TMarshaller, TMessage>.CreateServer(
+            return SocketFrameConnection<TWrite, TSerializer, TRead, TDeserializer>.CreateServer(
                 endpoint,
-                marshaller, name: name
+                serializer, deserializer, name: name
 #if DEBUG
                 , log: log
 #endif
@@ -133,9 +139,39 @@ namespace Pipelines.Sockets.Unofficial
     {
         public static StringMarshaller Ascii => new StringMarshaller(Encoding.ASCII);
         public static StringMarshaller Utf8 => default;
+        public static MemoryMarshaller Memory => default;
         public static CharMemoryMarshaller CharMemoryUtf8 => default;
 
         public static Int32Utf8Marshaller Int32Utf8 => default;
+
+        public readonly struct MemoryMarshaller : IMarshaller<ReadOnlyMemory<byte>>
+        {
+            ReadOnlyMemory<byte> IMarshaller<ReadOnlyMemory<byte>>.Read(ReadOnlySequence<byte> payload, out Action<ReadOnlyMemory<byte>> onDispose)
+            {
+                if (payload.IsEmpty)
+                {
+                    onDispose = null;
+                    return default;
+                }
+
+                int len = checked((int)payload.Length);
+                var lease = ArrayPool<byte>.Shared.Rent(len);
+                payload.CopyTo(lease);
+                onDispose = s_ReturnToPool;
+                return new ReadOnlyMemory<byte>(lease, 0, len);
+            }
+
+            static readonly Action<ReadOnlyMemory<byte>> s_ReturnToPool = state =>
+            {
+                if (!state.IsEmpty & MemoryMarshal.TryGetArray(state, out var segment))
+                    ArrayPool<byte>.Shared.Return(segment.Array);
+            };
+
+            void IMarshaller<ReadOnlyMemory<byte>>.Write(ReadOnlyMemory<byte> payload, IBufferWriter<byte> writer)
+            {
+                writer.Write(payload.Span);
+            }
+        }
 
         public readonly struct Int32Utf8Marshaller : IMarshaller<int>
         {
@@ -269,21 +305,24 @@ namespace Pipelines.Sockets.Unofficial
         }
     }
 
-    internal abstract class SocketFrameConnection<TMarshaller, TMessage> : IDuplexChannel<Frame<TMessage>>, IDisposable
-        where TMarshaller : IMarshaller<TMessage>
+    internal abstract class SocketFrameConnection<TWrite, TSerializer, TRead, TDeserializer>
+        : IDuplexChannel<Frame<TWrite>, Frame<TRead>>, IDisposable
+            where TSerializer : IMarshaller<TWrite>
+            where TDeserializer : IMarshaller<TRead>
     {
-        public abstract ChannelReader<Frame<TMessage>> Input { get; }
+        public abstract ChannelReader<Frame<TRead>> Input { get; }
 
-        public abstract ChannelWriter<Frame<TMessage>> Output { get; }
+        public abstract ChannelWriter<Frame<TWrite>> Output { get; }
 
 
         private long _totalBytesSent, _totalBytesReceived;
-        long IDuplexChannel<Frame<TMessage>, Frame<TMessage>>.TotalBytesSent => Interlocked.Read(ref _totalBytesSent);
-        long IDuplexChannel<Frame<TMessage>, Frame<TMessage>>.TotalBytesReceived => Interlocked.Read(ref _totalBytesReceived);
+        long IDuplexChannel<Frame<TWrite>, Frame<TRead>>.TotalBytesSent => Interlocked.Read(ref _totalBytesSent);
+        long IDuplexChannel<Frame<TWrite>, Frame<TRead>>.TotalBytesReceived => Interlocked.Read(ref _totalBytesReceived);
 
-        public static SocketFrameConnection<TMarshaller, TMessage> CreateClient(
+        public static SocketFrameConnection<TWrite, TSerializer, TRead, TDeserializer> CreateClient(
             EndPoint remoteEndpoint,
-            TMarshaller marshaller,
+            TSerializer serializer,
+            TDeserializer deserializer,
             FrameConnectionOptions sendOptions = null,
             FrameConnectionOptions receiveOptions = null,
             string name = null,
@@ -304,7 +343,7 @@ namespace Pipelines.Sockets.Unofficial
             socket.Connect(remoteEndpoint);
             
             // SocketConnection.SetRecommendedServerOptions(socket); // fine for client too
-            return new DefaultSocketFrameConnection(socket, remoteEndpoint, name, marshaller, sendOptions, receiveOptions, connectionOptions, false
+            return new DefaultSocketFrameConnection(socket, remoteEndpoint, name, serializer, deserializer, sendOptions, receiveOptions, connectionOptions, false
 #if DEBUG
                 , log
 #endif
@@ -313,9 +352,10 @@ namespace Pipelines.Sockets.Unofficial
 
         static readonly EndPoint EphemeralEndpoint = new IPEndPoint(IPAddress.Any, 0);
 
-        public static SocketFrameConnection<TMarshaller, TMessage> CreateServer(
+        public static SocketFrameConnection<TWrite, TSerializer, TRead, TDeserializer> CreateServer(
             EndPoint endpoint,
-            TMarshaller marshaller,
+            TSerializer serializer,
+            TDeserializer deserializer,
             FrameConnectionOptions sendOptions = null,
             FrameConnectionOptions receiveOptions = null,
             string name = null,
@@ -338,7 +378,7 @@ namespace Pipelines.Sockets.Unofficial
             SocketConnection.SetRecommendedServerOptions(socket);
             socket.Bind(endpoint);
 
-            return new DefaultSocketFrameConnection(socket, endpoint, name, marshaller, sendOptions, receiveOptions, connectionOptions, true
+            return new DefaultSocketFrameConnection(socket, endpoint, name, serializer, deserializer, sendOptions, receiveOptions, connectionOptions, true
 #if DEBUG
                 , log
 #endif
@@ -348,7 +388,8 @@ namespace Pipelines.Sockets.Unofficial
         private readonly EndPoint _endpoint;
         private readonly SocketConnectionOptions _options;
         private readonly string _name;
-        private readonly TMarshaller _marshaller;
+        private readonly TSerializer _serializer;
+        private readonly TDeserializer _deserializer;
 #if DEBUG
         private readonly Action<string> _log;
 #endif
@@ -403,7 +444,7 @@ namespace Pipelines.Sockets.Unofficial
         public SocketError SocketError { get; protected set; }
 
         protected SocketFrameConnection(EndPoint endpoint, string name, SocketConnectionOptions options,
-            TMarshaller marshaller
+            TSerializer serializer, TDeserializer deserializer
 #if DEBUG
             , Action<string> log
 #endif
@@ -412,7 +453,8 @@ namespace Pipelines.Sockets.Unofficial
             _endpoint = endpoint;
             _name = string.IsNullOrWhiteSpace(name) ? GetType().FullName : name.Trim();
             _options = options;
-            _marshaller = marshaller;
+            _serializer = serializer;
+            _deserializer = deserializer;
 #if DEBUG
             _log = log;
 #endif
@@ -422,7 +464,7 @@ namespace Pipelines.Sockets.Unofficial
 
         public abstract void Dispose();
 
-        private sealed class DefaultSocketFrameConnection : SocketFrameConnection<TMarshaller, TMessage>,
+        private sealed class DefaultSocketFrameConnection : SocketFrameConnection<TWrite, TSerializer, TRead, TDeserializer>,
             IBufferWriter<byte>
         {
             private readonly bool _isServer;
@@ -432,16 +474,16 @@ namespace Pipelines.Sockets.Unofficial
             private readonly Socket _socket;
             private readonly FrameConnectionOptions _sendOptions;
             private readonly FrameConnectionOptions _receiveOptions;
-            private readonly Channel<Frame<TMessage>> _sendToSocket;
-            private readonly Channel<Frame<TMessage>> _receivedFromSocket;
+            private readonly Channel<Frame<TWrite>> _sendToSocket;
+            private readonly Channel<Frame<TRead>> _receivedFromSocket;
             internal DefaultSocketFrameConnection(
-                Socket socket, EndPoint endpoint, string name, TMarshaller marshaller,
+                Socket socket, EndPoint endpoint, string name, TSerializer serializer, TDeserializer deserializer,
                 FrameConnectionOptions sendOptions, FrameConnectionOptions receiveOptions,
                 SocketConnectionOptions connectionOptions, bool isServer
 #if DEBUG
                 , Action<string> log
 #endif
-                ) : base(endpoint, name, connectionOptions, marshaller
+                ) : base(endpoint, name, connectionOptions, serializer, deserializer
 #if DEBUG
                     , log
 #endif
@@ -452,8 +494,8 @@ namespace Pipelines.Sockets.Unofficial
                 _sendOptions = sendOptions ?? FrameConnectionOptions.Default;
                 _receiveOptions = receiveOptions ?? FrameConnectionOptions.Default;
 
-                _sendToSocket = Channel.CreateBounded<Frame<TMessage>>(_sendOptions.ChannelOptions ?? s_DefaultChannelOptions);
-                _receivedFromSocket = Channel.CreateBounded<Frame<TMessage>>(_receiveOptions.ChannelOptions ?? s_DefaultChannelOptions);
+                _sendToSocket = Channel.CreateBounded<Frame<TWrite>>(_sendOptions.ChannelOptions ?? s_DefaultChannelOptions);
+                _receivedFromSocket = Channel.CreateBounded<Frame<TRead>>(_receiveOptions.ChannelOptions ?? s_DefaultChannelOptions);
 
                 _ = DoSendAsync();
                 _ = DoReceiveAsync();
@@ -468,8 +510,8 @@ namespace Pipelines.Sockets.Unofficial
                 try { _receivedFromSocket.Writer.TryComplete(); } catch { }
             }
 
-            public override ChannelReader<Frame<TMessage>> Input => _receivedFromSocket.Reader;
-            public override ChannelWriter<Frame<TMessage>> Output => _sendToSocket.Writer;
+            public override ChannelReader<Frame<TRead>> Input => _receivedFromSocket.Reader;
+            public override ChannelWriter<Frame<TWrite>> Output => _sendToSocket.Writer;
 
             byte[] _writeBuffer;
             int _writeOffset;
@@ -535,7 +577,7 @@ namespace Pipelines.Sockets.Unofficial
                                 using (frame)
                                 {
                                     ResetWriteBuffer();
-                                    _marshaller.Write(frame.Payload, this);
+                                    _serializer.Write(frame.Payload, this);
 
                                     if (_writeOffset == 0) continue; // empty payload
                                     if (args == null)
@@ -639,9 +681,9 @@ namespace Pipelines.Sockets.Unofficial
                 {
                     await Task.Yield();
                     DebugLog("Deserializing payload...");
-                    var message = _marshaller.Read(new ReadOnlySequence<byte>(payload, 0, bytes), out var onDispose);
+                    var message = _deserializer.Read(new ReadOnlySequence<byte>(payload, 0, bytes), out var onDispose);
                     DebugLog("Writing received message to channel...");
-                    await _receivedFromSocket.Writer.WriteAsync(new Frame<TMessage>(message, flags, peer, onDispose, localIndex));
+                    await _receivedFromSocket.Writer.WriteAsync(new Frame<TRead>(message, flags, peer, onDispose, localIndex));
                 }
                 catch (Exception ex)
                 {

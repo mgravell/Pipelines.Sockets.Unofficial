@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Diagnostics;
-using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 
@@ -33,12 +32,10 @@ namespace Pipelines.Sockets.Unofficial.Tests
 #if DEBUG
             Action<string> log = null;
 #endif
-//            using (var server = DatagramConnection<ReadOnlyMemory<char>>.CreateServer(serverEndpoint, Marshaller.CharMemoryUTF8, name: "server"
-//#if DEBUG
-//                , log: log
-//#endif
-//                ))
-            using (var client = DatagramConnection<int>.CreateClient(serverEndpoint, Marshaller.Int32Utf8, name: "client" // , localEndpoint: clientEndpoint
+            using (var client = DatagramConnection<int, ReadOnlyMemory<byte>>.CreateClient(serverEndpoint,
+                Marshaller.Int32Utf8,
+                Marshaller.Memory,
+                name: "client" // , localEndpoint: clientEndpoint
 #if DEBUG
                 , log: log
 #endif
@@ -47,7 +44,6 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 try
                 {
                     const int ITEMCOUNT = 100000;
-                    // var serverShutdown = Task.Run(() => RunPingServer(server));
                     var receiveShutdown = Task.Run(async () =>
                     {
                         try
@@ -67,14 +63,13 @@ namespace Pipelines.Sockets.Unofficial.Tests
                                         var totalBytes = client.TotalBytesReceived;
                                         double megabytes = ((double)totalBytes) / (1024 * 1024);
                                         var time = now - start;
-                                        Console.WriteLine($"{count} [vs {frame.Payload + 1}]: {megabytes} MB in {time.TotalMilliseconds}ms; {megabytes / time.TotalSeconds} MB/s");
+                                        Console.WriteLine($"{count} [vs {frame.LocalIndex + 1}]: {megabytes} MB in {time.TotalMilliseconds}ms; {megabytes / time.TotalSeconds} MB/s");
                                     }
 
-                                    if (count >= ((double)ITEMCOUNT * 0.9))
+                                    if (count >= ((double)ITEMCOUNT * 0.95))
                                     {
                                         Console.WriteLine("Got enough of them");
                                         client.Dispose();
-                                        // server.Dispose();
                                         return;
                                     }
                                 }
@@ -88,34 +83,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
                     client.Output.TryComplete();
 
                     await receiveShutdown;
-                    // await serverShutdown;
                 }
                 catch { }
             }
         }
-
-        //private async Task RunPingServer(IDuplexChannel<Frame<ReadOnlyMemory<char>>> channel)
-        //{
-        //    try
-        //    {
-        //        Log("Server starting...");
-        //        while (await channel.Input.WaitToReadAsync())
-        //        {
-        //            Log("Server reading frames...");
-        //            while (channel.Input.TryRead(out var frame))
-        //            {
-        //                Log($"Server received '{frame.Payload}' from {frame.Peer}, flags: {frame.Flags}");
-        //                await channel.Output.WriteAsync(frame);
-        //                Log($"Server sent reply");
-        //            }
-        //        }
-        //        Log("Server exiting");
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        Log($"Server stack: {ex.StackTrace}");
-        //        Log($"Server faulted: {ex.Message}");
-        //    }
-        //}
     }
 }
