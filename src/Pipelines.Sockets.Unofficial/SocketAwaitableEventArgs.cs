@@ -29,7 +29,7 @@ namespace Pipelines.Sockets.Unofficial
         {
             if (error == SocketError.Success) Throw.Argument(nameof(error));
             _forcedError = error;
-            OnCompletedImpl();
+            OnCompletedImpl(null);
         }
 
         private volatile SocketError _forcedError; // Success = 0, no field init required
@@ -122,10 +122,10 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Marks the operation as complete - this should be invoked whenever a SocketAsyncEventArgs operation returns false
         /// </summary>
-        public void Complete() => OnCompletedImpl();
+        public void Complete() => OnCompletedImpl(null);
 
 #if NETCOREAPP3_0
-        void IThreadPoolWorkItem.Execute() => OnCompletedImpl();
+        void IThreadPoolWorkItem.Execute() => OnCompletedImpl(null);
 #endif
         /// <summary>
         /// Invoked automatically when an operation completes asynchronously
@@ -139,21 +139,21 @@ namespace Pipelines.Sockets.Unofficial
                 return;
             }
 #endif
-            OnCompletedImpl();
+            OnCompletedImpl(_ioScheduler);
         }
-        private void OnCompletedImpl()
+        private void OnCompletedImpl(PipeScheduler scheduler)
         {
             var continuation = Interlocked.Exchange(ref _callback, _callbackCompleted);
 
             if (continuation != null)
             {
-                if (_ioScheduler == null)
+                if (scheduler == null)
                 {
                     continuation.Invoke();
                 }
                 else
                 {
-                    _ioScheduler.Schedule(InvokeStateAsAction, continuation);
+                    scheduler.Schedule(InvokeStateAsAction, continuation);
                 }
             }
         }

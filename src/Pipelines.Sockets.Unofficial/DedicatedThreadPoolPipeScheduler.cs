@@ -1,4 +1,5 @@
 ﻿using Pipelines.Sockets.Unofficial.Internal;
+using PooledAwait;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -137,8 +138,38 @@ namespace Pipelines.Sockets.Unofficial
 
             // fallback to thread-pool
             Helpers.Incr(Counter.ThreadPoolPushedToMainThreadPool);
+#if NETCOREAPP3_0
+            WorkQueueItem.Enqueue(action, state);
+#else
             ThreadPool.Schedule(action, state);
+#endif
         }
+
+#if NETCOREAPP3_0
+        private sealed class WorkQueueItem : IThreadPoolWorkItem
+        {
+            private WorkQueueItem() { }
+            Action<object> _callback;
+            object _state;
+            public static void Enqueue(Action<object> callback, object state)
+            {
+                if (callback != null)
+                {
+                    var obj = Pool.TryRent<WorkQueueItem>() ?? new WorkQueueItem();
+                    obj._callback = callback;
+                    obj._state = state;
+                    System.Threading.ThreadPool.UnsafeQueueUserWorkItem(obj, false);
+                }
+            }
+            void IThreadPoolWorkItem.Execute()
+            {
+                var callback = _callback;
+                var state = _state;
+                Pool.Return(this);
+                callback.Invoke(state);
+            }
+        }
+#endif
 
         private static readonly ParameterizedThreadStart ThreadRunWorkLoop = state => ((DedicatedThreadPoolPipeScheduler)state).RunWorkLoop();
 

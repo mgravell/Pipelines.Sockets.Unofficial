@@ -271,6 +271,7 @@ namespace Pipelines.Sockets.Unofficial
             socket.EnableBroadcast = true;
             SocketConnection.SetRecommendedClientOptions(socket);
             socket.Bind(localEndpoint ?? EphemeralEndpoint);
+            socket.Connect(remoteEndpoint);
             
             // SocketConnection.SetRecommendedServerOptions(socket); // fine for client too
             return new DefaultSocketFrameConnection(socket, remoteEndpoint, name, marshaller, sendOptions, receiveOptions, connectionOptions, false
@@ -486,6 +487,7 @@ namespace Pipelines.Sockets.Unofficial
                             RentWriteBuffer();
                             do
                             {
+                                EndPoint target;
                                 using (frame)
                                 {
                                     ResetWriteBuffer();
@@ -498,14 +500,24 @@ namespace Pipelines.Sockets.Unofficial
 
                                     }
                                     args.SocketFlags = frame.Flags;
-                                    args.RemoteEndPoint = frame.Peer ?? _endpoint;
+                                    target = frame.Peer ?? _endpoint;
                                 }
 
                                 if (isFirst) args.SetBuffer(_writeBuffer, 0, _writeOffset);
                                 else args.SetBuffer(0, _writeOffset);
 
                                 DebugLog($"Sending {frame} to {args.RemoteEndPoint}, flags: {args.SocketFlags}");
-                                if (_socket.SendToAsync(args))
+                                bool pending;
+                                if(_isServer)
+                                {
+                                    args.RemoteEndPoint = target;
+                                    pending = _socket.SendToAsync(args);
+                                }
+                                else
+                                {
+                                    pending = _socket.SendAsync(args);
+                                }
+                                if (pending)
                                 {
                                     // will complete asynchronously
                                 }
@@ -602,9 +614,19 @@ namespace Pipelines.Sockets.Unofficial
                         args.SocketFlags = SocketFlags.None;
 
                         bool isPending;
-                        DebugLog($"Receiving from {args.RemoteEndPoint}...");
-                        // args.RemoteEndPoint = _endpoint;
-                        isPending = _socket.ReceiveFromAsync(args);
+
+                        if (_isServer)
+                        {
+                            DebugLog($"Receiving from {args.RemoteEndPoint}...");
+
+                            // args.RemoteEndPoint = _endpoint;
+                            isPending = _socket.ReceiveFromAsync(args);
+                        }
+                        else
+                        {
+                            DebugLog($"Receiving...");
+                            isPending = _socket.ReceiveAsync(args);
+                        }
 
                         int bytes;
                         if (isPending)
