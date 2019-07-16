@@ -36,8 +36,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
 #if DEBUG
             Action<string> log = null;
 #endif
-            using (var server = DatagramConnection<string, int>.CreateServer(serverEndpoint,
-                Marshaller.Utf8,
+            using (var server = DatagramConnection.CreateServer(serverEndpoint,
+                Marshaller.StringUtf8,
                 Marshaller.Int32Utf8, name: "server"
 #if DEBUG
                 , log: log
@@ -54,7 +54,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
         }
 
-        private async Task RunPingServer(IDuplexChannel<Frame<string>, Frame<int>> channel)
+        private async Task RunPingServer(IFrameChannel<string, int> channel)
         {
             try
             {

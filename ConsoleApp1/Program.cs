@@ -32,7 +32,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
 #if DEBUG
             Action<string> log = null;
 #endif
-            using (var client = DatagramConnection<int, ReadOnlyMemory<byte>>.CreateClient(serverEndpoint,
+            using (var client = DatagramConnection.CreateClient(serverEndpoint,
                 Marshaller.Int32Utf8,
                 Marshaller.Memory,
                 name: "client" // , localEndpoint: clientEndpoint
