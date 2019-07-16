@@ -126,6 +126,7 @@ namespace Pipelines.Sockets.Unofficial
                 DebugLog($"marking {nameof(Output)} as complete");
                 try { _sendToSocket.Writer.Complete(error); } catch { }
                 try { _sendToSocket.Reader.Complete(error); } catch { }
+                TrySetShutdown(error, this, PipeShutdownKind.OutputReaderCompleted);
 
                 var args = _writerArgs;
                 _writerArgs = null;
