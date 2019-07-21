@@ -1,8 +1,6 @@
 ﻿using PooledAwait;
 using System;
-using System.Buffers.Text;
 using System.Diagnostics;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Channels;
@@ -20,8 +18,6 @@ namespace Pipelines.Sockets.Unofficial.Tests
     }
     public class TestServer
     {
-
-        [Conditional("DEBUG")]
         private void Log(string message)
         {
             lock (this)
@@ -34,7 +30,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         {
             var serverEndpoint = new IPEndPoint(IPAddress.Loopback, 10134);
 #if DEBUG
-            Action<string> log = null;
+            Action<string> log = Log;
 #endif
             using (var server = DatagramConnection.CreateServer(serverEndpoint,
                 Marshaller.StringUtf8,
@@ -47,7 +43,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 try
                 {
                     var serverShutdown = Task.Run(() => RunPingServer(server));
-
+                    Console.WriteLine("Server running...");
                     await serverShutdown;
                 }
                 catch { }

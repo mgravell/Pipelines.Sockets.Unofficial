@@ -13,6 +13,8 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using System.Buffers.Text;
+using Pipelines.Sockets.Unofficial.Internal;
+using System.Collections.Generic;
 
 #pragma warning disable CS1591
 namespace Pipelines.Sockets.Unofficial
@@ -37,9 +39,11 @@ namespace Pipelines.Sockets.Unofficial
     {
         public static FrameConnectionOptions Default { get; } = new FrameConnectionOptions();
 
+        internal const int DefaultMaximumFrameSize = 65_535, // ipv4 limit; ipv6 can be bigger
+            DefaultBlockSize = 128 * 1024;
         public FrameConnectionOptions(MemoryPool<byte> pool = null,
             PipeScheduler readerScheduler = null, PipeScheduler writerScheduler = null,
-            int maximumFrameSize = 65535, int blockSize = 16 * 1024,
+            int maximumFrameSize = DefaultMaximumFrameSize, int blockSize = DefaultBlockSize,
             bool useSynchronizationContext = true,
             BoundedChannelOptions channelOptions = null)
         {
@@ -110,9 +114,9 @@ namespace Pipelines.Sockets.Unofficial
             EndPoint endpoint,
             IMarshaller<T> marshaller,
             string name = null
-        #if DEBUG
+#if DEBUG
                     , Action<string> log = null
-        #endif
+#endif
 
         )
         {
@@ -682,13 +686,11 @@ namespace Pipelines.Sockets.Unofficial
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.OperationAborted)
             {
-                Console.WriteLine(ex.SocketErrorCode);
                 TrySetShutdown(PipeShutdownKind.WriteSocketError, ex.SocketErrorCode);
                 error = null;
             }
             catch (SocketException ex)
             {
-                Console.WriteLine(ex.SocketErrorCode);
                 TrySetShutdown(PipeShutdownKind.WriteSocketError, ex.SocketErrorCode);
                 error = ex;
             }
@@ -718,19 +720,23 @@ namespace Pipelines.Sockets.Unofficial
             }
         }
 
-        async FireAndForget OnReceivedAsyncFF(byte[] payload, int bytes, SocketFlags flags, EndPoint peer, long localIndex)
+        async FireAndForget OnReceivedAsyncFF(ReadOnlySequence<byte> input, Action<ReadOnlySequence<byte>> disposeInput, SocketFlags flags, EndPoint peer, long localIndex)
         {
-            await OnReceivedAsync(payload, bytes, flags, peer, localIndex);
+            await OnReceivedAsync(input, disposeInput, flags, peer, localIndex);
         }
-        async PooledValueTask OnReceivedAsync(byte[] payload, int bytes, SocketFlags flags, EndPoint peer, long localIndex)
+        async PooledValueTask OnReceivedAsync(ReadOnlySequence<byte> input, Action<ReadOnlySequence<byte>> disposeInput, SocketFlags flags, EndPoint peer, long localIndex)
         {
             try
             {
                 await Task.Yield();
                 DebugLog("Deserializing payload...");
-                var message = _deserializer.Read(new ReadOnlySequence<byte>(payload, 0, bytes), out var onDispose);
+                var message = _deserializer.Read(input, out var disposeMessage);
+                var tmp = disposeInput;
+                disposeInput = null;
+                tmp?.Invoke(input);
+
                 DebugLog("Writing received message to channel...");
-                await _receivedFromSocket.Writer.WriteAsync(new Frame<TRead>(message, flags, peer, onDispose, localIndex));
+                await _receivedFromSocket.Writer.WriteAsync(new Frame<TRead>(message, flags, peer, disposeMessage, localIndex));
             }
             catch (Exception ex)
             {
@@ -739,33 +745,35 @@ namespace Pipelines.Sockets.Unofficial
             }
             finally
             {
-                if (payload != null)
-                    ArrayPool<byte>.Shared.Return(payload);
+                disposeInput?.Invoke(input);
             }
         }
 
         private async FireAndForget DoReceiveAsync()
         {
             await _receiveOptions.ReaderScheduler.Yield();
+            DebugLog("Starting receive loop...");
             Exception error = null;
-            var args = new SocketAwaitableEventArgs(InlineReads ? null : _receiveOptions.WriterScheduler);
-            args.RemoteEndPoint = _endpoint;
-            byte[] rented = null;
+            SocketAwaitableEventArgs args = null;
+            var bufferList = new List<ArraySegment<byte>>();
+
             ValueTask pending = default;
             long localIndex = 0;
+            CountedPoolSource<byte> source = null;
             try
             {
-                DebugLog("Starting receive loop...");
+                source = new CountedPoolSource<byte>(_receiveOptions.Pool, _receiveOptions.BlockSize);
+                args = new SocketAwaitableEventArgs(InlineReads ? null : _receiveOptions.WriterScheduler);
+                args.RemoteEndPoint = _endpoint;
+
                 while (true)
                 {
-                    if (rented == null)
-                    {
-                        rented = ArrayPool<byte>.Shared.Rent(_receiveOptions.MaximumFrameSize);
-                        DebugLog($"Rented buffer; {rented.Length} available; allowing {_receiveOptions.MaximumFrameSize}");
-                        args.SetBuffer(rented, 0, _receiveOptions.MaximumFrameSize);
-                    }
+                    DebugLog($"Renting buffer, requesting {_receiveOptions.MaximumFrameSize}...");
+                    var peek = source.Peek(_receiveOptions.MaximumFrameSize);
+                    DebugLog($"Rented buffer; {peek.Length} available; setting socket buffer...");
+                    SetBuffer(args, peek, bufferList);
+                    DebugLog($"Socket buffer configured");
                     args.SocketFlags = SocketFlags.None;
-
                     int bytes;
                     try
                     {
@@ -803,18 +811,17 @@ namespace Pipelines.Sockets.Unofficial
                         continue;
                     }
                     var frameIndex = localIndex++;
+                    var payload = source.Take(bytes, out var onDisposed);
                     if (_isServer)
                     {
-                        _ = OnReceivedAsyncFF(rented, bytes, args.SocketFlags, args.RemoteEndPoint, frameIndex);
+                        _ = OnReceivedAsyncFF(payload, onDisposed, args.SocketFlags, args.RemoteEndPoint, frameIndex);
                     }
                     else
                     {
                         // we'll have at most one message deserializing while we fetch new data
                         await pending; // wait for the last queued item to finish (backlog etc)
-                        pending = OnReceivedAsync(rented, bytes, args.SocketFlags, args.RemoteEndPoint, frameIndex); // don't await the new one yet
+                        pending = OnReceivedAsync(payload, onDisposed, args.SocketFlags, args.RemoteEndPoint, frameIndex); // don't await the new one yet
                     }
-
-                    rented = null; // ownership transferred
                 }
                 TrySetShutdown(PipeShutdownKind.ReadEndOfStream);
             }
@@ -845,11 +852,42 @@ namespace Pipelines.Sockets.Unofficial
             finally
             {
                 DebugLog("Exited receive loop");
-                if (error != null) DebugLog(error.Message);
+                if (error != null)
+                {
+                    DebugLog(error.Message);
+                    DebugLog(error.StackTrace);
+                }
                 try { _socket.Shutdown(SocketShutdown.Receive); } catch { }
                 try { _receivedFromSocket.Writer.Complete(error); } catch { }
-                try { args.Dispose(); } catch { }
-                if (rented != null) try { ArrayPool<byte>.Shared.Return(rented); } catch { }
+                try { args?.Dispose(); } catch { }
+                try { source?.Dispose(); } catch { }
+            }
+        }
+
+        private void SetBuffer(SocketAwaitableEventArgs args, ReadOnlySequence<byte> buffer, IList<ArraySegment<byte>> bufferList)
+        {
+            DebugLog("WTF?");
+            if (buffer.IsSingleSegment)
+            {
+                DebugLog("A");
+                if (args.BufferList != null) args.BufferList = null;
+                DebugLog("B");
+                var arr = buffer.First.GetArray();
+                DebugLog($"single buffer [{arr.Offset},{arr.Count}) (len {(arr.Array?.Length ?? -1)})");
+                args.SetBuffer(arr.Array, arr.Offset, arr.Count);
+            }
+            else
+            {
+                DebugLog("D");
+                if (args.Buffer != null) args.SetBuffer(null, 0, 0);
+                bufferList.Clear();
+                foreach (var segment in buffer)
+                {
+                    var arr = segment.GetArray();
+                    DebugLog($"multi-buffer [{arr.Offset},{arr.Count}) (len {(arr.Array?.Length ?? -1)})");
+                    bufferList.Add(arr);
+                }
+                args.BufferList = bufferList;
             }
         }
     }

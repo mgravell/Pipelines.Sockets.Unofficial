@@ -16,7 +16,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
     public class TestClient
     {
 
-        [Conditional("DEBUG")]
+        
         private void Log(string message)
         {
             lock (this)
@@ -30,7 +30,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             var serverEndpoint = new IPEndPoint(IPAddress.Loopback, 10134);
             // var clientEndpoint = new IPEndPoint(IPAddress.Loopback, 10135);
 #if DEBUG
-            Action<string> log = null;
+            Action<string> log = Log;
 #endif
             using (var client = DatagramConnection.CreateClient(serverEndpoint,
                 Marshaller.Int32Utf8,
