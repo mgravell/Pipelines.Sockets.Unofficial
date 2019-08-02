@@ -661,7 +661,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public void DuelingThreadsShouldNotStall(int workerCount, int perWorker)
         {
 #if DEBUG
-            perworker /= 100;
+            perWorker /= 100;
 #endif
             Volatile.Write(ref _failCount, 0);
             Volatile.Write(ref _successCount, 0);
@@ -711,7 +711,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public async Task DuelingThreadsShouldNotStallAsync(int workerCount, int perWorker)
         {
 #if DEBUG
-            perworker /= 100;
+            perWorker /= 100;
 #endif
             Volatile.Write(ref _failCount, 0);
             Volatile.Write(ref _successCount, 0);
