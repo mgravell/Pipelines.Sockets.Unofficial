@@ -79,5 +79,27 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
 
         }
+
+        [Fact]
+        public void CanAllocateSequences()
+        {
+            using (var bw = BufferWriter<byte>.Create(blockSize: 16))
+            {
+                var seq = bw.GetSequence(70);
+                Assert.Equal(80, seq.Length);
+
+                bw.Advance(40);
+                for (int i = 0; i < 5; i++)
+                {
+                    bw.GetSpan(8);
+                    bw.Advance(5);
+                }
+
+                using (var ros = bw.Flush())
+                {
+                    Assert.Equal(65, ros.Value.Length);
+                }
+            }
+        }
     }
 }

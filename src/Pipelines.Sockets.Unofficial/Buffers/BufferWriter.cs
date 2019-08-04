@@ -1,4 +1,5 @@
-﻿using Pipelines.Sockets.Unofficial.Internal;
+﻿using Pipelines.Sockets.Unofficial.Arenas;
+using Pipelines.Sockets.Unofficial.Internal;
 using System;
 using System.Buffers;
 using System.Diagnostics;
@@ -84,10 +85,10 @@ namespace Pipelines.Sockets.Unofficial.Buffers
             get => this;
         }
 
-        private RefCountedSegment _head, _tail;
+        private RefCountedSegment _head, _tail, _final;
 
-        private int _headOffset, _offset, _remaining;
-        private Memory<T> _block;
+        private int _headOffset, _tailOffset, _tailRemaining;
+        private Memory<T> _writingBlock;
 
         private protected BufferWriter(int blockSize)
         {
@@ -104,8 +105,8 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         {
             // release anything that is in the pending buffer
             var node = _head;
-            _head = _tail = null;
-            _remaining = _offset = _headOffset = 0;
+            _head = _tail = _final = null;
+            _tailRemaining = _tailOffset = _headOffset = 0;
             while (node != null)
             {
                 var next = (RefCountedSegment)node.Next; // need to do this *first*, since Release nukes it
@@ -122,12 +123,12 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         public OwnedReadOnlySequence<T> Flush()
         {
             // is it a trivial sequence? (this includes the null case)
-            if (ReferenceEquals(_head, _tail) && _offset == _headOffset) return default;
+            if (ReferenceEquals(_head, _tail) && _tailOffset == _headOffset) return default;
 
             // create a new sequence from the current chain
-            var value = new ReadOnlySequence<T>(_head, _headOffset, _tail, _offset);
+            var value = new ReadOnlySequence<T>(_head, _headOffset, _tail, _tailOffset);
 
-            if (_remaining == 0)
+            if (_tailRemaining == 0)
             {
                 // nothing left in the tail; start a whole new chain
                 DiscardChain();
@@ -141,49 +142,88 @@ namespace Pipelines.Sockets.Unofficial.Buffers
                 // - Release on everything in the old chain *except* the new head
                 _tail.AddRef();
                 _head = _tail;
-                _headOffset = _offset;
+                _headOffset = _tailOffset;
             }
             return new OwnedReadOnlySequence<T>(value, RefCountedSegment.s_Release);
         }
 
-        void IBufferWriter<T>.Advance(int count)
+        public void Advance(int count)
         {
-            if (count < 0 | count > _remaining) Throw.ArgumentOutOfRange(nameof(count));
-            _remaining -= count;
-            _offset += count;
+            if (count < 0) Throw.ArgumentOutOfRange(nameof(count));
+            if (count <= _tailRemaining)
+            {
+                _tailRemaining -= count;
+                _tailOffset += count;
+                return;
+            }
+            throw new NotImplementedException("multi-segment advance");
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private Memory<T> GetMemory(int sizeHint)
-            => _remaining >= sizeHint ? _block.Slice(_offset) : GetMemorySlow(sizeHint);
+        public Span<T> GetSpan(int sizeHint)
+            => _tailRemaining >= sizeHint ? _writingBlock.Span.Slice(_tailOffset) : GetMemorySlow(sizeHint).Span;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Memory<T> GetMemory(int sizeHint)
+            => _tailRemaining >= sizeHint ? _writingBlock.Slice(_tailOffset) : GetMemorySlow(sizeHint);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Sequence<T> GetSequence(int sizeHint)
+        {
+            long availableLength;
+            if (_final == null)
+            {
+                availableLength = 0;
+            }
+            else
+            {
+                var seq = new Sequence<T>(_tail, _final, _tailOffset, _final.Length);
+                availableLength = seq.Length;
+                if (availableLength >= sizeHint) return seq;
+            }
+            return GetSequenceSlow((int)(sizeHint - availableLength));
+        }
+
+        private Sequence<T> GetSequenceSlow(int extraSpaceNeeded)
+        {
+            do
+            {
+                _final = CreateNewSegment(_final);
+                if (_head == null) _head = _tail = _final;
+                extraSpaceNeeded -= _final.Length;
+            } while (extraSpaceNeeded > 0);
+            return new Sequence<T>(_tail, _final, _tailOffset, _final.Length);
+        }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private Memory<T> GetMemorySlow(int sizeHint)
         {
-            Debug.Assert(sizeHint > _remaining, "shouldn't have called slow impl");
+            Debug.Assert(sizeHint > _tailRemaining, "shouldn't have called slow impl");
             if (sizeHint > BlockSize) Throw.ArgumentOutOfRange(nameof(sizeHint));
 
             // limit the tail to the committed bytes
-            _tail?.Trim(_offset);
+            _tail?.Trim(_tailOffset);
 
-            // rent new block
-            _tail = CreateNewSegment(_tail, out _block);
+            var next = (RefCountedSegment)_tail?.Next;
+            if (next != null)
+            {   // we already have an onwards chain
+                _tail = next;
+            }
+            else
+            {   // rent new block in the chain
+                _final = _tail = CreateNewSegment(_final);
+            }
+            _writingBlock = _tail.Memory;
             if (_head == null) _head = _tail;
-            _offset = 0;
-            _remaining = _block.Length;
+            _tailOffset = 0;
+            _tailRemaining = _tail.Length;
 
-            return _block;
+            return _writingBlock;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        Memory<T> IBufferWriter<T>.GetMemory(int sizeHint) => GetMemory(sizeHint);
+        private protected abstract RefCountedSegment CreateNewSegment(RefCountedSegment previous);
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        Span<T> IBufferWriter<T>.GetSpan(int sizeHint) => GetMemory(sizeHint).Span;
-
-        private protected abstract RefCountedSegment CreateNewSegment(RefCountedSegment tail, out Memory<T> memory);
-
-        private protected abstract partial class RefCountedSegment : ReadOnlySequenceSegment<T>
+        private protected abstract partial class RefCountedSegment : SequenceSegment<T>
         {
             private int _count;
             internal static readonly Action<ReadOnlySequence<T>> s_Release = value => Release(value);
@@ -193,12 +233,12 @@ namespace Pipelines.Sockets.Unofficial.Buffers
                 if (value.IsEmpty) return;
 
                 var start = value.Start;
-                var len = value.Length + start.GetInteger();
+                var len = value.Length + start.GetInteger(); // we'll be counting the full length of every segment, including the first
                 var node = value.Start.GetObject() as RefCountedSegment;
 
                 while (len > 0 & node != null)
                 {
-                    len -= node.Memory.Length;
+                    len -= node.Length;
                     var next = (RefCountedSegment)node.Next; // need to do this *first*, since Release nukes it
                     node.Release();
                     node = next;
@@ -206,20 +246,12 @@ namespace Pipelines.Sockets.Unofficial.Buffers
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            protected RefCountedSegment(RefCountedSegment previous, Memory<T> memory)
+            protected RefCountedSegment(Memory<T> memory, RefCountedSegment previous)
+                : base(memory, previous)
             {
                 _count = 1;
                 IncrLiveCount();
-                Memory = memory;
-                if (previous != null)
-                {
-                    RunningIndex = previous.RunningIndex + previous.Memory.Length;
-                    previous.Next = this;
-                }
             }
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public void Trim(int length) => Memory = Memory.Slice(0, length);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public void Release()
@@ -228,7 +260,7 @@ namespace Pipelines.Sockets.Unofficial.Buffers
                 {
                     DecrLiveCount();
                     Memory = default;
-                    Next = default; // break the chain, in case of dangling references
+                    DetachNext(); // break the chain, in case of dangling references
                     ReleaseImpl();
                 }
             }
@@ -251,11 +283,10 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         internal sealed class MemoryPoolBufferWriter : BufferWriter<T>
         {
             private MemoryPool<T> _memoryPool;
-            private protected override RefCountedSegment CreateNewSegment(RefCountedSegment previous, out Memory<T> memory)
+            private protected override RefCountedSegment CreateNewSegment(RefCountedSegment previous)
             {
                 var owner = _memoryPool.Rent(BlockSize);
-                memory = owner.Memory;
-                return new MemoryPoolRefCountedSegment(previous, owner, memory);
+                return new MemoryPoolRefCountedSegment(owner, previous);
             }
                 
 
@@ -275,7 +306,8 @@ namespace Pipelines.Sockets.Unofficial.Buffers
             {
                 private readonly IMemoryOwner<T> _memoryOwner;
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public MemoryPoolRefCountedSegment(RefCountedSegment previous, IMemoryOwner<T> memoryOwner, Memory<T> memory) : base(previous, memory)
+                public MemoryPoolRefCountedSegment(IMemoryOwner<T> memoryOwner, RefCountedSegment previous)
+                    : base(memoryOwner.Memory, previous)
                     => _memoryOwner = memoryOwner;
 
                 protected override void ReleaseImpl() => _memoryOwner.Dispose();
@@ -285,11 +317,10 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         internal sealed class ArrayPoolBufferWriter : BufferWriter<T>
         {
             private ArrayPool<T> _arrayPool;
-            private protected override RefCountedSegment CreateNewSegment(RefCountedSegment previous, out Memory<T> memory)
+            private protected override RefCountedSegment CreateNewSegment(RefCountedSegment previous)
             {
                 var array = _arrayPool.Rent(BlockSize);
-                memory = new Memory<T>(array, 0, BlockSize); // don't want to over-size here; contract is to respect BlockSize
-                return new ArrayPoolRefCountedSegment(previous, _arrayPool, array);
+                return new ArrayPoolRefCountedSegment(_arrayPool, array, previous);
             }
 
             public ArrayPoolBufferWriter(ArrayPool<T> arrayPool, int blockSize)
@@ -308,13 +339,14 @@ namespace Pipelines.Sockets.Unofficial.Buffers
             {
                 private readonly ArrayPool<T> _arrayPool;
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public ArrayPoolRefCountedSegment(RefCountedSegment previous, ArrayPool<T> arrayPool, Memory<T> memory) : base(previous, memory)
+                public ArrayPoolRefCountedSegment(ArrayPool<T> arrayPool, Memory<T> memory, RefCountedSegment previous)
+                    : base(memory, previous)
                     => _arrayPool = arrayPool;
 
                 protected override void ReleaseImpl()
                 {
                     T[] arr;
-                    if (MemoryMarshal.TryGetArray(Memory, out var segment) && (arr = segment.Array) != null)
+                    if (MemoryMarshal.TryGetArray<T>(Memory, out var segment) && (arr = segment.Array) != null)
                         _arrayPool.Return(arr);
                 }
             }
