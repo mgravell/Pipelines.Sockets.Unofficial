@@ -1,7 +1,7 @@
 ﻿#if DEBUG
 using System.Threading;
 
-namespace Pipelines.Sockets.Unofficial
+namespace Pipelines.Sockets.Unofficial.Buffers
 {
     partial class BufferWriter<T>
     {

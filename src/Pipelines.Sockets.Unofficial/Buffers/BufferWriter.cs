@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 
-namespace Pipelines.Sockets.Unofficial
+namespace Pipelines.Sockets.Unofficial.Buffers
 {
     /// <summary>
     /// Represents a ReadOnlySequence<typeparamref name="T"/> with lifetime management over the data
@@ -101,12 +101,14 @@ namespace Pipelines.Sockets.Unofficial
         public virtual void Dispose()
         {
             // release anything that is in the pending buffer
-            if (_head != null)
+            var node = _head;
+            _head = _tail = null;
+            _remaining = _offset = _headOffset = 0;
+            while (node != null)
             {
-                var value = new ReadOnlySequence<T>(_head, _headOffset, _tail, _offset);
-                _head = _tail = null;
-                _remaining = _offset = _headOffset = 0;
-                RefCountedSegment.Release(value);
+                var next = (RefCountedSegment)node.Next; // need to do this *first*, since Release nukes it
+                node.Release();
+                node = next;
             }
         }
 
@@ -187,15 +189,17 @@ namespace Pipelines.Sockets.Unofficial
 
             internal static void Release(ReadOnlySequence<T> value)
             {
-                var end = value.End.GetObject() as RefCountedSegment;
+                if (value.IsEmpty) return;
 
+                var start = value.Start;
+                var len = value.Length + start.GetInteger();
                 var node = value.Start.GetObject() as RefCountedSegment;
 
-                while (node != null)
+                while (len > 0 & node != null)
                 {
+                    len -= node.Memory.Length;
                     var next = (RefCountedSegment)node.Next; // need to do this *first*, since Release nukes it
                     node.Release();
-                    if (ReferenceEquals(node, end)) break;
                     node = next;
                 }
             }
@@ -219,7 +223,7 @@ namespace Pipelines.Sockets.Unofficial
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public void Release()
             {
-                if (Volatile.Read(ref _count) != 0 && Interlocked.Decrement(ref _count) == 0)
+                if (Volatile.Read(ref _count) > 0 && Interlocked.Decrement(ref _count) == 0)
                 {
                     DecrLiveCount();
                     Memory = default;
