@@ -98,7 +98,9 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         /// <summary>
         /// Release all resources associate with this instance
         /// </summary>
-        public virtual void Dispose()
+        public virtual void Dispose() => DiscardChain();
+
+        private void DiscardChain()
         {
             // release anything that is in the pending buffer
             var node = _head;
@@ -128,8 +130,7 @@ namespace Pipelines.Sockets.Unofficial.Buffers
             if (_remaining == 0)
             {
                 // nothing left in the tail; start a whole new chain
-                _head = _tail = null;
-                _remaining = _offset = _headOffset = 0;
+                DiscardChain();
             }
             else
             {
