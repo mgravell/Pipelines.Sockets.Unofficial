@@ -5,6 +5,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 
 namespace Pipelines.Sockets.Unofficial.Buffers
@@ -85,6 +86,12 @@ namespace Pipelines.Sockets.Unofficial.Buffers
             get => this;
         }
 
+        /// <summary>
+        /// Gets the amount of data buffered by the writer
+        /// </summary>
+        public long Length => _head == null ? 0 :
+            ((_tail.RunningIndex + _tailOffset) - (_head.RunningIndex + _headOffset));
+
 #pragma warning disable IDE0069
         // field never disposed - not needed, this is just 
         // from IMemoryOwner<T> on segment; see also DiscardChain
@@ -92,7 +99,6 @@ namespace Pipelines.Sockets.Unofficial.Buffers
 #pragma warning restore IDE0069
 
         private int _headOffset, _tailOffset, _tailRemaining;
-        private Memory<T> _writingBlock;
 
         private protected BufferWriter(int blockSize)
         {
@@ -120,17 +126,27 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         }
 
         /// <summary>
-        /// Gets the currently buffered data as a sequence of buffer-segments (with lifetime management); you
-        /// can continue to append data after calling <c>Flush</c> - any additional data will form a new payload
-        /// that can be fetched by the next call to <c>Flush</c>
+        /// Gets the currently buffered data as a sequence of read-write buffer-segments
         /// </summary>
-        public Owned<ReadOnlySequence<T>> Flush()
+        public Sequence<T> GetBuffer()
         {
             // is it a trivial sequence? (this includes the null case)
             if (ReferenceEquals(_head, _tail) && _tailOffset == _headOffset) return default;
 
             // create a new sequence from the current chain
-            var value = new ReadOnlySequence<T>(_head, _headOffset, _tail, _tailOffset);
+            var value = new Sequence<T>(_head, _tail, _headOffset, _tailOffset);
+            return value.IsEmpty ? default : value;
+        }
+
+        /// <summary>
+        /// Gets the currently buffered data as a sequence of read-only buffer-segments (with lifetime management); you
+        /// can continue to append data after calling <c>Flush</c> - any additional data will form a new payload
+        /// that can be fetched by the next call to <c>Flush</c>
+        /// </summary>
+        public Owned<ReadOnlySequence<T>> Flush()
+        {
+            ReadOnlySequence<T> value = GetBuffer();
+            if (value.IsEmpty) return value; // doesn't need to be "owned", and doesn't change state
 
             if (_tailRemaining == 0)
             {
@@ -143,8 +159,8 @@ namespace Pipelines.Sockets.Unofficial.Buffers
                 // increment the tail and continue from there
                 // this is a short-cut for:
                 // - AddRef on all the elements in the result
-                // - Release on everything in the old chain *except* the new head
-                _tail.AddRef();
+                // - Release on everything in the old chain *except* the new head (if it will be shared)
+                if (_tailOffset != 0) _tail.AddRef();
                 _head = _tail;
                 _headOffset = _tailOffset;
             }
@@ -156,14 +172,59 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         /// </summary>
         public void Advance(int count)
         {
-            if (count < 0) Throw.ArgumentOutOfRange(nameof(count));
-            if (count <= _tailRemaining)
+            if (count < 0)
             {
+                Throw.ArgumentOutOfRange(nameof(count));
+            }
+            else if (count == 0)
+            {
+                // nothing to do
+            }
+            else if (count <= _tailRemaining)
+            {
+                // single-block take
                 _tailRemaining -= count;
                 _tailOffset += count;
-                return;
             }
-            throw new NotImplementedException("multi-segment advance");
+            else
+            {
+                // multi-block take
+                SlowAdvance(count);
+            }
+        }
+
+        internal string GetState() // used for testing only; doesn't need to be efficient
+        {
+            if (_tail == null) return "(nil)";
+            var sb = new StringBuilder();
+            sb.Append($"[{_head.RunningIndex + _headOffset},{_tail.RunningIndex + _tailOffset}) - {_tailRemaining}/{(_final.RunningIndex + _final.Length) - (_tail.RunningIndex + _tailOffset)} available; counts: ");
+            var node = _head;
+            while(node != null)
+            {
+                sb.Append(node.RefCount).Append('/');
+                node = (RefCountedSegment)node.Next;
+            }
+            return sb.ToString();
+        }
+
+        private void SlowAdvance(int count)
+        {
+            // consume the current node
+            count -= _tailRemaining;
+            var node = _tail.Next;
+
+            // consume nodes until the required data fits
+            while (node != null & count > node.Length)
+            {
+                count -= node.Length;
+                node = node.Next;
+            }
+            if (node == null) Throw.ArgumentOutOfRange(nameof(count));
+
+            // consume part of the final node
+            _tail = (RefCountedSegment)node;
+            _tailOffset = count;
+            _tailRemaining = node.Length - count;
         }
 
         /// <summary>
@@ -171,14 +232,14 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Span<T> GetSpan(int sizeHint)
-            => _tailRemaining >= sizeHint ? _writingBlock.Span.Slice(_tailOffset) : GetMemorySlow(sizeHint).Span;
+            => _tailRemaining >= sizeHint ? _tail.Memory.Span.Slice(_tailOffset) : GetMemorySlow(sizeHint).Span;
 
         /// <summary>
         /// Access a contiguous write buffer
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Memory<T> GetMemory(int sizeHint)
-            => _tailRemaining >= sizeHint ? _writingBlock.Slice(_tailOffset) : GetMemorySlow(sizeHint);
+            => _tailRemaining >= sizeHint ? _tail.Memory.Slice(_tailOffset) : GetMemorySlow(sizeHint);
 
         /// <summary>
         /// Access a non-contiguous write buffer
@@ -205,7 +266,12 @@ namespace Pipelines.Sockets.Unofficial.Buffers
             do
             {
                 _final = CreateNewSegment(_final);
-                if (_head == null) _head = _tail = _final;
+                if (_head == null)
+                {
+                    _head = _tail = _final;
+                    _tailOffset = 0;
+                    _tailRemaining = _tail.Length;
+                }
                 extraSpaceNeeded -= _final.Length;
             } while (extraSpaceNeeded > 0);
             return new Sequence<T>(_tail, _final, _tailOffset, _final.Length);
@@ -219,6 +285,7 @@ namespace Pipelines.Sockets.Unofficial.Buffers
 
             // limit the tail to the committed bytes
             _tail?.Trim(_tailOffset);
+            bool wasHead = ReferenceEquals(_tail, _head);
 
             var next = (RefCountedSegment)_tail?.Next;
             if (next != null)
@@ -229,20 +296,33 @@ namespace Pipelines.Sockets.Unofficial.Buffers
             {   // rent new block in the chain
                 _final = _tail = CreateNewSegment(_final);
             }
-            _writingBlock = _tail.Memory;
-            if (_head == null) _head = _tail;
+
+            if (_head == null) { _head = _tail; }
+            else if (wasHead && _head.Length == _headOffset)
+            {
+                // the old head had capacity that we couldn't use and was trimmed; we can
+                // release the old head and start from the next - this avoids starting with
+                // a zero-length segment, which could cause leaks because Sequence<T>
+                // *rolls forwards over them* and they would therefore never get released
+                var oldHead = _head;
+                _head = (RefCountedSegment)oldHead.Next;
+                _headOffset = 0;
+                oldHead.Release();
+            }
             _tailOffset = 0;
             _tailRemaining = _tail.Length;
 
-            return _writingBlock;
+            return _tail.Memory;
         }
 
         private protected abstract RefCountedSegment CreateNewSegment(RefCountedSegment previous);
 
-        private protected abstract partial class RefCountedSegment : SequenceSegment<T>
+        internal abstract partial class RefCountedSegment : SequenceSegment<T>
         {
             private int _count;
             internal static readonly Action<ReadOnlySequence<T>> s_Release = value => Release(value);
+
+            internal int RefCount => Volatile.Read(ref _count);
 
             internal static void Release(ReadOnlySequence<T> value)
             {

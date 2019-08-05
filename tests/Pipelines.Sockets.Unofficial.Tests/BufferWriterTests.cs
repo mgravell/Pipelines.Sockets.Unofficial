@@ -1,12 +1,19 @@
-﻿using Pipelines.Sockets.Unofficial.Buffers;
+﻿using Pipelines.Sockets.Unofficial.Arenas;
+using Pipelines.Sockets.Unofficial.Buffers;
 using System;
 using System.Buffers;
+using System.Text;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Pipelines.Sockets.Unofficial.Tests
 {
     public class BufferWriterTests
     {
+        public BufferWriterTests(ITestOutputHelper log) => Log = log;
+
+        public ITestOutputHelper Log { get; }
+
         static string Raw(ReadOnlySequence<byte> values)
         {
             // this doesn't need to be efficient, just correct
@@ -36,7 +43,10 @@ namespace Pipelines.Sockets.Unofficial.Tests
                         span.Fill(nextVal++);
                         writer.Advance(5);
                     }
-                    return bw.Flush();
+                    Log?.WriteLine($"before flush, wrote {count * 5}... {bw.GetState()}");
+                    var result = bw.Flush();
+                    Log?.WriteLine($"after flush: {bw.GetState()}");
+                    return result;
                 }
 
 
@@ -64,8 +74,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 Assert.Equal(4, BufferWriter<byte>.LiveSegmentCount);
 #endif
 
-                for (int i = 0; i < chunks.Length; i++)
-                    chunks[i].Dispose();
+                for (int i = 0; i < chunks.Length; i++) Log?.WriteLine($"chunk {i}: {GetState(chunks[i])}");
+                for (int i = 0; i < chunks.Length; i++) chunks[i].Dispose();
+                for (int i = 0; i < chunks.Length; i++) Log?.WriteLine($"chunk {i}: {GetState(chunks[i])}");
 #if DEBUG
                 // should have the last buffer remaining
                 Assert.Equal(1, BufferWriter<byte>.LiveSegmentCount);
@@ -80,25 +91,56 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
         }
 
+        static string GetState(ReadOnlySequence<byte> ros)
+        {
+            var start = ros.Start;
+            var node = start.GetObject() as BufferWriter<byte>.RefCountedSegment;
+            long len = ros.Length + start.GetInteger();
+
+
+            var sb = new StringBuilder();
+            sb.Append($"{start.TryGetOffset()}-{ros.End.TryGetOffset()}; counts: ");
+            while (node != null & len > 0)
+            {
+                sb.Append("[").Append(node.RunningIndex).Append(',').Append(node.RunningIndex + node.Length).Append("):").Append(node.RefCount).Append(' ');
+                len -= node.Length;
+                node = (BufferWriter<byte>.RefCountedSegment)node.Next;
+            }
+            return sb.ToString();
+        }
+
         [Fact]
         public void CanAllocateSequences()
         {
             using (var bw = BufferWriter<byte>.Create(blockSize: 16))
             {
+                Log?.WriteLine(bw.GetState());
+                Assert.Equal(0, bw.Length);
+
                 var seq = bw.GetSequence(70);
                 Assert.Equal(80, seq.Length);
+                Log?.WriteLine(bw.GetState());
+                Assert.Equal(0, bw.Length);
 
                 bw.Advance(40);
-                for (int i = 0; i < 5; i++)
+                Log?.WriteLine(bw.GetState());
+                Assert.Equal(40, bw.Length);
+
+                for (int i = 1; i <= 5; i++)
                 {
+                    Log?.WriteLine($"Leasing span {i}... {bw.GetState()}");
                     bw.GetSpan(8);
                     bw.Advance(5);
+                    Assert.Equal(40 + (5 * i), bw.Length);
                 }
+                Log?.WriteLine(bw.GetState());
 
+                Assert.Equal(65, bw.Length);
                 using (var ros = bw.Flush())
                 {
                     Assert.Equal(65, ros.Value.Length);
                 }
+                Assert.Equal(0, bw.Length);
             }
         }
     }
