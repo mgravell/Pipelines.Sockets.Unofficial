@@ -28,7 +28,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 var writer = bw.Writer;
 
                 byte nextVal = 0;
-                OwnedReadOnlySequence<byte> Write(int count)
+                Owned<ReadOnlySequence<byte>> Write(int count)
                 {
                     for(int i = 0; i < count; i++)
                     {
@@ -40,7 +40,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 }
 
 
-                var chunks = new OwnedReadOnlySequence<byte>[5];
+                var chunks = new Owned<ReadOnlySequence<byte>>[5];
                 var rand = new Random(1234);
                 for (int i = 0; i < chunks.Length; i++)
                 {

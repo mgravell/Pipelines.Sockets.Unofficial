@@ -10,44 +10,44 @@ using System.Threading;
 namespace Pipelines.Sockets.Unofficial.Buffers
 {
     /// <summary>
-    /// Represents a ReadOnlySequence<typeparamref name="T"/> with lifetime management over the data
+    /// Represents a <typeparamref name="T"/> with lifetime management over the data
     /// </summary>
-    public readonly struct OwnedReadOnlySequence<T> : IDisposable
+    public readonly struct Owned<T> : IDisposable
     {
-        private readonly Action<ReadOnlySequence<T>> _onDispose;
-        private readonly ReadOnlySequence<T> _value;
+        private readonly Action<T> _onDispose;
+        private readonly T _value;
         /// <summary>
-        /// The sequence of data represented by this value
+        /// The data represented by this value
         /// </summary>
-        public ReadOnlySequence<T> Value
+        public T Value
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => _value;
         }
 
         /// <summary>
-        /// Release any resources associated with this sequence
+        /// Release any resources associated with this value
         /// </summary>
         public void Dispose() => _onDispose?.Invoke(Value);
 
         /// <summary>
         /// Create a new instance with a call-defined lifetime management callback
         /// </summary>
-        public OwnedReadOnlySequence(ReadOnlySequence<T> value, Action<ReadOnlySequence<T>> onDispose)
+        public Owned(T value, Action<T> onDispose)
         {
             _value = value;
             _onDispose = onDispose;
         }
 
         /// <summary>
-        /// Access this data as a ReadOnlySequence<typeparamref name="T"/>
+        /// Access the underlying data directly
         /// </summary>
         /// <param name="value"></param>
-        public static implicit operator ReadOnlySequence<T>(in OwnedReadOnlySequence<T> value) => value._value;
+        public static implicit operator T(in Owned<T> value) => value._value;
         /// <summary>
-        /// Represent an existing ReadOnlySequence<typeparamref name="T"/> with dummy lifetime management
+        /// Represent an existing value with dummy lifetime management
         /// </summary>
-        public static implicit operator OwnedReadOnlySequence<T>(in ReadOnlySequence<T> value) => new OwnedReadOnlySequence<T>(value, null);
+        public static implicit operator Owned<T>(in T value) => new Owned<T>(value, null);
     }
     
     /// <summary>
@@ -85,7 +85,11 @@ namespace Pipelines.Sockets.Unofficial.Buffers
             get => this;
         }
 
+#pragma warning disable IDE0069
+        // field never disposed - not needed, this is just 
+        // from IMemoryOwner<T> on segment; see also DiscardChain
         private RefCountedSegment _head, _tail, _final;
+#pragma warning restore IDE0069
 
         private int _headOffset, _tailOffset, _tailRemaining;
         private Memory<T> _writingBlock;
@@ -120,7 +124,7 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         /// can continue to append data after calling <c>Flush</c> - any additional data will form a new payload
         /// that can be fetched by the next call to <c>Flush</c>
         /// </summary>
-        public OwnedReadOnlySequence<T> Flush()
+        public Owned<ReadOnlySequence<T>> Flush()
         {
             // is it a trivial sequence? (this includes the null case)
             if (ReferenceEquals(_head, _tail) && _tailOffset == _headOffset) return default;
@@ -144,9 +148,12 @@ namespace Pipelines.Sockets.Unofficial.Buffers
                 _head = _tail;
                 _headOffset = _tailOffset;
             }
-            return new OwnedReadOnlySequence<T>(value, RefCountedSegment.s_Release);
+            return new Owned<ReadOnlySequence<T>>(value, RefCountedSegment.s_Release);
         }
 
+        /// <summary>
+        /// Commit a number of bytes to the underyling buffer
+        /// </summary>
         public void Advance(int count)
         {
             if (count < 0) Throw.ArgumentOutOfRange(nameof(count));
@@ -159,14 +166,23 @@ namespace Pipelines.Sockets.Unofficial.Buffers
             throw new NotImplementedException("multi-segment advance");
         }
 
+        /// <summary>
+        /// Access a contiguous write buffer
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Span<T> GetSpan(int sizeHint)
             => _tailRemaining >= sizeHint ? _writingBlock.Span.Slice(_tailOffset) : GetMemorySlow(sizeHint).Span;
 
+        /// <summary>
+        /// Access a contiguous write buffer
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Memory<T> GetMemory(int sizeHint)
             => _tailRemaining >= sizeHint ? _writingBlock.Slice(_tailOffset) : GetMemorySlow(sizeHint);
 
+        /// <summary>
+        /// Access a non-contiguous write buffer
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Sequence<T> GetSequence(int sizeHint)
         {
