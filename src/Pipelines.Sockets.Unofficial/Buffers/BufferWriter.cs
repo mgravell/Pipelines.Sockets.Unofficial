@@ -50,7 +50,7 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         /// </summary>
         public static implicit operator Owned<T>(in T value) => new Owned<T>(value, null);
     }
-    
+
     /// <summary>
     /// Implements a buffer-writer over arbitrary memory
     /// </summary>
@@ -138,32 +138,54 @@ namespace Pipelines.Sockets.Unofficial.Buffers
             return value.IsEmpty ? default : value;
         }
 
+        /*
+        /// <summary>
+        /// Get the logical start of the committed data
+        /// </summary>
+        public SequencePosition Start => _head == null ? default : new SequencePosition(_head, _headOffset);
+
+        /// <summary>
+        /// Get the logical end of the committed data
+        /// </summary>
+        public SequencePosition End => _head == null ? default : new SequencePosition(_tail, _tailOffset);
+        */
+
+        /// <summary>
+        /// Gets some subset of the currently buffered data as a sequence of read-only buffer-segments (with lifetime management); you
+        /// can continue to append data after calling <c>Flush</c> - any additional data will form a new payload
+        /// that can be fetched by the next call to <c>Flush</c>
+        /// </summary>
+        public Owned<ReadOnlySequence<T>> Flush(long count)
+        {
+            if (count < 0) Throw.ArgumentOutOfRange(nameof(count));
+            return FlushImpl(count);
+        }
+
         /// <summary>
         /// Gets the currently buffered data as a sequence of read-only buffer-segments (with lifetime management); you
         /// can continue to append data after calling <c>Flush</c> - any additional data will form a new payload
         /// that can be fetched by the next call to <c>Flush</c>
         /// </summary>
-        public Owned<ReadOnlySequence<T>> Flush()
-        {
-            ReadOnlySequence<T> value = GetBuffer();
-            if (value.IsEmpty) return value; // doesn't need to be "owned", and doesn't change state
+        public Owned<ReadOnlySequence<T>> Flush() => FlushImpl(-1);
 
-            if (_tailRemaining == 0)
-            {
-                // nothing left in the tail; start a whole new chain
-                DiscardChain();
-            }
-            else
-            {
-                // we have some capacity left in the tail; we'll keep that one, so:
-                // increment the tail and continue from there
-                // this is a short-cut for:
-                // - AddRef on all the elements in the result
-                // - Release on everything in the old chain *except* the new head (if it will be shared)
-                if (_tailOffset != 0) _tail.AddRef();
-                _head = _tail;
-                _headOffset = _tailOffset;
-            }
+        private Owned<ReadOnlySequence<T>> FlushImpl(long count)
+        {
+            if (count == 0) return default;
+
+            var value = GetBuffer();
+            if (count > 0) value = value.Slice(0, count);
+            else if (value.IsEmpty) return default; // "all of nothing"
+            var end = value.End;
+
+            _head = (RefCountedSegment) end.GetObject();
+            _headOffset = end.GetInteger();
+            // we have some capacity left in the head; we'll keep that one, so:
+            // increment the tail and continue from there
+            // this is a short-cut for:
+            // - AddRef on all the elements in the result
+            // - Release on everything in the old chain *except* the new head (if it will be shared)
+            if (_headOffset != 0) _head.AddRef();
+
             return new Owned<ReadOnlySequence<T>>(value, RefCountedSegment.s_Release);
         }
 

@@ -27,6 +27,31 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
             return new string(chars, 0, (int)values.Length);
         }
+
+        [Fact]
+        public void CanPartialFlush()
+        {
+            using (var bw = BufferWriter<byte>.Create(blockSize: 16))
+            {
+                bw.GetSequence(128);
+                bw.Advance(50);
+                bw.Advance(30);
+
+                Assert.Equal(80, bw.Length);
+
+                using (var x1 = bw.Flush(20))
+                {
+                    Assert.Equal(20, x1.Value.Length);
+                    Assert.Equal(60, bw.Length);
+                    using (var x2 = bw.Flush())
+                    {
+                        Assert.Equal(60, x2.Value.Length);
+                        Assert.Equal(0, bw.Length);
+                    }
+                }
+            }
+        }
+
         [Fact]
         public void BufferWriterDoesNotLeak()
         {
@@ -48,7 +73,6 @@ namespace Pipelines.Sockets.Unofficial.Tests
                     Log?.WriteLine($"after flush: {bw.GetState()}");
                     return result;
                 }
-
 
                 var chunks = new Owned<ReadOnlySequence<byte>>[5];
                 var rand = new Random(1234);
