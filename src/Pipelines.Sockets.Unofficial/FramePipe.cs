@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using System.Buffers.Text;
 using Pipelines.Sockets.Unofficial.Internal;
 using System.Collections.Generic;
+using Pipelines.Sockets.Unofficial.Buffers;
 
 #pragma warning disable CS1591
 namespace Pipelines.Sockets.Unofficial
@@ -448,7 +449,7 @@ namespace Pipelines.Sockets.Unofficial
         }
     }
     internal class AsymmetricSocketFrameConnection<TWrite, TRead>
-        : IFrameChannel<TWrite, TRead>, IBufferWriter<byte>
+        : IFrameChannel<TWrite, TRead>
     {
 
         public override string ToString() => _name;
@@ -564,36 +565,6 @@ namespace Pipelines.Sockets.Unofficial
         public ChannelReader<Frame<TRead>> Input => _receivedFromSocket.Reader;
         public ChannelWriter<Frame<TWrite>> Output => _sendToSocket.Writer;
 
-        byte[] _writeBuffer;
-        int _writeOffset;
-        Span<byte> IBufferWriter<byte>.GetSpan(int sizeHint)
-            => new Span<byte>(_writeBuffer, _writeOffset, _sendOptions.MaximumFrameSize - _writeOffset);
-        Memory<byte> IBufferWriter<byte>.GetMemory(int sizeHint)
-            => new Memory<byte>(_writeBuffer, _writeOffset, _sendOptions.MaximumFrameSize - _writeOffset);
-
-        void IBufferWriter<byte>.Advance(int bytes)
-        {
-            if (bytes < 0 | (bytes + _writeOffset) > _sendOptions.MaximumFrameSize)
-                throw new ArgumentOutOfRangeException(nameof(bytes));
-            _writeOffset += bytes;
-        }
-
-
-        void RentWriteBuffer()
-        {
-            _writeBuffer = ArrayPool<byte>.Shared.Rent(_sendOptions.MaximumFrameSize);
-        }
-        void ResetWriteBuffer()
-        {
-            _writeOffset = 0;
-        }
-        void ReturnWriteBuffer()
-        {
-            if (_writeBuffer != null)
-                ArrayPool<byte>.Shared.Return(_writeBuffer);
-            _writeBuffer = null;
-        }
-
         private bool CanIgnoreSocketError(SocketError error)
         {
             if (_isServer)
@@ -612,6 +583,8 @@ namespace Pipelines.Sockets.Unofficial
             await _sendOptions.ReaderScheduler.Yield();
             Exception error = null;
             SocketAwaitableEventArgs args = null;
+            BufferWriter<byte> writer = BufferWriter<byte>.Create();
+            var bufferList = new List<ArraySegment<byte>>();
             try
             {
                 DebugLog("Starting send loop...");
@@ -620,17 +593,14 @@ namespace Pipelines.Sockets.Unofficial
                     if (_sendToSocket.Reader.TryRead(out var frame))
                     {
                         DebugLog("Processing sync send frames...");
-                        bool isFirst = true;
-                        RentWriteBuffer();
                         do
                         {
                             EndPoint target;
                             using (frame)
                             {
-                                ResetWriteBuffer();
-                                _serializer.Write(frame.Payload, this);
+                                _serializer.Write(frame.Payload, writer.Writer);
 
-                                if (_writeOffset == 0) continue; // empty payload
+                                if (writer.Length == 0) continue; // empty payload
                                 if (args == null)
                                 {
                                     args = new SocketAwaitableEventArgs(InlineWrites ? null : _sendOptions.ReaderScheduler);
@@ -640,45 +610,45 @@ namespace Pipelines.Sockets.Unofficial
                                 target = frame.Peer ?? _endpoint;
                             }
 
-                            if (isFirst) args.SetBuffer(_writeBuffer, 0, _writeOffset);
-                            else args.SetBuffer(0, _writeOffset);
-
-                            DebugLog($"Sending {frame} to {args.RemoteEndPoint}, flags: {args.SocketFlags}");
-
-                            try
+                            using (var ros = writer.Flush())
                             {
-                                bool pending;
-                                if (_isServer)
-                                {
-                                    if (!Equals(args.RemoteEndPoint, target))
-                                        args.RemoteEndPoint = target;
-                                    pending = _socket.SendToAsync(args);
-                                }
-                                else
-                                {
-                                    pending = _socket.SendAsync(args);
-                                }
-                                int bytes;
+                                SetBuffer(args, ros, bufferList);
+                                DebugLog($"Sending {frame} to {args.RemoteEndPoint}, flags: {args.SocketFlags}");
 
-                                if (pending)
+                                try
                                 {
-                                    // will complete asynchronously
-                                    bytes = await args;
+                                    bool pending;
+                                    if (_isServer)
+                                    {
+                                        if (!Equals(args.RemoteEndPoint, target))
+                                            args.RemoteEndPoint = target;
+                                        pending = _socket.SendToAsync(args);
+                                    }
+                                    else
+                                    {
+                                        pending = _socket.SendAsync(args);
+                                    }
+                                    int bytes;
+
+                                    if (pending)
+                                    {
+                                        // will complete asynchronously
+                                        bytes = await args;
+                                    }
+                                    else
+                                    {
+                                        // completed synchronously - need to mark completed
+                                        args.Complete();
+                                        bytes = args.GetResult();
+                                    }
+                                    DebugLog($"Sent: {bytes} bytes");
+                                    if (bytes > 0) Interlocked.Add(ref _totalBytesSent, bytes);
                                 }
-                                else
-                                {
-                                    // completed synchronously - need to mark completed
-                                    args.Complete();
-                                    bytes = args.GetResult();
+                                catch (SocketException s) when (CanIgnoreSocketError(s.SocketErrorCode))
+                                {   // not our problem
                                 }
-                                DebugLog($"Sent: {bytes} bytes");
-                                if (bytes > 0) Interlocked.Add(ref _totalBytesSent, bytes);
-                            }
-                            catch (SocketException s) when (CanIgnoreSocketError(s.SocketErrorCode))
-                            {   // not our problem
                             }
                         } while (_sendToSocket.Reader.TryRead(out frame));
-                        ReturnWriteBuffer();
                     }
                     DebugLog("Awaiting async send frames...");
                 } while (await _sendToSocket.Reader.WaitToReadAsync());
@@ -716,24 +686,21 @@ namespace Pipelines.Sockets.Unofficial
                 try { _socket.Shutdown(SocketShutdown.Send); } catch { }
                 try { _sendToSocket.Writer.TryComplete(error); } catch { }
                 if (args != null) try { args.Dispose(); } catch { }
-                ReturnWriteBuffer();
+                try { writer.Dispose(); } catch { }
             }
         }
 
-        async FireAndForget OnReceivedAsyncFF(ReadOnlySequence<byte> input, Action<ReadOnlySequence<byte>> disposeInput, SocketFlags flags, EndPoint peer, long localIndex)
+        async FireAndForget OnReceivedAsyncFF(Owned<ReadOnlySequence<byte>> input, SocketFlags flags, EndPoint peer, long localIndex)
         {
-            await OnReceivedAsync(input, disposeInput, flags, peer, localIndex);
+            await OnReceivedAsync(input, flags, peer, localIndex);
         }
-        async PooledValueTask OnReceivedAsync(ReadOnlySequence<byte> input, Action<ReadOnlySequence<byte>> disposeInput, SocketFlags flags, EndPoint peer, long localIndex)
+        async PooledValueTask OnReceivedAsync(Owned<ReadOnlySequence<byte>> input, SocketFlags flags, EndPoint peer, long localIndex)
         {
             try
             {
                 await Task.Yield();
                 DebugLog("Deserializing payload...");
                 var message = _deserializer.Read(input, out var disposeMessage);
-                var tmp = disposeInput;
-                disposeInput = null;
-                tmp?.Invoke(input);
 
                 DebugLog("Writing received message to channel...");
                 await _receivedFromSocket.Writer.WriteAsync(new Frame<TRead>(message, flags, peer, disposeMessage, localIndex));
@@ -745,7 +712,7 @@ namespace Pipelines.Sockets.Unofficial
             }
             finally
             {
-                disposeInput?.Invoke(input);
+                input.Dispose();
             }
         }
 
@@ -759,17 +726,17 @@ namespace Pipelines.Sockets.Unofficial
 
             ValueTask pending = default;
             long localIndex = 0;
-            CountedPoolSource<byte> source = null;
+            var writer = BufferWriter<byte>.Create();
             try
             {
-                source = new CountedPoolSource<byte>(_receiveOptions.Pool, _receiveOptions.BlockSize);
+                writer = BufferWriter<byte>.Create(_receiveOptions.Pool, _receiveOptions.BlockSize);
                 args = new SocketAwaitableEventArgs(InlineReads ? null : _receiveOptions.WriterScheduler);
                 args.RemoteEndPoint = _endpoint;
 
                 while (true)
                 {
                     DebugLog($"Renting buffer, requesting {_receiveOptions.MaximumFrameSize}...");
-                    var peek = source.Peek(_receiveOptions.MaximumFrameSize);
+                    var peek = writer.GetSequence(_receiveOptions.MaximumFrameSize);
                     DebugLog($"Rented buffer; {peek.Length} available; setting socket buffer...");
                     SetBuffer(args, peek, bufferList);
                     DebugLog($"Socket buffer configured");
@@ -810,17 +777,18 @@ namespace Pipelines.Sockets.Unofficial
                     {   // not our problem
                         continue;
                     }
+                    writer.Advance(bytes);
+                    var payload = writer.Flush();
                     var frameIndex = localIndex++;
-                    var payload = source.Take(bytes, out var onDisposed);
                     if (_isServer)
                     {
-                        _ = OnReceivedAsyncFF(payload, onDisposed, args.SocketFlags, args.RemoteEndPoint, frameIndex);
+                        _ = OnReceivedAsyncFF(payload, args.SocketFlags, args.RemoteEndPoint, frameIndex);
                     }
                     else
                     {
                         // we'll have at most one message deserializing while we fetch new data
                         await pending; // wait for the last queued item to finish (backlog etc)
-                        pending = OnReceivedAsync(payload, onDisposed, args.SocketFlags, args.RemoteEndPoint, frameIndex); // don't await the new one yet
+                        pending = OnReceivedAsync(payload, args.SocketFlags, args.RemoteEndPoint, frameIndex); // don't await the new one yet
                     }
                 }
                 TrySetShutdown(PipeShutdownKind.ReadEndOfStream);
@@ -860,31 +828,25 @@ namespace Pipelines.Sockets.Unofficial
                 try { _socket.Shutdown(SocketShutdown.Receive); } catch { }
                 try { _receivedFromSocket.Writer.Complete(error); } catch { }
                 try { args?.Dispose(); } catch { }
-                try { source?.Dispose(); } catch { }
+                try { writer?.Dispose(); } catch { }
             }
         }
 
         private void SetBuffer(SocketAwaitableEventArgs args, ReadOnlySequence<byte> buffer, IList<ArraySegment<byte>> bufferList)
         {
-            DebugLog("WTF?");
             if (buffer.IsSingleSegment)
             {
-                DebugLog("A");
                 if (args.BufferList != null) args.BufferList = null;
-                DebugLog("B");
                 var arr = buffer.First.GetArray();
-                DebugLog($"single buffer [{arr.Offset},{arr.Count}) (len {(arr.Array?.Length ?? -1)})");
                 args.SetBuffer(arr.Array, arr.Offset, arr.Count);
             }
             else
             {
-                DebugLog("D");
                 if (args.Buffer != null) args.SetBuffer(null, 0, 0);
                 bufferList.Clear();
                 foreach (var segment in buffer)
                 {
                     var arr = segment.GetArray();
-                    DebugLog($"multi-buffer [{arr.Offset},{arr.Count}) (len {(arr.Array?.Length ?? -1)})");
                     bufferList.Add(arr);
                 }
                 args.BufferList = bufferList;
