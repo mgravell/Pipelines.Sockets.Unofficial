@@ -508,74 +508,79 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public async Task PreCanceledReportsCorrectly()
         {
-            var cancel = new CancellationTokenSource();
-            cancel.Cancel();
+            using (var cancel = new CancellationTokenSource())
+            {
+                cancel.Cancel();
 
-            var ct = _timeoutMux.TryWaitAsync(cancel.Token);
-            Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
-            Assert.True(ct.IsCanceled, nameof(ct.IsCanceled));
-            Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
+                var ct = _timeoutMux.TryWaitAsync(cancel.Token);
+                Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
+                Assert.True(ct.IsCanceled, nameof(ct.IsCanceled));
+                Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
 
-            Assert.Throws<TaskCanceledException>(() => ct.Result);
+                Assert.Throws<TaskCanceledException>(() => ct.Result);
 
-            await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct).ConfigureAwait(false);
+                await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct).ConfigureAwait(false);
+            }
         }
 
         [Fact]
         public async Task DuringCanceledReportsCorrectly()
         {
-            var cancel = new CancellationTokenSource();
-
-            // cancel it *after* issuing incomplete token
-
-            ValueTask<LockToken> ct;
-            using (var token = _timeoutMux.TryWait())
+            using (var cancel = new CancellationTokenSource())
             {
-                Assert.True(token.Success);
 
-                ct = _timeoutMux.TryWaitAsync(cancel.Token);
-                Assert.False(ct.IsCompleted, nameof(ct.IsCompleted));
-                Assert.False(ct.IsCanceled, nameof(ct.IsCanceled));
+                // cancel it *after* issuing incomplete token
+
+                ValueTask<LockToken> ct;
+                using (var token = _timeoutMux.TryWait())
+                {
+                    Assert.True(token.Success);
+
+                    ct = _timeoutMux.TryWaitAsync(cancel.Token);
+                    Assert.False(ct.IsCompleted, nameof(ct.IsCompleted));
+                    Assert.False(ct.IsCanceled, nameof(ct.IsCanceled));
+                    Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
+
+                    cancel.Cancel(); // cancel it *before* release; should be respected
+                }
+                Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
+                Assert.True(ct.IsCanceled, nameof(ct.IsCanceled));
                 Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
 
-                cancel.Cancel(); // cancel it *before* release; should be respected
+                Assert.Throws<TaskCanceledException>(() => ct.Result);
+
+                await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct).ConfigureAwait(false);
             }
-            Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
-            Assert.True(ct.IsCanceled, nameof(ct.IsCanceled));
-            Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
-
-            Assert.Throws<TaskCanceledException>(() => ct.Result);
-
-            await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct).ConfigureAwait(false);
         }
 
         [Fact]
         public async Task PostCanceledReportsCorrectly()
         {
-            var cancel = new CancellationTokenSource();
-
-            // cancel it *after* issuing incomplete token
-
-            ValueTask<LockToken> ct;
-            using (var token = _timeoutMux.TryWait())
+            using (var cancel = new CancellationTokenSource())
             {
-                Assert.True(token.Success);
+                // cancel it *after* issuing incomplete token
 
-                ct = _timeoutMux.TryWaitAsync(cancel.Token);
-                Assert.False(ct.IsCompleted, nameof(ct.IsCompleted) + ":1");
-                Assert.False(ct.IsCanceled, nameof(ct.IsCanceled) + ":1");
-                Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully) + ":1");
+                ValueTask<LockToken> ct;
+                using (var token = _timeoutMux.TryWait())
+                {
+                    Assert.True(token.Success);
+
+                    ct = _timeoutMux.TryWaitAsync(cancel.Token);
+                    Assert.False(ct.IsCompleted, nameof(ct.IsCompleted) + ":1");
+                    Assert.False(ct.IsCanceled, nameof(ct.IsCanceled) + ":1");
+                    Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully) + ":1");
+                }
+                // cancel it *after* release - should be ignored
+                Assert.True(ct.IsCompleted, nameof(ct.IsCompleted) + ":2");
+                Assert.False(ct.IsCanceled, nameof(ct.IsCanceled) + ":2");
+                Assert.True(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully) + ":2");
+
+                var result = ct.Result;
+                Assert.True(result.Success);
+
+                result = await ct;
+                Assert.True(result.Success);
             }
-            // cancel it *after* release - should be ignored
-            Assert.True(ct.IsCompleted, nameof(ct.IsCompleted) + ":2");
-            Assert.False(ct.IsCanceled, nameof(ct.IsCanceled) + ":2");
-            Assert.True(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully) + ":2");
-
-            var result = ct.Result;
-            Assert.True(result.Success);
-
-            result = await ct;
-            Assert.True(result.Success);
         }
 
         [Fact]
@@ -583,8 +588,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
         {
             ValueTask<LockToken> ct;
             using (var token = _timeoutMux.TryWait())
+            using (var cancel = new CancellationTokenSource())
             {
-                var cancel = new CancellationTokenSource();
                 Assert.True(token.Success);
 
                 ct = _timeoutMux.TryWaitAsync(cancel.Token);
@@ -608,50 +613,54 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public async Task ManualCancelAfterAcquisitionDoesNothing()
         {
-            var cancel = new CancellationTokenSource();
-            ValueTask<LockToken> ct;
-            using (var token = _timeoutMux.TryWait())
+            using (var cancel = new CancellationTokenSource())
             {
-                Assert.True(token.Success);
+                ValueTask<LockToken> ct;
+                using (var token = _timeoutMux.TryWait())
+                {
+                    Assert.True(token.Success);
 
-                ct = _timeoutMux.TryWaitAsync(cancel.Token);
-                Assert.False(ct.IsCompleted, nameof(ct.IsCompleted));
+                    ct = _timeoutMux.TryWaitAsync(cancel.Token);
+                    Assert.False(ct.IsCompleted, nameof(ct.IsCompleted));
+                    Assert.False(ct.IsCanceled, nameof(ct.IsCanceled));
+                    Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
+                }
+                cancel.Cancel();
+                //Assert.False(ct.TryCancel());
+                //Assert.False(ct.TryCancel());
+
+                Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
                 Assert.False(ct.IsCanceled, nameof(ct.IsCanceled));
-                Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
+                Assert.True(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
+
+                var result = ct.Result;
+                Assert.True(result.Success);
+
+                result = await ct;
+                Assert.True(result.Success);
             }
-            cancel.Cancel();
-            //Assert.False(ct.TryCancel());
-            //Assert.False(ct.TryCancel());
-
-            Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
-            Assert.False(ct.IsCanceled, nameof(ct.IsCanceled));
-            Assert.True(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
-
-            var result = ct.Result;
-            Assert.True(result.Success);
-
-            result = await ct;
-            Assert.True(result.Success);
         }
 
         [Fact]
         public async Task ManualCancelOnPreCanceledDoesNothing()
         {
             // cancel it *before* issuing token
-            var cancel = new CancellationTokenSource();
-            cancel.Cancel();
+            using (var cancel = new CancellationTokenSource())
+            {
+                cancel.Cancel();
 
-            var ct = _timeoutMux.TryWaitAsync(cancel.Token);
-            Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
-            Assert.True(ct.IsCanceled, nameof(ct.IsCanceled));
-            Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
+                var ct = _timeoutMux.TryWaitAsync(cancel.Token);
+                Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
+                Assert.True(ct.IsCanceled, nameof(ct.IsCanceled));
+                Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
 
-            //Assert.True(ct.TryCancel());
-            //Assert.True(ct.TryCancel());
+                //Assert.True(ct.TryCancel());
+                //Assert.True(ct.TryCancel());
 
-            Assert.Throws<TaskCanceledException>(() => ct.Result);
+                Assert.Throws<TaskCanceledException>(() => ct.Result);
 
-            await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct).ConfigureAwait(false);
+                await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct).ConfigureAwait(false);
+            }
         }
 
         [Theory]
@@ -667,7 +676,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Volatile.Write(ref _successCount, 0);
             Array.Clear(_buckets, 0, _buckets.Length);
             Thread[] workers = new Thread[workerCount - 1];
+#pragma warning disable IDE0039
             ThreadStart work = () => RunAcquireReleaseLoop(perWorker);
+#pragma warning restore IDE0039
             for (int i = 0; i < workers.Length; i++)
             {
                 workers[i] = new Thread(work)
@@ -717,7 +728,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Volatile.Write(ref _successCount, 0);
             Array.Clear(_buckets, 0, _buckets.Length);
             Task[] workers = new Task[workerCount];
+#pragma warning disable IDE0039
             Func<Task> work = () => RunAcquireReleaseLoopAsync(perWorker);
+#pragma warning restore IDE0039
             for (int i = 0; i < workers.Length; i++)
             {
                 workers[i] = Task.Run(work);
