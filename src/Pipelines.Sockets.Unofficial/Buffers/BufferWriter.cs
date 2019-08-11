@@ -254,14 +254,20 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Span<T> GetSpan(int sizeHint)
-            => _tailRemaining >= sizeHint ? _tail.Memory.Span.Slice(_tailOffset) : GetMemorySlow(sizeHint).Span;
+        {
+            sizeHint = Math.Max(sizeHint, 1);
+            return _tailRemaining >= sizeHint ? _tail.Memory.Span.Slice(_tailOffset) : GetMemorySlow(sizeHint).Span;
+        }
 
         /// <summary>
         /// Access a contiguous write buffer
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Memory<T> GetMemory(int sizeHint)
-            => _tailRemaining >= sizeHint ? _tail.Memory.Slice(_tailOffset) : GetMemorySlow(sizeHint);
+        {
+            sizeHint = Math.Max(sizeHint, 1);
+            return _tailRemaining >= sizeHint ? _tail.Memory.Slice(_tailOffset) : GetMemorySlow(sizeHint);
+        }
 
         /// <summary>
         /// Access a non-contiguous write buffer
@@ -269,6 +275,7 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Sequence<T> GetSequence(int sizeHint)
         {
+            sizeHint = Math.Max(sizeHint, 1);
             long availableLength;
             if (_final == null)
             {
