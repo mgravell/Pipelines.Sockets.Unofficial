@@ -294,7 +294,7 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         {
             do
             {
-                _final = CreateNewSegment(_final);
+                _final = CreateNewSegment(_final, BlockSize);
                 if (_head == null)
                 {
                     _head = _tail = _final;
@@ -310,7 +310,6 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         private Memory<T> GetMemorySlow(int sizeHint)
         {
             Debug.Assert(sizeHint > _tailRemaining, "shouldn't have called slow impl");
-            if (sizeHint > BlockSize) Throw.ArgumentOutOfRange(nameof(sizeHint));
 
             // limit the tail to the committed bytes
             _tail?.Trim(_tailOffset);
@@ -323,7 +322,7 @@ namespace Pipelines.Sockets.Unofficial.Buffers
             }
             else
             {   // rent new block in the chain
-                _final = _tail = CreateNewSegment(_final);
+                _final = _tail = CreateNewSegment(_final, Math.Max(sizeHint, BlockSize));
             }
 
             if (_head == null) { _head = _tail; }
@@ -344,7 +343,7 @@ namespace Pipelines.Sockets.Unofficial.Buffers
             return _tail.Memory;
         }
 
-        private protected abstract RefCountedSegment CreateNewSegment(RefCountedSegment previous);
+        private protected abstract RefCountedSegment CreateNewSegment(RefCountedSegment previous, int size);
 
         internal abstract partial class RefCountedSegment : SequenceSegment<T>
         {
@@ -408,8 +407,14 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         internal sealed class MemoryPoolBufferWriter : BufferWriter<T>
         {
             private MemoryPool<T> _memoryPool;
-            private protected override RefCountedSegment CreateNewSegment(RefCountedSegment previous)
+            private protected override RefCountedSegment CreateNewSegment(RefCountedSegment previous, int size)
             {
+                if (size > _memoryPool.MaxBufferSize)
+                {
+                    // caller is requesting an over-sized buffer; we'll have to use a fallback
+                    return ArrayPoolBufferWriter.CreateNewSegment(ArrayPool<T>.Shared, previous, size);
+                }
+
                 var owner = _memoryPool.Rent(BlockSize);
                 return new MemoryPoolRefCountedSegment(owner, previous);
             }
@@ -442,10 +447,13 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         internal sealed class ArrayPoolBufferWriter : BufferWriter<T>
         {
             private ArrayPool<T> _arrayPool;
-            private protected override RefCountedSegment CreateNewSegment(RefCountedSegment previous)
+            private protected override RefCountedSegment CreateNewSegment(RefCountedSegment previous, int size)
+                => CreateNewSegment(_arrayPool, previous, size);
+
+            internal static RefCountedSegment CreateNewSegment(ArrayPool<T> arrayPool, RefCountedSegment previous, int size)
             {
-                var array = _arrayPool.Rent(BlockSize);
-                return new ArrayPoolRefCountedSegment(_arrayPool, array, previous);
+                var array = arrayPool.Rent(size);
+                return new ArrayPoolRefCountedSegment(arrayPool, array, previous);
             }
 
             public ArrayPoolBufferWriter(ArrayPool<T> arrayPool, int blockSize)
