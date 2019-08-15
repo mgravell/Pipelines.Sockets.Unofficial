@@ -404,7 +404,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
             return CreateAndAddArena<T>();
         }
+
+#pragma warning disable IDE0069
         private IArena _lastArena;
+#pragma warning restore IDE0069
 
         private Dictionary<int, IArena> _blittableBySize = new Dictionary<int, IArena>();
         private Dictionary<Type, IArena> _ownedArenas = new Dictionary<Type, IArena>();

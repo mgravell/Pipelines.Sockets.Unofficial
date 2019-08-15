@@ -126,6 +126,24 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             private set => base.RunningIndex = value;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void Trim(int length)
+        {
+            long delta = Length - length;
+            if (delta < 0) Throw.ArgumentOutOfRange(nameof(length));
+            else if (delta != 0)
+            {
+                Memory = Memory.Slice(0, length);
+                // fixup the running index of any later segments
+                var node = Next;
+                while (node != null)
+                {
+                    node.RunningIndex -= delta;
+                    node = node.Next;
+                }
+            }
+        }
+
         /// <summary>
         /// The next segment in the chain
         /// </summary>
@@ -145,7 +163,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => MemoryMarshal.AsMemory(base.Memory);
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            private set
+            private protected set
             {
                 base.Memory = value;
                 Length = value.Length;
