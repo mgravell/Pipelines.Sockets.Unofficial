@@ -440,7 +440,11 @@ namespace Pipelines.Sockets.Unofficial
 
             // note - consider deprecated: https://github.com/dotnet/corefx/issues/38362
             public override void OnReaderCompleted(Action<Exception, object> callback, object state)
-                => _writer.OnReaderCompleted(callback, state);
+            {
+#pragma warning disable CS0618 // obsolete
+                _writer.OnReaderCompleted(callback, state);
+#pragma warning restore CS0618 // obsolete
+            }
         }
 
         private static bool TrySetShutdown(Exception ex, SocketConnection connection, PipeShutdownKind kind)
