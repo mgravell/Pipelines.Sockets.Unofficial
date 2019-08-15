@@ -178,6 +178,8 @@ namespace Pipelines.Sockets.Unofficial
                 DebugLog($"marking {nameof(Input)} as complete");
                 try { _receiveFromSocket.Writer.Complete(error); } catch { }
 
+                TrySetShutdown(error, this, PipeShutdownKind.InputWriterCompleted);
+
                 var args = _readerArgs;
                 _readerArgs = null;
                 if (args != null) try { args.Dispose(); } catch { }

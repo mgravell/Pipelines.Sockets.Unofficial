@@ -8,6 +8,7 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Pipelines.Sockets.Unofficial
 {
@@ -210,12 +211,12 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Connection for receiving data
         /// </summary>
-        public PipeReader Input => _receiveFromSocket.Reader;
+        public PipeReader Input => _input;
 
         /// <summary>
         /// Connection for sending data
         /// </summary>
-        public PipeWriter Output => _sendToSocket.Writer;
+        public PipeWriter Output => _output;
         private string Name { get; }
 
         /// <summary>
@@ -317,6 +318,9 @@ namespace Pipelines.Sockets.Unofficial
         }
 
         private readonly Pipe _sendToSocket, _receiveFromSocket;
+        private readonly PipeReader _input; // was _receiveFromSocket.Reader;
+        private readonly PipeWriter _output; // was _sendToSocket.Writer;
+
         // TODO: flagify and fully implement
 #pragma warning disable CS0414, CS0649, IDE0044, IDE0051, IDE0052
         private volatile bool _sendAborted, _receiveAborted;
@@ -357,28 +361,94 @@ namespace Pipelines.Sockets.Unofficial
             _receiveOptions = receivePipeOptions;
             _sendOptions = sendPipeOptions;
 
-            _sendToSocket.Writer.OnReaderCompleted((ex, state) => TrySetShutdown(ex, state, PipeShutdownKind.OutputReaderCompleted), this);
-            _sendToSocket.Reader.OnWriterCompleted((ex, state) => TrySetShutdown(ex, state, PipeShutdownKind.OutputWriterCompleted), this);
-
-            _receiveFromSocket.Reader.OnWriterCompleted((ex, state) => TrySetShutdown(ex, state, PipeShutdownKind.InputWriterCompleted), this);
-            _receiveFromSocket.Writer.OnReaderCompleted((ex, state) =>
-            {
-                TrySetShutdown(ex, state, PipeShutdownKind.InputReaderCompleted);
-                try { ((SocketConnection)state).Socket.Shutdown(SocketShutdown.Receive); }
-                catch { }
-            }, this);
+            _input = new WrappedReader(_receiveFromSocket.Reader, this);
+            _output = new WrappedWriter(_sendToSocket.Writer, this);
 
             sendPipeOptions.ReaderScheduler.Schedule(s_DoSendAsync, this);
             receivePipeOptions.ReaderScheduler.Schedule(s_DoReceiveAsync, this);
         }
 
-        private static bool TrySetShutdown(Exception ex, object state, PipeShutdownKind kind)
+        private void InputReaderCompleted(Exception ex)
+        {
+            TrySetShutdown(ex, this, PipeShutdownKind.InputReaderCompleted);
+            try { this.Socket.Shutdown(SocketShutdown.Receive); }
+            catch { }
+        }
+        private void OutputWriterCompleted(Exception ex)
+        {
+            TrySetShutdown(ex, this, PipeShutdownKind.OutputWriterCompleted);
+        }
+        private sealed class WrappedReader : PipeReader
+        {
+            private readonly PipeReader _reader;
+            private readonly SocketConnection _connection;
+
+            public WrappedReader(PipeReader reader, SocketConnection connection)
+            {
+                _reader = reader;
+                _connection = connection;
+            }
+
+            public override void Complete(Exception exception = null)
+            {
+                _connection.InputReaderCompleted(exception);
+                _reader.Complete(exception);
+            }
+            public override void AdvanceTo(SequencePosition consumed)
+                => _reader.AdvanceTo(consumed);
+            public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
+                => _reader.AdvanceTo(consumed, examined);
+            public override void CancelPendingRead()
+                => _reader.CancelPendingRead();
+            public override ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = default)
+                => _reader.ReadAsync(cancellationToken);
+            public override bool TryRead(out ReadResult result)
+                => _reader.TryRead(out result);
+
+            // note - consider deprecated: https://github.com/dotnet/corefx/issues/38362
+            public override void OnWriterCompleted(Action<Exception, object> callback, object state)
+                => _reader.OnWriterCompleted(callback, state);
+        }
+
+        private sealed class WrappedWriter : PipeWriter
+        {
+            private readonly PipeWriter _writer;
+            private readonly SocketConnection _connection;
+
+            public WrappedWriter(PipeWriter writer, SocketConnection connection)
+            {
+                _writer = writer;
+                _connection = connection;
+            }
+            public override void Complete(Exception exception = null)
+            {
+                _connection.OutputWriterCompleted(exception);
+                _writer.Complete(exception);
+            }
+            public override void Advance(int bytes)
+                => _writer.Advance(bytes);
+            public override void CancelPendingFlush()
+                => _writer.CancelPendingFlush();
+            public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
+                => _writer.FlushAsync(cancellationToken);
+            public override Memory<byte> GetMemory(int sizeHint = 0)
+                => _writer.GetMemory(sizeHint);
+            public override Span<byte> GetSpan(int sizeHint = 0)
+                => _writer.GetSpan(sizeHint);
+            public override ValueTask<FlushResult> WriteAsync(ReadOnlyMemory<byte> source, CancellationToken cancellationToken = default)
+                => _writer.WriteAsync(source, cancellationToken);
+
+            // note - consider deprecated: https://github.com/dotnet/corefx/issues/38362
+            public override void OnReaderCompleted(Action<Exception, object> callback, object state)
+                => _writer.OnReaderCompleted(callback, state);
+        }
+
+        private static bool TrySetShutdown(Exception ex, SocketConnection connection, PipeShutdownKind kind)
         {
             try
             {
-                var sc = (SocketConnection)state;
-                return ex is SocketException se ? sc.TrySetShutdown(kind, se.SocketErrorCode)
-                    : sc.TrySetShutdown(kind);
+                return ex is SocketException se ? connection.TrySetShutdown(kind, se.SocketErrorCode)
+                    : connection.TrySetShutdown(kind);
             }
             catch
             {
