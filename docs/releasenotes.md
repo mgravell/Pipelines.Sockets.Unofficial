@@ -1,5 +1,10 @@
 # Release Notes
 
+## 2.0.25
+
+- add new `BufferWriter<T>` API; implements `IBufferWriter<T>`, but with a different model to `Pipe`
+- [change how `PipeWriter.OnReaderCompleted` works](https://github.com/dotnet/corefx/issues/38362)
+
 ## 2.0.22
 
 - add APIs to work with multi-cast delegates without allocating
