@@ -383,7 +383,10 @@ namespace Pipelines.Sockets.Unofficial.Threading
                                 }
                             }
                             Monitor.Exit(item);
+
+#pragma warning disable IDE0059 // removing this would be *bad*; https://github.com/dotnet/roslyn/issues/39344
                             itemLockTaken = false;
+#pragma warning restore IDE0059
                         }
                     }
                 }

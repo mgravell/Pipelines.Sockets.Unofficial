@@ -10,7 +10,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             return _preferUnmanaged ?? (_preferUnmanaged = Calculate());
 
-            Allocator<T> Calculate()
+            static Allocator<T> Calculate()
             {
                 if (IsBlittable)
                 {
@@ -30,7 +30,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             return _preferPinned ?? (_preferPinned = Calculate());
 
-            Allocator<T> Calculate()
+            static Allocator<T> Calculate()
             {
                 if (IsBlittable)
                 {

@@ -140,7 +140,7 @@ namespace Pipelines.Sockets.Unofficial
         private static string s_assemblyFailureMessssage = null;
         private static string GetAssemblyFailureMessage()
         {
-            string ComputeAssemblyFailureMessage()
+            static string ComputeAssemblyFailureMessage()
             {
                 bool havePipe = false, haveBuffers = false;
                 try { CheckPipe(); havePipe = true; } catch { }

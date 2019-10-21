@@ -72,7 +72,7 @@ namespace Pipelines.Sockets.Unofficial
         static readonly Task<int> TaskZero = Task.FromResult(0);
         public override Task<int> ReadAsync(char[] buffer, int index, int count)
         {
-            async Task<int> Awaited(ValueTask<bool> task, BufferedTextReader @this, char[] bbuffer, int iindex, int ccount)
+            static async Task<int> Awaited(ValueTask<bool> task, BufferedTextReader @this, char[] bbuffer, int iindex, int ccount)
             {
                 if (!await task) return 0;
                 return @this.ReadLocal(bbuffer, ref iindex, ref ccount);
@@ -95,7 +95,7 @@ namespace Pipelines.Sockets.Unofficial
         public override string ReadToEnd() => ConcatPreserveNull(LocalString(), _source.ReadToEnd());
         public override Task<string> ReadToEndAsync()
         {
-            async Task<string> Awaited(string llocal, Task<string> rremote) => ConcatPreserveNull(llocal, await rremote);
+            static async Task<string> Awaited(string llocal, Task<string> rremote) => ConcatPreserveNull(llocal, await rremote);
 
             string local = LocalString();
             var remote = _source.ReadToEndAsync();
@@ -148,7 +148,8 @@ namespace Pipelines.Sockets.Unofficial
                 if (count != 0) ttaken += await @this._source.ReadBlockAsync(bbuffer, iindex, ccount);
                 return ttaken;
             }
-            async Task<int> AwaitedRead(Task<int> rread, int ttaken) => ttaken + await rread;
+
+            static async Task<int> AwaitedRead(Task<int> rread, int ttaken) => ttaken + await rread;
 
             int taken = ReadLocal(buffer, ref index, ref count);
 
@@ -219,18 +220,19 @@ namespace Pipelines.Sockets.Unofficial
         static readonly Task<string> TaskNull = Task.FromResult<string>(null);
         public override Task<string> ReadLineAsync()
         {
-            async Task<string> AwaitedMore(ValueTask<bool> rread, BufferedTextReader @this)
+            static async Task<string> AwaitedMore(ValueTask<bool> rread, BufferedTextReader @this)
             {
                 if (!await rread) return null;
                 Debug.Assert(@this._remaining != 0); // so: shouldn't be a constant loop
                 return await @this.ReadLineAsync();
             }
-            async Task<string> AwaitedPeek(ValueTask<bool> rread, BufferedTextReader @this, string ss)
+            static async Task<string> AwaitedPeek(ValueTask<bool> rread, BufferedTextReader @this, string ss)
             {
-                if (await rread && Peek() == '\n') Read();
+                if (await rread && @this.Peek() == '\n') @this.Read();
                 return ss;
             }
-            async Task<string> AwaitedRemote(string llocal, Task<string> rremote)
+
+            static async Task<string> AwaitedRemote(string llocal, Task<string> rremote)
                 => ConcatPreserveNull(llocal, await rremote);
 
             if (_remaining == 0)
@@ -293,7 +295,7 @@ namespace Pipelines.Sockets.Unofficial
         }
         public override ValueTask<int> ReadAsync(Memory<char> buffer, CancellationToken cancellationToken = default)
         {
-            async ValueTask<int> Awaited(ValueTask<bool> task, BufferedTextReader @this, Memory<char> bbuffer)
+            static async ValueTask<int> Awaited(ValueTask<bool> task, BufferedTextReader @this, Memory<char> bbuffer)
             {
                 if (!await task) return 0;
                 return @this.ReadLocal(bbuffer.Span);

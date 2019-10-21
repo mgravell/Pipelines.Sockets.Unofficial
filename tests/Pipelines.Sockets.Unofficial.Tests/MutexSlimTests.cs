@@ -75,14 +75,12 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 // note that _timeoutMuxCustomScheduler uses DedicatedThreadPoolPipeScheduler to
                 // force us to be on a different thread here (since [Fact] won't be using that thread)
                 int originalThread = Environment.CurrentManagedThreadId;
-                using (var token2 = await pending)
-                {
-                    int awaitedThread = Environment.CurrentManagedThreadId;
-                    Assert.True(token2.Success, "obtained lock after dispose");
+                using var token2 = await pending;
+                int awaitedThread = Environment.CurrentManagedThreadId;
+                Assert.True(token2.Success, "obtained lock after dispose");
 
-                    Assert.NotEqual(originalThread, awaitedThread);
-                    Assert.False(DummySyncContext.Is(id));
-                }
+                Assert.NotEqual(originalThread, awaitedThread);
+                Assert.False(DummySyncContext.Is(id));
             }
             finally
             {
@@ -110,14 +108,12 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 // note that _timeoutMuxCustomScheduler uses DedicatedThreadPoolPipeScheduler to
                 // force us to be on a different thread here (since [Fact] won't be using that thread)
                 int originalThread = Environment.CurrentManagedThreadId;
-                using (var token2 = await pending)
-                {
-                    int awaitedThread = Environment.CurrentManagedThreadId;
-                    Assert.True(token2.Success, "obtained lock after dispose");
+                using var token2 = await pending;
+                int awaitedThread = Environment.CurrentManagedThreadId;
+                Assert.True(token2.Success, "obtained lock after dispose");
 
-                    Assert.NotEqual(originalThread, awaitedThread);
-                    Assert.False(DummySyncContext.Is(id));
-                }
+                Assert.NotEqual(originalThread, awaitedThread);
+                Assert.False(DummySyncContext.Is(id));
             }
             finally
             {
@@ -145,14 +141,12 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 // note that _timeoutMuxCustomScheduler uses DedicatedThreadPoolPipeScheduler to
                 // force us to be on a different thread here (since [Fact] won't be using that thread)
                 int originalThread = Environment.CurrentManagedThreadId;
-                using (var token2 = await pending)
-                {
-                    int awaitedThread = Environment.CurrentManagedThreadId;
-                    Assert.True(token2.Success, "obtained lock after dispose");
+                using var token2 = await pending;
+                int awaitedThread = Environment.CurrentManagedThreadId;
+                Assert.True(token2.Success, "obtained lock after dispose");
 
-                    Assert.NotEqual(originalThread, awaitedThread);
-                    Assert.True(DummySyncContext.Is(id));
-                }
+                Assert.NotEqual(originalThread, awaitedThread);
+                Assert.True(DummySyncContext.Is(id));
             }
             finally
             {
@@ -180,14 +174,12 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 // note that _timeoutMuxCustomScheduler uses DedicatedThreadPoolPipeScheduler to
                 // force us to be on a different thread here (since [Fact] won't be using that thread)
                 int originalThread = Environment.CurrentManagedThreadId;
-                using (var token2 = await pending.ConfigureAwait(false))
-                {
-                    int awaitedThread = Environment.CurrentManagedThreadId;
-                    Assert.True(token2.Success, "obtained lock after dispose");
+                using var token2 = await pending.ConfigureAwait(false);
+                int awaitedThread = Environment.CurrentManagedThreadId;
+                Assert.True(token2.Success, "obtained lock after dispose");
 
-                    Assert.NotEqual(originalThread, awaitedThread);
-                    Assert.False(DummySyncContext.Is(id));
-                }
+                Assert.NotEqual(originalThread, awaitedThread);
+                Assert.False(DummySyncContext.Is(id));
             }
             finally
             {
@@ -204,26 +196,20 @@ namespace Pipelines.Sockets.Unofficial.Tests
             for (int i = 0; i < 2; i++)
             {
                 Assert.True(_zeroTimeoutMux.IsAvailable);
-                using (var outer = _zeroTimeoutMux.TryWait())
-                {
-                    Assert.True(outer.Success);
-                    Log(outer.ToString());
-                    Assert.False(_zeroTimeoutMux.IsAvailable);
-                    using (var inner = _zeroTimeoutMux.TryWait())
-                    {
-                        Log(inner.ToString());
-                        Assert.False(inner.Success);
-                    }
-                }
+                using var outer = _zeroTimeoutMux.TryWait();
+                Assert.True(outer.Success);
+                Log(outer.ToString());
+                Assert.False(_zeroTimeoutMux.IsAvailable);
+                using var inner = _zeroTimeoutMux.TryWait();
+                Log(inner.ToString());
+                Assert.False(inner.Success);
             }
             Assert.True(_zeroTimeoutMux.IsAvailable);
 
             for (int i = 0; i < 2; i++)
             {
-                using (var outer = _timeoutMux.TryWait())
-                {
-                    Assert.True(outer.Success);
-                }
+                using var outer = _timeoutMux.TryWait();
+                Assert.True(outer.Success);
             }
         }
 
@@ -271,18 +257,14 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 var awaitable = _zeroTimeoutMux.TryWaitAsync();
                 Assert.True(awaitable.IsCompleted, nameof(awaitable.IsCompleted));
                 //Assert.True(awaitable.CompletedSynchronously, nameof(awaitable.CompletedSynchronously));
-                using (var outer = await awaitable)
-                {
-                    Assert.True(outer.Success, nameof(outer.Success));
+                using var outer = await awaitable;
+                Assert.True(outer.Success, nameof(outer.Success));
 
-                    awaitable = _zeroTimeoutMux.TryWaitAsync();
-                    Assert.True(awaitable.IsCompleted, nameof(awaitable.IsCompleted) + " inner");
-                    //Assert.True(awaitable.CompletedSynchronously, nameof(awaitable.CompletedSynchronously) + " inner");
-                    using (var inner = await awaitable)
-                    {
-                        Assert.False(inner.Success, nameof(inner.Success) + " inner");
-                    }
-                }
+                awaitable = _zeroTimeoutMux.TryWaitAsync();
+                Assert.True(awaitable.IsCompleted, nameof(awaitable.IsCompleted) + " inner");
+                //Assert.True(awaitable.CompletedSynchronously, nameof(awaitable.CompletedSynchronously) + " inner");
+                using var inner = await awaitable;
+                Assert.False(inner.Success, nameof(inner.Success) + " inner");
             }
         }
 
@@ -294,10 +276,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 var awaitable = _timeoutMux.TryWaitAsync();
                 Assert.True(awaitable.IsCompleted, nameof(awaitable.IsCompleted));
                 //Assert.True(awaitable.CompletedSynchronously, nameof(awaitable.CompletedSynchronously));
-                using (var outer = await awaitable)
-                {
-                    Assert.True(outer.Success);
-                }
+                using var outer = await awaitable;
+                Assert.True(outer.Success);
             }
         }
 
@@ -324,15 +304,13 @@ namespace Pipelines.Sockets.Unofficial.Tests
                                     if (++active == COMPETITORS) Monitor.PulseAll(allReady);
                                     else Monitor.Wait(allReady);
                                 }
-                                using (var inner = _timeoutMux.TryWait())
+                                using var inner = _timeoutMux.TryWait();
+                                lock (allDone)
                                 {
-                                    lock (allDone)
-                                    {
-                                        if (inner) success++;
-                                        if (++complete == COMPETITORS) Monitor.Pulse(allDone);
-                                    }
-                                    Thread.Sleep(10);
+                                    if (inner) success++;
+                                    if (++complete == COMPETITORS) Monitor.Pulse(allDone);
                                 }
+                                Thread.Sleep(10);
                             });
                         }
                         Monitor.Wait(allReady);
@@ -368,15 +346,13 @@ namespace Pipelines.Sockets.Unofficial.Tests
                                     if (++active == COMPETITORS) Monitor.PulseAll(allReady);
                                     else Monitor.Wait(allReady);
                                 }
-                                using (var inner = _timeoutMux.TryWait(waitOptions))
+                                using var inner = _timeoutMux.TryWait(waitOptions);
+                                lock (allDone)
                                 {
-                                    lock (allDone)
-                                    {
-                                        if (inner) success++;
-                                        if (++complete == COMPETITORS) Monitor.Pulse(allDone);
-                                    }
-                                    Thread.Sleep(10);
+                                    if (inner) success++;
+                                    if (++complete == COMPETITORS) Monitor.Pulse(allDone);
                                 }
+                                Thread.Sleep(10);
                             });
                         }
                         Monitor.Wait(allReady);
@@ -423,16 +399,14 @@ namespace Pipelines.Sockets.Unofficial.Tests
                             var awaitable = _timeoutMux.TryWaitAsync(options: waitOptions);
                             if (!awaitable.IsCompleted) asyncOps++;
                             Log($"task {j} about to await...");
-                            using (var inner = await awaitable)
+                            using var inner = await awaitable;
+                            Log($"task {j} resumed; got lock: {inner.Success}");
+                            lock (allDone)
                             {
-                                Log($"task {j} resumed; got lock: {inner.Success}");
-                                lock (allDone)
-                                {
-                                    if (inner) success++;
-                                    //if (!awaitable.CompletedSynchronously) asyncOps++;
-                                }
-                                await Task.Delay(10).ConfigureAwait(false);
+                                if (inner) success++;
+                                //if (!awaitable.CompletedSynchronously) asyncOps++;
                             }
+                            await Task.Delay(10).ConfigureAwait(false);
                         });
                     }
                     Log($"outer lock waiting for everyone to be ready");
@@ -478,15 +452,13 @@ namespace Pipelines.Sockets.Unofficial.Tests
                             }
                             var awaitable = _timeoutMux.TryWaitAsync();
                             if (!awaitable.IsCompleted) asyncOps++;
-                            using (var inner = await awaitable)
+                            using var inner = await awaitable;
+                            lock (allDone)
                             {
-                                lock (allDone)
-                                {
-                                    if (inner) success++;
-                                    //if (!awaitable.CompletedSynchronously) asyncOps++;
-                                }
-                                await Task.Delay(10).ConfigureAwait(false);
+                                if (inner) success++;
+                                //if (!awaitable.CompletedSynchronously) asyncOps++;
                             }
+                            await Task.Delay(10).ConfigureAwait(false);
                         });
                     }
                     Monitor.Wait(allReady);
@@ -508,79 +480,73 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public async Task PreCanceledReportsCorrectly()
         {
-            using (var cancel = new CancellationTokenSource())
-            {
-                cancel.Cancel();
+            using var cancel = new CancellationTokenSource();
+            cancel.Cancel();
 
-                var ct = _timeoutMux.TryWaitAsync(cancel.Token);
-                Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
-                Assert.True(ct.IsCanceled, nameof(ct.IsCanceled));
-                Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
+            var ct = _timeoutMux.TryWaitAsync(cancel.Token);
+            Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
+            Assert.True(ct.IsCanceled, nameof(ct.IsCanceled));
+            Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
 
-                Assert.Throws<TaskCanceledException>(() => ct.Result);
+            Assert.Throws<TaskCanceledException>(() => ct.Result);
 
-                await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct).ConfigureAwait(false);
-            }
+            await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct).ConfigureAwait(false);
         }
 
         [Fact]
         public async Task DuringCanceledReportsCorrectly()
         {
-            using (var cancel = new CancellationTokenSource())
+            using var cancel = new CancellationTokenSource();
+
+            // cancel it *after* issuing incomplete token
+
+            ValueTask<LockToken> ct;
+            using (var token = _timeoutMux.TryWait())
             {
+                Assert.True(token.Success);
 
-                // cancel it *after* issuing incomplete token
-
-                ValueTask<LockToken> ct;
-                using (var token = _timeoutMux.TryWait())
-                {
-                    Assert.True(token.Success);
-
-                    ct = _timeoutMux.TryWaitAsync(cancel.Token);
-                    Assert.False(ct.IsCompleted, nameof(ct.IsCompleted));
-                    Assert.False(ct.IsCanceled, nameof(ct.IsCanceled));
-                    Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
-
-                    cancel.Cancel(); // cancel it *before* release; should be respected
-                }
-                Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
-                Assert.True(ct.IsCanceled, nameof(ct.IsCanceled));
+                ct = _timeoutMux.TryWaitAsync(cancel.Token);
+                Assert.False(ct.IsCompleted, nameof(ct.IsCompleted));
+                Assert.False(ct.IsCanceled, nameof(ct.IsCanceled));
                 Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
 
-                Assert.Throws<TaskCanceledException>(() => ct.Result);
-
-                await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct).ConfigureAwait(false);
+                cancel.Cancel(); // cancel it *before* release; should be respected
             }
+            Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
+            Assert.True(ct.IsCanceled, nameof(ct.IsCanceled));
+            Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
+
+            Assert.Throws<TaskCanceledException>(() => ct.Result);
+
+            await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct).ConfigureAwait(false);
         }
 
         [Fact]
         public async Task PostCanceledReportsCorrectly()
         {
-            using (var cancel = new CancellationTokenSource())
+            using var cancel = new CancellationTokenSource();
+            // cancel it *after* issuing incomplete token
+
+            ValueTask<LockToken> ct;
+            using (var token = _timeoutMux.TryWait())
             {
-                // cancel it *after* issuing incomplete token
+                Assert.True(token.Success);
 
-                ValueTask<LockToken> ct;
-                using (var token = _timeoutMux.TryWait())
-                {
-                    Assert.True(token.Success);
-
-                    ct = _timeoutMux.TryWaitAsync(cancel.Token);
-                    Assert.False(ct.IsCompleted, nameof(ct.IsCompleted) + ":1");
-                    Assert.False(ct.IsCanceled, nameof(ct.IsCanceled) + ":1");
-                    Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully) + ":1");
-                }
-                // cancel it *after* release - should be ignored
-                Assert.True(ct.IsCompleted, nameof(ct.IsCompleted) + ":2");
-                Assert.False(ct.IsCanceled, nameof(ct.IsCanceled) + ":2");
-                Assert.True(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully) + ":2");
-
-                var result = ct.Result;
-                Assert.True(result.Success);
-
-                result = await ct;
-                Assert.True(result.Success);
+                ct = _timeoutMux.TryWaitAsync(cancel.Token);
+                Assert.False(ct.IsCompleted, nameof(ct.IsCompleted) + ":1");
+                Assert.False(ct.IsCanceled, nameof(ct.IsCanceled) + ":1");
+                Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully) + ":1");
             }
+            // cancel it *after* release - should be ignored
+            Assert.True(ct.IsCompleted, nameof(ct.IsCompleted) + ":2");
+            Assert.False(ct.IsCanceled, nameof(ct.IsCanceled) + ":2");
+            Assert.True(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully) + ":2");
+
+            var result = ct.Result;
+            Assert.True(result.Success);
+
+            result = await ct;
+            Assert.True(result.Success);
         }
 
         [Fact]
@@ -613,54 +579,50 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public async Task ManualCancelAfterAcquisitionDoesNothing()
         {
-            using (var cancel = new CancellationTokenSource())
+            using var cancel = new CancellationTokenSource();
+            ValueTask<LockToken> ct;
+            using (var token = _timeoutMux.TryWait())
             {
-                ValueTask<LockToken> ct;
-                using (var token = _timeoutMux.TryWait())
-                {
-                    Assert.True(token.Success);
+                Assert.True(token.Success);
 
-                    ct = _timeoutMux.TryWaitAsync(cancel.Token);
-                    Assert.False(ct.IsCompleted, nameof(ct.IsCompleted));
-                    Assert.False(ct.IsCanceled, nameof(ct.IsCanceled));
-                    Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
-                }
-                cancel.Cancel();
-                //Assert.False(ct.TryCancel());
-                //Assert.False(ct.TryCancel());
-
-                Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
+                ct = _timeoutMux.TryWaitAsync(cancel.Token);
+                Assert.False(ct.IsCompleted, nameof(ct.IsCompleted));
                 Assert.False(ct.IsCanceled, nameof(ct.IsCanceled));
-                Assert.True(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
-
-                var result = ct.Result;
-                Assert.True(result.Success);
-
-                result = await ct;
-                Assert.True(result.Success);
+                Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
             }
+            cancel.Cancel();
+            //Assert.False(ct.TryCancel());
+            //Assert.False(ct.TryCancel());
+
+            Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
+            Assert.False(ct.IsCanceled, nameof(ct.IsCanceled));
+            Assert.True(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
+
+            var result = ct.Result;
+            Assert.True(result.Success);
+
+            result = await ct;
+            Assert.True(result.Success);
         }
 
         [Fact]
         public async Task ManualCancelOnPreCanceledDoesNothing()
         {
             // cancel it *before* issuing token
-            using (var cancel = new CancellationTokenSource())
-            {
-                cancel.Cancel();
+            using var cancel = new CancellationTokenSource();
+            cancel.Cancel();
 
-                var ct = _timeoutMux.TryWaitAsync(cancel.Token);
-                Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
-                Assert.True(ct.IsCanceled, nameof(ct.IsCanceled));
-                Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
+            var ct = _timeoutMux.TryWaitAsync(cancel.Token);
+            Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
+            Assert.True(ct.IsCanceled, nameof(ct.IsCanceled));
+            Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
 
-                //Assert.True(ct.TryCancel());
-                //Assert.True(ct.TryCancel());
+            //Assert.True(ct.TryCancel());
+            //Assert.True(ct.TryCancel());
 
-                Assert.Throws<TaskCanceledException>(() => ct.Result);
+            Assert.Throws<TaskCanceledException>(() => ct.Result);
 
-                await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct).ConfigureAwait(false);
-            }
+            await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct).ConfigureAwait(false);
         }
 
         [Theory]
@@ -765,27 +727,25 @@ namespace Pipelines.Sockets.Unofficial.Tests
             {
                 int startedTakingLock = Environment.TickCount;
                 var attempt = Interlocked.Increment(ref _attempts);
-                using (var token = _timeoutMux.TryWait())
+                using var token = _timeoutMux.TryWait();
+                var gotLock = Environment.TickCount;
+                int taken = unchecked(gotLock - startedTakingLock), oldMax;
+                int aggregate = taken < 0 ? 0 : taken >= BUCKET_COUNT ? (BUCKET_COUNT - 1) : taken;
+                Interlocked.Increment(ref _buckets[aggregate]);
+                do
                 {
-                    var gotLock = Environment.TickCount;
-                    int taken = unchecked(gotLock - startedTakingLock), oldMax;
-                    int aggregate = taken < 0 ? 0 : taken >= BUCKET_COUNT ? (BUCKET_COUNT - 1) : taken;
-                    Interlocked.Increment(ref _buckets[aggregate]);
-                    do
-                    {
-                        oldMax = Volatile.Read(ref _maxGetLock);
-                    } while (taken > oldMax && Interlocked.CompareExchange(ref _maxGetLock, taken, oldMax) != oldMax);
+                    oldMax = Volatile.Read(ref _maxGetLock);
+                } while (taken > oldMax && Interlocked.CompareExchange(ref _maxGetLock, taken, oldMax) != oldMax);
 
-                    if (token.Success) Interlocked.Increment(ref _successCount);
-                    else
-                    {
-                        var nowAttempt = Volatile.Read(ref _attempts);
-                        _log.WriteLine($"failure: {token}, available: {_timeoutMux.IsAvailable}; attempts before: {attempt}, now: {nowAttempt}");
-                        Interlocked.Increment(ref _failCount);
-                        return; // give up promptly if we start failing
-                    }
-                    GC.KeepAlive(null);
+                if (token.Success) Interlocked.Increment(ref _successCount);
+                else
+                {
+                    var nowAttempt = Volatile.Read(ref _attempts);
+                    _log.WriteLine($"failure: {token}, available: {_timeoutMux.IsAvailable}; attempts before: {attempt}, now: {nowAttempt}");
+                    Interlocked.Increment(ref _failCount);
+                    return; // give up promptly if we start failing
                 }
+                GC.KeepAlive(null);
             }
         }
         async Task RunAcquireReleaseLoopAsync(int count)
@@ -794,27 +754,25 @@ namespace Pipelines.Sockets.Unofficial.Tests
             {
                 int startedTakingLock = Environment.TickCount;
                 var attempt = Interlocked.Increment(ref _attempts);
-                using (var token = await _timeoutMux.TryWaitAsync())
+                using var token = await _timeoutMux.TryWaitAsync();
+                var gotLock = Environment.TickCount;
+                int taken = unchecked(gotLock - startedTakingLock), oldMax;
+                int aggregate = taken < 0 ? 0 : taken >= BUCKET_COUNT ? (BUCKET_COUNT - 1) : taken;
+                Interlocked.Increment(ref _buckets[aggregate]);
+                do
                 {
-                    var gotLock = Environment.TickCount;
-                    int taken = unchecked(gotLock - startedTakingLock), oldMax;
-                    int aggregate = taken < 0 ? 0 : taken >= BUCKET_COUNT ? (BUCKET_COUNT - 1) : taken;
-                    Interlocked.Increment(ref _buckets[aggregate]);
-                    do
-                    {
-                        oldMax = Volatile.Read(ref _maxGetLock);
-                    } while (taken > oldMax && Interlocked.CompareExchange(ref _maxGetLock, taken, oldMax) != oldMax);
+                    oldMax = Volatile.Read(ref _maxGetLock);
+                } while (taken > oldMax && Interlocked.CompareExchange(ref _maxGetLock, taken, oldMax) != oldMax);
 
-                    if (token.Success) Interlocked.Increment(ref _successCount);
-                    else
-                    {
-                        var nowAttempt = Volatile.Read(ref _attempts);
-                        _log.WriteLine($"failure: {token}, available: {_timeoutMux.IsAvailable}; attempts before: {attempt}, now: {nowAttempt}");
-                        Interlocked.Increment(ref _failCount);
-                        return; // give up promptly if we start failing
-                    }
-                    GC.KeepAlive(null);
+                if (token.Success) Interlocked.Increment(ref _successCount);
+                else
+                {
+                    var nowAttempt = Volatile.Read(ref _attempts);
+                    _log.WriteLine($"failure: {token}, available: {_timeoutMux.IsAvailable}; attempts before: {attempt}, now: {nowAttempt}");
+                    Interlocked.Increment(ref _failCount);
+                    return; // give up promptly if we start failing
                 }
+                GC.KeepAlive(null);
             }
         }
     }

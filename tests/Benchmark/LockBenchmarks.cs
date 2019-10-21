@@ -131,11 +131,9 @@ namespace Benchmark
             int count = 0;
             for (int i = 0; i < PER_TEST; i++)
             {
-                using (var token = _mutexSlim.TryWait())
-                {
-                    if (token) count++;
-                    else Log?.Invoke($"failed at i={i},{_mutexSlim}");
-                }
+                using var token = _mutexSlim.TryWait();
+                if (token) count++;
+                else Log?.Invoke($"failed at i={i},{_mutexSlim}");
             }
             return count.AssertIs(PER_TEST);
         }
@@ -146,11 +144,9 @@ namespace Benchmark
             int count = 0;
             for (int i = 0; i < PER_TEST; i++)
             {
-                using (var token = await _mutexSlim.TryWaitAsync().ConfigureAwait(false))
-                {
-                    if (token) count++;
-                    else Log?.Invoke($"failed at i={i},{_mutexSlim}");
-                }
+                using var token = await _mutexSlim.TryWaitAsync().ConfigureAwait(false);
+                if (token) count++;
+                else Log?.Invoke($"failed at i={i},{_mutexSlim}");
             }
             return count.AssertIs(PER_TEST);
         }
@@ -164,19 +160,15 @@ namespace Benchmark
                 var awaitable = _mutexSlim.TryWaitAsync();
                 if (awaitable.IsCompletedSuccessfully)
                 {
-                    using (var token = awaitable.Result)
-                    {
-                        if (token) count++;
-                        else Log?.Invoke($"failed at i={i},{_mutexSlim}");
-                    }
+                    using var token = awaitable.Result;
+                    if (token) count++;
+                    else Log?.Invoke($"failed at i={i},{_mutexSlim}");
                 }
                 else
                 {
-                    using (var token = await awaitable)
-                    {
-                        if (token) count++;
-                        else Log?.Invoke($"failed at i={i},{_mutexSlim}");
-                    }
+                    using var token = await awaitable;
+                    if (token) count++;
+                    else Log?.Invoke($"failed at i={i},{_mutexSlim}");
                 }
             }
             return count.AssertIs(PER_TEST);

@@ -82,6 +82,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             var obj = new SchedulerState(scheduler, count);
             obj.Start();
             var winner = Task.WhenAny(timeout, obj.Task);
+            if (winner == timeout) throw new TimeoutException();
             return obj.Task;
         }
     }

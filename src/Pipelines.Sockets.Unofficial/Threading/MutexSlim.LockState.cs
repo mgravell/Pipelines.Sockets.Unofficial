@@ -36,15 +36,12 @@ namespace Pipelines.Sockets.Unofficial.Threading
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static ValueTaskSourceStatus GetStatus(ref int token)
             {
-                switch (LockState.GetState(Volatile.Read(ref token)))
+                return (LockState.GetState(Volatile.Read(ref token))) switch
                 {
-                    case LockState.Canceled:
-                        return ValueTaskSourceStatus.Canceled;
-                    case LockState.Pending:
-                        return ValueTaskSourceStatus.Pending;
-                    default: // LockState.Success, LockState.Timeout (we only have 4 bits for status)
-                        return ValueTaskSourceStatus.Succeeded;
-                }
+                    LockState.Canceled => ValueTaskSourceStatus.Canceled,
+                    LockState.Pending => ValueTaskSourceStatus.Pending,
+                    _ => ValueTaskSourceStatus.Succeeded,
+                };
             }
 
             // "completed", in Task/ValueTask terms, includes cancelation - only omits pending

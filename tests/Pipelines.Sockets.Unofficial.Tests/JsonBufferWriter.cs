@@ -26,10 +26,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
 
             var bufferWriter = BufferWriter<byte>.Create(blockSize: 320);
-            using (var utfWriter = new Utf8JsonWriter(bufferWriter.Writer))
-            {
-                JsonSerializer.Serialize(utfWriter, metadata);
-            }
+            using var utfWriter = new Utf8JsonWriter(bufferWriter.Writer);
+            JsonSerializer.Serialize(utfWriter, metadata);
         }
 
         public class MetaData

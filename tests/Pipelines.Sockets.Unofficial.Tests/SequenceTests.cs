@@ -75,13 +75,11 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public void CheckDefaultCustomManager()
         {
             Memory<int> memory = default;
-            using (var owner = new MyManager(memory))
-            {
-                Sequence<int> seq = new Sequence<int>(owner.Memory);
-                Assert.False(seq.IsArray);
-                Assert.True(seq.IsSingleSegment);
-                TestEveryWhichWay(seq, 0);
-            }
+            using var owner = new MyManager(memory);
+            Sequence<int> seq = new Sequence<int>(owner.Memory);
+            Assert.False(seq.IsArray);
+            Assert.True(seq.IsSingleSegment);
+            TestEveryWhichWay(seq, 0);
         }
 
         [Theory]
@@ -93,13 +91,11 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public void CheckArrayBackedCustomManager(int length)
         {
             Memory<int> memory = new int[length];
-            using (var owner = new MyManager(memory))
-            {
-                Sequence<int> seq = new Sequence<int>(owner.Memory);
-                Assert.False(seq.IsArray);
-                Assert.True(seq.IsSingleSegment);
-                TestEveryWhichWay(seq, length);
-            }
+            using var owner = new MyManager(memory);
+            Sequence<int> seq = new Sequence<int>(owner.Memory);
+            Assert.False(seq.IsArray);
+            Assert.True(seq.IsSingleSegment);
+            TestEveryWhichWay(seq, length);
         }
 
         private unsafe class MyUnsafeManager : MemoryManager<int>
@@ -129,14 +125,12 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public unsafe void CheckUnsafeCustomManager(int length)
         {
             int* ptr = stackalloc int[length];
-            using (var owner = new MyUnsafeManager(ptr, length))
-            {
-                Sequence<int> seq = new Sequence<int>(owner.Memory);
-                Assert.False(seq.IsArray);
-                Assert.False(seq.IsPinned);
-                Assert.True(seq.IsSingleSegment);
-                TestEveryWhichWay(seq, length);
-            }
+            using var owner = new MyUnsafeManager(ptr, length);
+            Sequence<int> seq = new Sequence<int>(owner.Memory);
+            Assert.False(seq.IsArray);
+            Assert.False(seq.IsPinned);
+            Assert.True(seq.IsSingleSegment);
+            TestEveryWhichWay(seq, length);
         }
 
         private unsafe class MyUnsafePinnedManager : MyUnsafeManager, IPinnedMemoryOwner<int>
@@ -157,14 +151,12 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public unsafe void CheckUnsafePinnedCustomManager(int length)
         {
             int* ptr = stackalloc int[length + 1]; // extra to ensure never nil
-            using (var owner = new MyUnsafePinnedManager(ptr, length))
-            {
-                Sequence<int> seq = new Sequence<int>(owner.Memory);
-                Assert.False(seq.IsArray);
-                Assert.True(seq.IsPinned);
-                Assert.True(seq.IsSingleSegment);
-                TestEveryWhichWay(seq, length);
-            }
+            using var owner = new MyUnsafePinnedManager(ptr, length);
+            Sequence<int> seq = new Sequence<int>(owner.Memory);
+            Assert.False(seq.IsArray);
+            Assert.True(seq.IsPinned);
+            Assert.True(seq.IsSingleSegment);
+            TestEveryWhichWay(seq, length);
         }
 
         unsafe private class MySegment : SequenceSegment<int>, IPinnedMemoryOwner<int>
@@ -216,7 +208,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
         public void CheckArrayBackedSegments(int[] sizes, bool isSingleSegment)
         {
-            Memory<int> Create(int size)
+            static Memory<int> Create(int size)
             {
                 return new int[size];
             }
@@ -565,7 +557,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Assert.Equal(count, c);
             Assert.Equal(spanCount, roSpanCount);
 
-            void AssertEqualExceptMSB(in SequencePosition expected, in SequencePosition actual)
+            static void AssertEqualExceptMSB(in SequencePosition expected, in SequencePosition actual)
             {
                 object eo = expected.GetObject(), ao = actual.GetObject();
                 int ei = expected.GetInteger() & ~Sequence.IsArrayFlag,

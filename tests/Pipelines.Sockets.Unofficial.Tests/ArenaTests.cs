@@ -95,7 +95,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 Assert.Throws<ArgumentOutOfRangeException>(() => alloc.Slice(1, (int)alloc.Length));
             }
 
-            void Check(in Sequence<int> range, int start)
+            static void Check(in Sequence<int> range, int start)
             {
                 int count = 0;
                 foreach (var span in range.Spans)
@@ -113,25 +113,23 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public void WriteAndRead()
         {
-            using (var arena = new Arena<int>(new ArenaOptions(blockSizeBytes: 1024 * sizeof(int))))
+            using var arena = new Arena<int>(new ArenaOptions(blockSizeBytes: 1024 * sizeof(int)));
+            var rand = new Random(43134114);
+            var arr = new Sequence<int>[100];
+            for (int i = 0; i < arr.Length; i++)
             {
-                var rand = new Random(43134114);
-                var arr = new Sequence<int>[100];
-                for (int i = 0; i < arr.Length; i++)
-                {
-                    arr[i] = arena.Allocate(rand.Next(0, 512));
-                }
-                long total = Write(arr);
-                Assert.Equal(total, ReadSpans(arr));
-                Assert.Equal(total, ReadSegments(arr));
-                Assert.Equal(total, ReadElements(arr));
-
-                var singleSegmentCount = arr.Count(x => x.IsSingleSegment);
-
-                // we expect "some" (not zero, not all) single-segments
-                Assert.NotEqual(0, singleSegmentCount);
-                Assert.NotEqual(arr.Length, singleSegmentCount);
+                arr[i] = arena.Allocate(rand.Next(0, 512));
             }
+            long total = Write(arr);
+            Assert.Equal(total, ReadSpans(arr));
+            Assert.Equal(total, ReadSegments(arr));
+            Assert.Equal(total, ReadElements(arr));
+
+            var singleSegmentCount = arr.Count(x => x.IsSingleSegment);
+
+            // we expect "some" (not zero, not all) single-segments
+            Assert.NotEqual(0, singleSegmentCount);
+            Assert.NotEqual(arr.Length, singleSegmentCount);
         }
 
         internal static long Write(Sequence<int>[] segments)
@@ -237,45 +235,41 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact]
         public void Copy()
         {
-            using (Arena<int> from = new Arena<int>(_blockSizeFive), to = new Arena<int>(_blockSizeFive))
-            {
-                var source = from.Allocate(100);
-                Assert.False(source.IsSingleSegment);
-                Assert.Equal(100, source.Length);
-                var iter = source.GetEnumerator();
-                int i = 0;
-                while (iter.MoveNext()) iter.Current = i++;
+            using Arena<int> from = new Arena<int>(_blockSizeFive), to = new Arena<int>(_blockSizeFive);
+            var source = from.Allocate(100);
+            Assert.False(source.IsSingleSegment);
+            Assert.Equal(100, source.Length);
+            var iter = source.GetEnumerator();
+            int i = 0;
+            while (iter.MoveNext()) iter.Current = i++;
 
-                var doubles = to.Allocate(source, (in int x) => 2 * x);
-                Assert.False(doubles.IsSingleSegment);
-                Assert.Equal(100, doubles.Length);
-                i = 0;
-                iter = doubles.GetEnumerator();
-                while (iter.MoveNext())
-                {
-                    Assert.Equal(2 * i++, iter.Current);
-                }
+            var doubles = to.Allocate(source, (in int x) => 2 * x);
+            Assert.False(doubles.IsSingleSegment);
+            Assert.Equal(100, doubles.Length);
+            i = 0;
+            iter = doubles.GetEnumerator();
+            while (iter.MoveNext())
+            {
+                Assert.Equal(2 * i++, iter.Current);
             }
         }
 
         [Fact]
         public void Positions()
         {
-            using (Arena<int> from = new Arena<int>(_blockSizeFive))
-            {
-                from.Allocate(42); // just want an arbitrary offset here
-                var source = from.Allocate(100);
-                Assert.Throws<IndexOutOfRangeException>(() => source.GetPosition(-1));
-                Assert.Throws<IndexOutOfRangeException>(() => source.GetPosition(101));
+            using Arena<int> from = new Arena<int>(_blockSizeFive);
+            from.Allocate(42); // just want an arbitrary offset here
+            var source = from.Allocate(100);
+            Assert.Throws<IndexOutOfRangeException>(() => source.GetPosition(-1));
+            Assert.Throws<IndexOutOfRangeException>(() => source.GetPosition(101));
 
-                Assert.Equal(source.GetPosition(0), source.Start);
-                Assert.Equal(source.GetPosition(100), source.End);
-                for (int i = 0; i <= 100; i++)
-                {
-                    var pos = source.GetPosition(i);
-                    var offset = pos.TryGetOffset().Value;
-                    Assert.Equal(i + 42, offset);
-                }
+            Assert.Equal(source.GetPosition(0), source.Start);
+            Assert.Equal(source.GetPosition(100), source.End);
+            for (int i = 0; i <= 100; i++)
+            {
+                var pos = source.GetPosition(i);
+                var offset = pos.TryGetOffset().Value;
+                Assert.Equal(i + 42, offset);
             }
         }
     }

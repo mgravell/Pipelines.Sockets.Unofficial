@@ -16,38 +16,36 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public async Task PoolThreadIsWorker()
         {
             var defautPool = DedicatedThreadPoolPipeScheduler.Default;
-            using (var newPool = new DedicatedThreadPoolPipeScheduler())
-            {
-                var tcs = new TaskCompletionSource<bool>();
-                defautPool.Schedule(
-                    _ => tcs.SetResult(DedicatedThreadPoolPipeScheduler.IsWorker()), null);
-                Assert.True(await tcs.Task);
+            using var newPool = new DedicatedThreadPoolPipeScheduler();
+            var tcs = new TaskCompletionSource<bool>();
+            defautPool.Schedule(
+                _ => tcs.SetResult(DedicatedThreadPoolPipeScheduler.IsWorker()), null);
+            Assert.True(await tcs.Task);
 
-                tcs = new TaskCompletionSource<bool>();
-                newPool.Schedule(
-                    _ => tcs.SetResult(DedicatedThreadPoolPipeScheduler.IsWorker()), null);
-                Assert.True(await tcs.Task);
+            tcs = new TaskCompletionSource<bool>();
+            newPool.Schedule(
+                _ => tcs.SetResult(DedicatedThreadPoolPipeScheduler.IsWorker()), null);
+            Assert.True(await tcs.Task);
 
-                tcs = new TaskCompletionSource<bool>();
-                defautPool.Schedule(
-                    _ => tcs.SetResult(DedicatedThreadPoolPipeScheduler.IsWorker(defautPool)), null);
-                Assert.True(await tcs.Task);
+            tcs = new TaskCompletionSource<bool>();
+            defautPool.Schedule(
+                _ => tcs.SetResult(DedicatedThreadPoolPipeScheduler.IsWorker(defautPool)), null);
+            Assert.True(await tcs.Task);
 
-                tcs = new TaskCompletionSource<bool>();
-                newPool.Schedule(
-                    _ => tcs.SetResult(DedicatedThreadPoolPipeScheduler.IsWorker(defautPool)), null);
-                Assert.False(await tcs.Task);
+            tcs = new TaskCompletionSource<bool>();
+            newPool.Schedule(
+                _ => tcs.SetResult(DedicatedThreadPoolPipeScheduler.IsWorker(defautPool)), null);
+            Assert.False(await tcs.Task);
 
-                tcs = new TaskCompletionSource<bool>();
-                defautPool.Schedule(
-                    _ => tcs.SetResult(DedicatedThreadPoolPipeScheduler.IsWorker(newPool)), null);
-                Assert.False(await tcs.Task);
+            tcs = new TaskCompletionSource<bool>();
+            defautPool.Schedule(
+                _ => tcs.SetResult(DedicatedThreadPoolPipeScheduler.IsWorker(newPool)), null);
+            Assert.False(await tcs.Task);
 
-                tcs = new TaskCompletionSource<bool>();
-                newPool.Schedule(
-                    _ => tcs.SetResult(DedicatedThreadPoolPipeScheduler.IsWorker(newPool)), null);
-                Assert.True(await tcs.Task);
-            }
+            tcs = new TaskCompletionSource<bool>();
+            newPool.Schedule(
+                _ => tcs.SetResult(DedicatedThreadPoolPipeScheduler.IsWorker(newPool)), null);
+            Assert.True(await tcs.Task);
         }
     }
 }

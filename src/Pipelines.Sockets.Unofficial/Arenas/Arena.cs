@@ -582,30 +582,28 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
         private static Sequence<T> SlowAllocate<T>(IArena<T> arena, IEnumerable<T> source)
         {
-            using (var iter = source.GetEnumerator())
+            using var iter = source.GetEnumerator();
+            if (!iter.MoveNext()) return default; // empty
+            Sequence<T> alloc = arena.AllocateRetainingSegmentData(1);
+            alloc[0] = iter.Current;
+
+            var pos = arena.GetPosition();
+            if (!iter.MoveNext()) return alloc; // exactly 1
+            if (!alloc.TryGetSegments(out var x, out _, out var i, out _))
+                Throw.SegmentDataUnavailable();
+
+            do
             {
-                if (!iter.MoveNext()) return default; // empty
-                Sequence<T> alloc = arena.AllocateRetainingSegmentData(1);
+                // check we didn't allocate during the MoveNext
+                if (!pos.Equals(arena.GetPosition())) Throw.AllocationDuringEnumeration();
+                alloc = arena.AllocateRetainingSegmentData(1);
                 alloc[0] = iter.Current;
-
-                var pos = arena.GetPosition();
-                if (!iter.MoveNext()) return alloc; // exactly 1
-                if (!alloc.TryGetSegments(out var x, out _, out var i, out _))
-                    Throw.SegmentDataUnavailable();
-
-                do
-                {
-                    // check we didn't allocate during the MoveNext
-                    if (!pos.Equals(arena.GetPosition())) Throw.AllocationDuringEnumeration();
-                    alloc = arena.AllocateRetainingSegmentData(1);
-                    alloc[0] = iter.Current;
-                    pos = arena.GetPosition();
-                } while (iter.MoveNext());
-                // now get the segment data from the start and end, and combine them
-                if (!alloc.TryGetSegments(out _, out var y, out _, out var j))
-                    Throw.SegmentDataUnavailable();
-                return new Sequence<T>(x, y, i, j);
-            }
+                pos = arena.GetPosition();
+            } while (iter.MoveNext());
+            // now get the segment data from the start and end, and combine them
+            if (!alloc.TryGetSegments(out _, out var y, out _, out var j))
+                Throw.SegmentDataUnavailable();
+            return new Sequence<T>(x, y, i, j);
         }
 
         internal long AllocatedBytes()

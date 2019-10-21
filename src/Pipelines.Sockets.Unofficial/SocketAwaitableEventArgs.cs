@@ -81,7 +81,7 @@ namespace Pipelines.Sockets.Unofficial
 
             return BytesTransferred;
 
-            void ThrowSocketException(SocketError e)
+            static void ThrowSocketException(SocketError e)
             {
                 Throw.Socket((int)e);
             }

@@ -406,6 +406,7 @@ namespace Pipelines.Sockets.Unofficial
                 => _reader.TryRead(out result);
 
             // note - consider deprecated: https://github.com/dotnet/corefx/issues/38362
+            [Obsolete]
             public override void OnWriterCompleted(Action<Exception, object> callback, object state)
                 => _reader.OnWriterCompleted(callback, state);
         }
@@ -439,12 +440,9 @@ namespace Pipelines.Sockets.Unofficial
                 => _writer.WriteAsync(source, cancellationToken);
 
             // note - consider deprecated: https://github.com/dotnet/corefx/issues/38362
+            [Obsolete]
             public override void OnReaderCompleted(Action<Exception, object> callback, object state)
-            {
-#pragma warning disable CS0618 // obsolete
-                _writer.OnReaderCompleted(callback, state);
-#pragma warning restore CS0618 // obsolete
-            }
+                => _writer.OnReaderCompleted(callback, state);
         }
 
         private static bool TrySetShutdown(Exception ex, SocketConnection connection, PipeShutdownKind kind)

@@ -119,7 +119,9 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Not implemented
         /// </summary>
+        [Obsolete]
         public override void OnWriterCompleted(Action<Exception, object> callback, object state) { }
+
         /// <summary>
         /// Cancels an in-progress read
         /// </summary>

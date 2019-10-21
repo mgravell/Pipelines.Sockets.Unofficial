@@ -52,43 +52,41 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
             string actual;
             Log?.DebugLog("connecting...");
-            using (var conn = await SocketConnection.ConnectAsync(endpoint,
-                connectionOptions: SocketConnectionOptions.ZeroLengthReads).ConfigureAwait(false))
+            using var conn = await SocketConnection.ConnectAsync(endpoint,
+                connectionOptions: SocketConnectionOptions.ZeroLengthReads).ConfigureAwait(false);
+            var data = Encoding.ASCII.GetBytes("Hello, world!");
+            Log?.DebugLog("sending message...");
+            await conn.Output.WriteAsync(data).ConfigureAwait(false);
+            Log?.DebugLog("completing output");
+            conn.Output.Complete();
+
+            Log?.DebugLog("awaiting server...");
+            actual = await server;
+
+            Assert.Equal("Hello, world!", actual);
+
+            string returned;
+            Log?.DebugLog("buffering response...");
+            while (true)
             {
-                var data = Encoding.ASCII.GetBytes("Hello, world!");
-                Log?.DebugLog("sending message...");
-                await conn.Output.WriteAsync(data).ConfigureAwait(false);
-                Log?.DebugLog("completing output");
-                conn.Output.Complete();
+                var result = await conn.Input.ReadAsync().ConfigureAwait(false);
 
-                Log?.DebugLog("awaiting server...");
-                actual = await server;
-
-                Assert.Equal("Hello, world!", actual);
-
-                string returned;
-                Log?.DebugLog("buffering response...");
-                while (true)
+                var buffer = result.Buffer;
+                Log?.DebugLog($"received {buffer.Length} bytes");
+                if (result.IsCompleted)
                 {
-                    var result = await conn.Input.ReadAsync().ConfigureAwait(false);
-
-                    var buffer = result.Buffer;
-                    Log?.DebugLog($"received {buffer.Length} bytes");
-                    if (result.IsCompleted)
-                    {
-                        returned = Encoding.ASCII.GetString(result.Buffer.ToArray());
-                        Log?.DebugLog($"received: '{returned}'");
-                        break;
-                    }
-
-                    Log?.DebugLog("advancing");
-                    conn.Input.AdvanceTo(buffer.Start, buffer.End);
+                    returned = Encoding.ASCII.GetString(result.Buffer.ToArray());
+                    Log?.DebugLog($"received: '{returned}'");
+                    break;
                 }
 
-                Assert.Equal("!dlrow ,olleH", returned);
-
-                Log?.DebugLog("disposing");
+                Log?.DebugLog("advancing");
+                conn.Input.AdvanceTo(buffer.Start, buffer.End);
             }
+
+            Assert.Equal("!dlrow ,olleH", returned);
+
+            Log?.DebugLog("disposing");
         }
 
         private Task<string> SyncEchoServer(object ready, IPEndPoint endpoint)
@@ -105,21 +103,19 @@ namespace Pipelines.Sockets.Unofficial.Tests
             using (var socket = listener.AcceptSocket())
             {
                 Output.WriteLine($"[Server] accepted connection");
-                using (var ns = new NetworkStream(socket))
+                using var ns = new NetworkStream(socket);
+                using (var reader = new StreamReader(ns, Encoding.ASCII, false, 1024, true))
+                using (var writer = new StreamWriter(ns, Encoding.ASCII, 1024, true))
                 {
-                    using (var reader = new StreamReader(ns, Encoding.ASCII, false, 1024, true))
-                    using (var writer = new StreamWriter(ns, Encoding.ASCII, 1024, true))
-                    {
-                        s = reader.ReadToEnd();
-                        Output.WriteLine($"[Server] received '{s}'; replying in reverse...");
-                        char[] chars = s.ToCharArray();
-                        Array.Reverse(chars);
-                        var t = new string(chars);
-                        writer.Write(t);
-                    }
-                    socket.Shutdown(SocketShutdown.Both);
-                    socket.Close();
+                    s = reader.ReadToEnd();
+                    Output.WriteLine($"[Server] received '{s}'; replying in reverse...");
+                    char[] chars = s.ToCharArray();
+                    Array.Reverse(chars);
+                    var t = new string(chars);
+                    writer.Write(t);
                 }
+                socket.Shutdown(SocketShutdown.Both);
+                socket.Close();
             }
             Output.WriteLine($"[Server] shutting down");
             listener.Stop();

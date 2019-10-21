@@ -163,7 +163,7 @@ namespace Pipelines.Sockets.Unofficial
             {
                 if (_receiveAborted)
                 {
-                    error = error ?? new ConnectionAbortedException();
+                    error ??= new ConnectionAbortedException();
                 }
                 try
                 {

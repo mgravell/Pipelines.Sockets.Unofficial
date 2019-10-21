@@ -328,7 +328,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 ? new Reference<T>((int)index + StartOffset, _startObj)
                 : SlowGetReference(in this, index);
 
-            Reference<T> SlowGetReference(in Sequence<T> sequence, long l_index)
+            static Reference<T> SlowGetReference(in Sequence<T> sequence, long l_index)
             {
                 if (l_index < 0 | l_index >= sequence.Length) Throw.IndexOutOfRange();
 
@@ -367,7 +367,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return IsArray ? new ReadOnlySequence<T>((T[])_startObj, StartOffset, SingleSegmentLength)
                 : FromSegments(this);
 
-            ReadOnlySequence<T> FromSegments(in Sequence<T> sequence)
+            static ReadOnlySequence<T> FromSegments(in Sequence<T> sequence)
             {
                 var startObj = sequence._startObj;
                 if (startObj == null) return default;
@@ -437,10 +437,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
             return SlowGetPosition(in this, offset);
 
-            int RemainingFirstSegmentLength(in Sequence<T> sequence)
+            static int RemainingFirstSegmentLength(in Sequence<T> sequence)
                 => ((SequenceSegment<T>)sequence._startObj).Length - sequence.StartOffset;
 
-            SequencePosition SlowGetPosition(in Sequence<T> sequence, long index)
+            static SequencePosition SlowGetPosition(in Sequence<T> sequence, long index)
             {
                 // note: already ruled out single-segment in-range
                 if (index == 0) return sequence.Start;
@@ -604,7 +604,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 return IsSingleSegment ? SingleSegmentLength : MultiSegmentLength(this);
 
-                long MultiSegmentLength(in Sequence<T> sequence)
+                static long MultiSegmentLength(in Sequence<T> sequence)
                 {
                     // note that in the multi-segment case, the MSB will be set - as it isn't an array
                     return (((SequenceSegment<T>)sequence._endObj).RunningIndex + sequence.MultiSegmentEndOffset) // end index
@@ -705,7 +705,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             if (IsSingleSegment) FirstSpan.CopyTo(destination);
             else if (!TrySlowCopy(destination)) ThrowLengthError();
 
-            void ThrowLengthError()
+            static void ThrowLengthError()
             {
                 Span<int> one = stackalloc int[1];
                 one.CopyTo(default); // this should give use the CLR's error text (let's hope it doesn't mention sizes!)

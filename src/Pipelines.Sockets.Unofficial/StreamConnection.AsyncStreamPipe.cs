@@ -166,7 +166,7 @@ namespace Pipelines.Sockets.Unofficial
 
             private static Task WriteBuffer(Stream target, in ReadOnlySequence<byte> data, string name)
             {
-                async Task WriteBufferAwaited(Stream ttarget, ReadOnlySequence<byte> ddata, string nname)
+                static async Task WriteBufferAwaited(Stream ttarget, ReadOnlySequence<byte> ddata, string nname)
                 {
                     foreach (var segment in ddata)
                     {

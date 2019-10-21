@@ -98,7 +98,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 if (_obj is T[] arr) return ref arr[_offset];
                 return ref SlowValue(_obj, _offset);
 
-                unsafe ref T SlowValue(object obj, int offset)
+                static unsafe ref T SlowValue(object obj, int offset)
                 {
                     void* origin;
                     if (obj is IPinnedMemoryOwner<T> pinned && (origin = pinned.Origin) != null)
