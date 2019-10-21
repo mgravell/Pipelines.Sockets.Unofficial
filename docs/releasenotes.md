@@ -1,7 +1,8 @@
 # Release Notes
 
-## 2.0.??
+## 2.1.0
 
+- dependency updates
 - add `BufferWriterTextWriter`, a `TextWriter` over an `IBufferWriter<byte>`
 
 ## 2.0.25
