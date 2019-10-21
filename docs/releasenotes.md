@@ -1,5 +1,9 @@
 # Release Notes
 
+## 2.0.??
+
+- add `BufferWriterTextWriter`, a `TextWriter` over an `IBufferWriter<byte>`
+
 ## 2.0.25
 
 - add new `BufferWriter<T>` API; implements `IBufferWriter<T>`, but with a different model to `Pipe`
