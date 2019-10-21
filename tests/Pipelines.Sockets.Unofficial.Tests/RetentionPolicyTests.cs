@@ -143,33 +143,23 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 Assert.Equal(0, arena.AllocatedBytes());
                 Assert.Equal(21504, arena.CapacityBytes()); // 100%
 
+#if net461
                 Span<int> expectedSizes = stackalloc int[] {
-                    21504,
-                    18432,
-                    17408,
-                    15360,
-                    14336,
-                    12288,
-                    11264,
-                    10240,
-                    9216,
-                    8192,
-                    7168,
-                    7168,
-                    6144,
-                    6144,
-                    5120,
-                    5120,
-                    4096,
-                    4096,
-                    3072,
-                    3072,
-                    3072,
-                    3072,
-                    3072,
-                    3072,
-                    3072
+                    21504, 18432, 17408, 15360, 14336,
+                    12288, 11264, 10240, 9216, 8192,
+                    7168, 7168, 6144, 6144, 5120,
+                    5120, 4096, 4096, 3072, 3072,
+                    3072, 3072, 3072, 3072, 3072
                 }; // can't release the last page, as keep touching it
+#else
+                Span<int> expectedSizes = stackalloc int[] {
+                    21504, 19456, 17408, 15360, 14336,
+                    12288, 11264, 10240, 9216, 8192,
+                    7168, 7168, 6144, 6144, 5120,
+                    5120, 4096, 4096, 3072, 3072,
+                    3072, 3072, 3072, 3072, 3072
+                }; // can't release the last page, as keep touching it
+#endif
                 for (int i = 1; i < expectedSizes.Length; i++)
                 {
                     // allocate a small chunk; decay applies
