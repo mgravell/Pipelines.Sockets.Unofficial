@@ -15,7 +15,7 @@ namespace Benchmark
         private readonly byte[] Chunk = new byte[2048];
         public ArrayPoolStreamBenchmark() => new Random(12345).NextBytes(Chunk);
 
-        [Params(0, 100, 1_000, 10_000, 100_000, 1_000_000, 5_000_000)]
+        [Params(0, 100, 1_000, 10_000, 100_000, 1_000_000, 5_000_000, 10_000_000, 50_000_000)]
         public int Bytes { get; set; }
 
         [Benchmark(Baseline = true)]

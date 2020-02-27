@@ -188,10 +188,57 @@ namespace Pipelines.Sockets.Unofficial
         private void TakeNewBuffer(int capacity)
         {
             var oldArr = _array;
-            var newArr = _pool.Rent(capacity);
+            var newArr = _pool.Rent(RoundUp(capacity));
             if (_length != 0) Buffer.BlockCopy(oldArr, 0, newArr, 0, _length);
             _array = newArr;
             if (oldArr.Length != 0) _pool.Return(oldArr);
+        }
+
+        internal static int RoundUp(int capacity)
+        {
+            if (capacity <= 1) return capacity;
+
+            // we need to do this because array-pools stop buffering beyond
+            // a certain point, and just give us what we ask for; if we don't
+            // apply upwards rounding *ourselves*, then beyond that limit, we
+            // end up *constantly* allocating/copying arrays, on each copy
+
+            // note we subtract one because it is easier to round up to the *next* bucket size, and
+            // subtracting one guarantees that this will work
+
+            // if we ask for, say, 913; take 1 for 912; that's 0000 0000 0000 0000 0000 0011 1001 0000
+            // so lz is 22; 32-22=10, 1 << 10= 1024
+
+            // or for 2: lz of 2-1 is 31, 32-31=1; 1<<1=2
+            int limit = 1 << (32 - LeadingZeros(capacity - 1));
+            return limit < 0 ? int.MaxValue : limit;
+
+            static int LeadingZeros(int x) // https://stackoverflow.com/questions/10439242/count-leading-zeroes-in-an-int32
+            {
+#if LZCNT
+                if (System.Runtime.Intrinsics.X86.Lzcnt.IsSupported)
+                {
+                    return (int)System.Runtime.Intrinsics.X86.Lzcnt.LeadingZeroCount((uint)x);
+                }
+                else
+#endif
+                {
+                    const int numIntBits = sizeof(int) * 8; //compile time constant
+                                                            //do the smearing
+                    x |= x >> 1;
+                    x |= x >> 2;
+                    x |= x >> 4;
+                    x |= x >> 8;
+                    x |= x >> 16;
+                    //count the ones
+                    x -= x >> 1 & 0x55555555;
+                    x = (x >> 2 & 0x33333333) + (x & 0x33333333);
+                    x = (x >> 4) + x & 0x0f0f0f0f;
+                    x += x >> 8;
+                    x += x >> 16;
+                    return numIntBits - (x & 0x0000003f); //subtract # of 1s from 32
+                }
+            }
         }
 
         /// <inheritdoc/>
