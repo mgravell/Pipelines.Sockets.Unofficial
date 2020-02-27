@@ -1,6 +1,7 @@
 ﻿using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Pipelines.Sockets.Unofficial;
+using Sylvan.IO;
 using System;
 using System.IO;
 
@@ -23,6 +24,9 @@ namespace Benchmark
 
         [Benchmark]
         public long ArrayPoolStream() => Write<ArrayPoolStream>();
+
+        [Benchmark]
+        public long BlockMemoryStream() => Write<BlockMemoryStream>();
 
         private long Write<T>() where T : Stream, new()
         {
