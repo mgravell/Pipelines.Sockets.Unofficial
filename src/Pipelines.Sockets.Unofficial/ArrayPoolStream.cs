@@ -1,4 +1,5 @@
-﻿using Pipelines.Sockets.Unofficial.Internal;
+﻿using Pipelines.Sockets.Unofficial.Arenas;
+using Pipelines.Sockets.Unofficial.Internal;
 using System;
 using System.Buffers;
 using System.IO;
@@ -18,14 +19,43 @@ namespace Pipelines.Sockets.Unofficial
         public override string ToString() => $"{nameof(ArrayPoolStream)} at position {Position} of {Length}";
 
         private readonly ArrayPool<byte> _pool;
-        private byte[] _array = Array.Empty<byte>();
-        private int _position, _length;
+
+        private long _position, _length;
+
+        private sealed class Segment : ReadOnlySequenceSegment<byte>
+        {
+            public readonly byte[] Array;
+            public readonly int Length;
+
+            public Segment(byte[] buffer, Segment? previous)
+            {
+                Length = buffer.Length;
+                if (Length == 0) Throw.InvalidOperation("Expected non-empty buffer");
+                Array = buffer;
+                Memory = buffer;
+                if (previous != null)
+                {
+                    previous.Next = this;
+                    RunningIndex = previous.RunningIndex + previous.Length;
+                }
+            }
+
+            public Segment? NextSegment => Next as Segment;
+        }
+
+        Segment _start, _end, _current;
+        int _currentOffset;
+
 
         /// <summary>Create a new ArrayPoolStream using the default array pool</summary>
-        public ArrayPoolStream() => _pool = ArrayPool<byte>.Shared;
+        public ArrayPoolStream() : this(ArrayPool<byte>.Shared) { }
 
         /// <summary>Create a new ArrayPoolStream using the specified array pool</summary>
-        public ArrayPoolStream(ArrayPool<byte> pool) => _pool = pool ?? ArrayPool<byte>.Shared;
+        public ArrayPoolStream(ArrayPool<byte> pool)
+        {
+            _pool = pool ?? ArrayPool<byte>.Shared;
+            _start = _end = _current = new Segment(_pool.Rent(128), null);
+        }
 
         /// <inheritdoc/>
         public override bool CanRead => true;
@@ -42,8 +72,15 @@ namespace Pipelines.Sockets.Unofficial
             get => _position;
             set
             {
-                if (_position < 0 || _position > _length) Throw.ArgumentOutOfRange(nameof(Position));
-                _position = (int)value;
+                
+                if (value != _position)
+                {
+                    if (_position < 0 || _position > _length) Throw.ArgumentOutOfRange(nameof(Position));
+                    var seqPos = GetBuffer().GetPosition(value);
+                    _current = (Segment)seqPos.GetObject();
+                    _currentOffset = seqPos.GetInteger();
+                    _position = value;
+                }
             }
         }
 
@@ -53,19 +90,17 @@ namespace Pipelines.Sockets.Unofficial
         /// <inheritdoc/>
         public override void SetLength(long value)
         {
-            if (value < 0 || value > int.MaxValue) Throw.ArgumentOutOfRange(nameof(value));
+            if (value < 0) Throw.ArgumentOutOfRange(nameof(value));
             if (value == _length)
             { } // nothing to do
             else if (value < _length) // shrink
             {
-                _length = (int)value;
+                _length = value;
                 if (_position > _length) _position = _length; // leave at EOF
             }
             else // grow
             {
-                var oldLen = _length;
-                ExpandCapacity((int)value);
-                new Span<byte>(_array, oldLen, _length).Clear(); // zero the contents when growing this way
+                Throw.NotSupported("Cannot expand via SetLength");
             }
         }
 
@@ -91,8 +126,23 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public bool TryGetBuffer(out ArraySegment<byte> buffer)
         {
-            buffer = new ArraySegment<byte>(_array, 0, _length);
-            return _length >= 0;
+            buffer = default;
+            var full = GetBuffer();
+            return full.IsSingleSegment && MemoryMarshal.TryGetArray(full.First, out buffer);
+        }
+
+        /// <summary>
+        /// Exposes the underlying buffer associated with this stream, for the defined length
+        /// </summary>
+        public ReadOnlySequence<byte> GetBuffer()
+        {
+            try
+            {
+                return new ReadOnlySequence<byte>(_start, 0, _end, _end.Length).Slice(0, _length);
+            } catch(Exception ex)
+            {
+                throw new InvalidOperationException($"woah! {Position}, {Length}, {_end.Length + _end.RunningIndex}: {ex.Message}", ex);
+            }
         }
 
         /// <inheritdoc/>
@@ -104,43 +154,144 @@ namespace Pipelines.Sockets.Unofficial
         {
             if (disposing)
             {
-                _position = _length = -1;
-                var arr = _array;
-                _array = Array.Empty<byte>();
-
-                if (arr.Length != 0) _pool.Return(arr);
+                _position = _length = _currentOffset = -1;
+                var tmp = _start;
+                _start = _end = _current = null!; // after dispose, I don't mind if you see sparks from nullability
+                Return(_pool, tmp);
             }
             base.Dispose(disposing);
+        }
+
+        static void Return(ArrayPool<byte> pool, Segment? segment)
+        {
+            while (segment != null)
+            {
+                var arr = segment.Array;
+                if (arr != null) pool.Return(arr);
+                segment = segment.NextSegment;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int WriteSpace()
+        {
+            var available = _current.Length - _currentOffset;
+            if (available == 0) available = TryMoveToNextBlock();
+            if (available == 0) available = AppendBlock();
+            return available;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int ReadSpace()
+        {
+            // what is available in the current buffer? if nothing, look at the next
+            var available = _current.Length - _currentOffset;
+            if (available == 0) available = TryMoveToNextBlock();
+
+            // but without over-reading the defined length
+            if (_position + available > _length)
+            {
+                available = (int)Math.Min(available, _length - _position);
+            }
+            return available;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private int TryMoveToNextBlock()
+        {
+            var next = _current.NextSegment;
+            if (next == null) return 0;
+            _current = next;
+            _currentOffset = 0;
+            return next.Length;
         }
 
         /// <inheritdoc/>
         public override int Read(byte[] buffer, int offset, int count)
         {
-            int take = Math.Min(count, _length - _position);
-            Buffer.BlockCopy(_array, _position, buffer, offset, take);
-            _position += take;
+            int take = Math.Min(ReadSpace(), count);
+            Buffer.BlockCopy(_current.Array, _currentOffset, buffer, offset, take);
+            Move(take);
             return take;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void Move(int by)
+        {
+            _position += by;
+            _currentOffset += by;
+            if (_position > _length) _length = _position;
         }
 
         /// <inheritdoc/>
         public override void Write(byte[] buffer, int offset, int count)
         {
-            var positionAfter = _position + count;
-            if (positionAfter < 0) Throw.InvalidOperation();
-            if (positionAfter > _length) ExpandCapacity(positionAfter);
-            Buffer.BlockCopy(buffer, offset, _array, _position, count);
-            _position = positionAfter;
+            int space = WriteSpace();
+            if (space >= count)
+            {
+                Buffer.BlockCopy(buffer, offset, _current.Array, _currentOffset, count);
+                Move(count);
+            }
+            else
+            {
+                WriteSlow(new ReadOnlySpan<byte>(buffer, offset, count));
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void WriteSlow(ReadOnlySpan<byte> buffer)
+        {
+            while (!buffer.IsEmpty)
+            {
+                var space = WriteSpace();
+                var target = new Span<byte>(_current.Array, _currentOffset, space);
+
+                if (space >= buffer.Length)
+                {
+                    buffer.CopyTo(target);
+                    Move(buffer.Length);
+                    break;
+                }
+                else
+                {
+                    buffer.Slice(0, space).CopyTo(target);
+                    Move(space);
+                    buffer = buffer.Slice(space);
+                }
+            }
+        }
+
+        private int AppendBlock()
+        {
+            const int MAX_BLOCK_SIZE = 8 * 1024 * 1024;
+            var current = _current;
+            if (current.NextSegment != null) Throw.InvalidOperation("shouldn't be appending; already has tail");
+            var size = Math.Min(current.Length << 1, MAX_BLOCK_SIZE);
+            _end = new Segment(_pool.Rent(size), current);
+            return TryMoveToNextBlock();
         }
 
         /// <inheritdoc/>
         public override int ReadByte()
-            => _position >= _length ? -1 : _array[_position++];
+        {
+            if (ReadSpace() != 0)
+            {
+                var result = _current.Array[_currentOffset];
+                Move(1);
+                return result;
+            }
+            else
+            {
+                return -1;
+            }
+        }
 
         /// <inheritdoc/>
         public override void WriteByte(byte value)
         {
-            if (_position >= _length) ExpandCapacity(_length + 1);
-            _array[_position++] = value;
+            WriteSpace(); // for the side-effects
+            _current.Array[_currentOffset] = value;
+            Move(1);
         }
 
         private static readonly Task<int> s_Zero = Task.FromResult<int>(0);
@@ -179,42 +330,6 @@ namespace Pipelines.Sockets.Unofficial
             }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ExpandCapacity(int capacity)
-        {
-            if (capacity > _array.Length) TakeNewBuffer(capacity);
-            _length = capacity;
-        }
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private void TakeNewBuffer(int capacity)
-        {
-            var oldArr = _array;
-            var newArr = _pool.Rent(RoundUp(capacity));
-            if (_length != 0) Buffer.BlockCopy(oldArr, 0, newArr, 0, _length);
-            _array = newArr;
-            if (oldArr.Length != 0) _pool.Return(oldArr);
-        }
-
-        internal static int RoundUp(int capacity)
-        {
-            if (capacity <= 1) return capacity;
-
-            // we need to do this because array-pools stop buffering beyond
-            // a certain point, and just give us what we ask for; if we don't
-            // apply upwards rounding *ourselves*, then beyond that limit, we
-            // end up *constantly* allocating/copying arrays, on each copy
-
-            // note we subtract one because it is easier to round up to the *next* bucket size, and
-            // subtracting one guarantees that this will work
-
-            // if we ask for, say, 913; take 1 for 912; that's 0000 0000 0000 0000 0000 0011 1001 0000
-            // so lz is 22; 32-22=10, 1 << 10= 1024
-
-            // or for 2: lz of 2-1 is 31, 32-31=1; 1<<1=2
-            int limit = 1 << (32 - Utils.LeadingZeroCount((uint)(capacity - 1)));
-            return limit < 0 ? int.MaxValue : limit;
-        }
-
         /// <inheritdoc/>
         public override Task CopyToAsync(Stream destination, int bufferSize, CancellationToken cancellationToken)
         {
@@ -225,8 +340,7 @@ namespace Pipelines.Sockets.Unofficial
                 // write sync
                 try
                 {
-                    destination.Write(_array, _position, _length - _position);
-                    _position = _length;
+                    CopyTo(destination, bufferSize);
                     return Task.CompletedTask;
                 }
                 catch (Exception ex)
@@ -236,9 +350,30 @@ namespace Pipelines.Sockets.Unofficial
             }
             else
             {
-                var task = destination.WriteAsync(_array, _position, _length - _position);
-                _position = _length;
-                return task;
+                var available = ReadSpace();
+                if (available == 0) return Task.CompletedTask; // nothing to do
+
+                if (_position + available == _length)
+                {   // that's everything in one go
+                    var task = destination.WriteAsync(_current.Array, _currentOffset, available, cancellationToken);
+                    Move(available);
+                    return task;
+                }
+                else
+                {
+                    return CopyToAsyncImpl(this, destination, cancellationToken);
+                }
+            }
+
+            static async Task CopyToAsyncImpl(ArrayPoolStream source, Stream destination, CancellationToken cancellationToken)
+            {
+                int available;
+                while ((available = source.ReadSpace()) != 0)
+                {
+                    var pending = destination.WriteAsync(source._current.Array, source._currentOffset, available, cancellationToken);
+                    source.Move(available);
+                    await pending.ConfigureAwait(false);
+                }
             }
         }
 
@@ -246,27 +381,36 @@ namespace Pipelines.Sockets.Unofficial
         /// <inheritdoc/>
         public override void CopyTo(Stream destination, int bufferSize)
         {
-            destination.Write(_array, _position, _length - _position);
-            _position = _length;
+            int available;
+            while ((available = ReadSpace()) != 0)
+            {
+                destination.Write(_current.Array, _currentOffset, available);
+                Move(available);
+            }
         }
 
         /// <inheritdoc/>
         public override int Read(Span<byte> buffer)
         {
-            int take = Math.Min(buffer.Length, _length - _position);
-            new Span<byte>(_array, _position, take).CopyTo(buffer);
-            _position += take;
+            int take = Math.Min(ReadSpace(), buffer.Length);
+            new Span<byte>(_current.Array, _currentOffset, take).CopyTo(buffer);
+            Move(take);
             return take;
         }
 
         /// <inheritdoc/>
         public override void Write(ReadOnlySpan<byte> buffer)
         {
-            var positionAfter = _position + buffer.Length;
-            if (positionAfter < 0) Throw.InvalidOperation();
-            if (positionAfter > _length) ExpandCapacity(positionAfter);
-            buffer.CopyTo(new Span<byte>(_array, _position, buffer.Length));
-            _position = positionAfter;
+            int space = WriteSpace();
+            if (space >= buffer.Length)
+            {
+                buffer.CopyTo(new Span<byte>(_current.Array, _currentOffset, space));
+                Move(buffer.Length);
+            }
+            else
+            {
+                WriteSlow(buffer);
+            }
         }
 
         /// <inheritdoc/>

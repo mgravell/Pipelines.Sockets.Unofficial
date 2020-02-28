@@ -45,31 +45,5 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 }
             }
         }
-
-        [Theory]
-        [InlineData(0, 0)]
-        [InlineData(-1, -1)]
-        [InlineData(int.MinValue, int.MinValue)]
-        [InlineData(1, 1)]
-        [InlineData(2, 2)]
-        [InlineData(3, 4)]
-        [InlineData(4, 4)]
-        [InlineData(5, 8)]
-        [InlineData(6, 8)]
-        [InlineData(7, 8)]
-        [InlineData(8, 8)]
-        [InlineData(9, 16)]
-        [InlineData(913, 1024)]
-        [InlineData(1023, 1024)]
-        [InlineData(1024, 1024)]
-        [InlineData(1025, 2048)]
-        [InlineData(0b0010_0000_0000_0000_0000_0000_0000_0001, 0b0100_0000_0000_0000_0000_0000_0000_0000)]
-        [InlineData(0b0100_0000_0000_0000_0000_0000_0000_0000, 0b0100_0000_0000_0000_0000_0000_0000_0000)]
-        [InlineData(0b0100_0000_0000_0000_0000_0000_0000_0001, 0b0111_1111_1111_1111_1111_1111_1111_1111)]
-        [InlineData(0b0111_1111_1111_1111_1111_1111_1111_1111, 0b0111_1111_1111_1111_1111_1111_1111_1111)]
-        public void ValidateRoundUpBehavior(int capacity, int expected)
-        {
-            Assert.Equal(expected, ArrayPoolStream.RoundUp(capacity));
-        }
     }
 }
