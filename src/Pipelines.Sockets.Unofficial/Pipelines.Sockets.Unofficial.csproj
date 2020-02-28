@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <!-- note: net46 causes binding redirect problems on System.Buffers; see conversation https://github.com/mgravell/Pipelines.Sockets.Unofficial/pull/4 -->
-    <TargetFrameworks>net461;net472;netstandard2.0;netcoreapp2.1;netstandard2.1;netcoreapp3.0</TargetFrameworks>
+    <TargetFrameworks>net461;net472;netstandard2.0;netcoreapp2.1;netstandard2.1;netcoreapp3.1</TargetFrameworks>
     <SignAssembly>true</SignAssembly>
     <DelaySign>false</DelaySign>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -26,8 +26,8 @@
   <PropertyGroup Condition="'$(TargetFramework)'=='netstandard2.1'">
     <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS;RANGES</DefineConstants>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(TargetFramework)'=='netcoreapp3.0'">
-    <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS;RANGES;LZCNT</DefineConstants>
+  <PropertyGroup Condition="'$(TargetFramework)'=='netcoreapp3.1'">
+    <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS;RANGES</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.IO.Pipelines" Version="4.7.0" />

@@ -1,5 +1,6 @@
 ﻿using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
+using Microsoft.IO;
 using Pipelines.Sockets.Unofficial;
 using System;
 using System.IO;
@@ -19,14 +20,18 @@ namespace Benchmark
         public int Bytes { get; set; }
 
         [Benchmark(Baseline = true)]
-        public long MemoryStream() => Write<MemoryStream>();
+        public long MemoryStream() => Write(new MemoryStream());
+
+        //[Benchmark]
+        //public long ArrayPoolStream() => Write(new ArrayPoolStream());
+
+        private static readonly RecyclableMemoryStreamManager s_streamManager = new RecyclableMemoryStreamManager();
 
         [Benchmark]
-        public long ArrayPoolStream() => Write<ArrayPoolStream>();
+        public long RecyclableMemoryStream() => Write(s_streamManager.GetStream());
 
-        private long Write<T>() where T : Stream, new()
+        private long Write(Stream stream)
         {
-            using var stream = new T();
             int remaining = Bytes;
             while (remaining > 0)
             {
