@@ -77,7 +77,7 @@ namespace Pipelines.Sockets.Unofficial
                 {
                     if (_position < 0 || _position > _length) Throw.ArgumentOutOfRange(nameof(Position));
                     var seqPos = GetBuffer().GetPosition(value);
-                    _current = (Segment)seqPos.GetObject();
+                    _current = (Segment)seqPos.GetObject()!;
                     _currentOffset = seqPos.GetInteger();
                     _position = value;
                 }
@@ -135,15 +135,7 @@ namespace Pipelines.Sockets.Unofficial
         /// Exposes the underlying buffer associated with this stream, for the defined length
         /// </summary>
         public ReadOnlySequence<byte> GetBuffer()
-        {
-            try
-            {
-                return new ReadOnlySequence<byte>(_start, 0, _end, _end.Length).Slice(0, _length);
-            } catch(Exception ex)
-            {
-                throw new InvalidOperationException($"woah! {Position}, {Length}, {_end.Length + _end.RunningIndex}: {ex.Message}", ex);
-            }
-        }
+            => new ReadOnlySequence<byte>(_start, 0, _end, _end.Length).Slice(0, _length);
 
         /// <inheritdoc/>
         public override void Flush() { }
