@@ -22,8 +22,8 @@ namespace Benchmark
         [Benchmark(Baseline = true)]
         public long MemoryStream() => Write(new MemoryStream());
 
-        [Benchmark]
-        public long ArrayPoolStream() => Write(new ArrayPoolStream());
+        //[Benchmark]
+        //public long ArrayPoolStream() => Write(new ArrayPoolStream());
 
         private static readonly RecyclableMemoryStreamManager s_streamManager = new RecyclableMemoryStreamManager();
 
