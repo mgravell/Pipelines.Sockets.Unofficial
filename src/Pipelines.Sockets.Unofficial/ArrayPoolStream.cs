@@ -3,6 +3,7 @@ using System;
 using System.Buffers;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 #nullable enable
@@ -71,7 +72,7 @@ namespace Pipelines.Sockets.Unofficial
         /// <inheritdoc/>
         public override long Seek(long offset, SeekOrigin origin)
         {
-            switch(origin)
+            switch (origin)
             {
                 case SeekOrigin.Begin:
                     return Position = offset;
@@ -157,7 +158,7 @@ namespace Pipelines.Sockets.Unofficial
                 if (_lastSuccessfulReadTask != null && _lastSuccessfulReadTask.Result == bytes) return _lastSuccessfulReadTask;
                 return _lastSuccessfulReadTask = Task.FromResult(bytes);
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 return Task.FromException<int>(ex);
             }
@@ -210,35 +211,8 @@ namespace Pipelines.Sockets.Unofficial
             // so lz is 22; 32-22=10, 1 << 10= 1024
 
             // or for 2: lz of 2-1 is 31, 32-31=1; 1<<1=2
-            int limit = 1 << (32 - LeadingZeros(capacity - 1));
+            int limit = 1 << (32 - Utils.LeadingZeroCount((uint)(capacity - 1)));
             return limit < 0 ? int.MaxValue : limit;
-
-            static int LeadingZeros(int x) // https://stackoverflow.com/questions/10439242/count-leading-zeroes-in-an-int32
-            {
-#if LZCNT
-                if (System.Runtime.Intrinsics.X86.Lzcnt.IsSupported)
-                {
-                    return (int)System.Runtime.Intrinsics.X86.Lzcnt.LeadingZeroCount((uint)x);
-                }
-                else
-#endif
-                {
-                    const int numIntBits = sizeof(int) * 8; //compile time constant
-                                                            //do the smearing
-                    x |= x >> 1;
-                    x |= x >> 2;
-                    x |= x >> 4;
-                    x |= x >> 8;
-                    x |= x >> 16;
-                    //count the ones
-                    x -= x >> 1 & 0x55555555;
-                    x = (x >> 2 & 0x33333333) + (x & 0x33333333);
-                    x = (x >> 4) + x & 0x0f0f0f0f;
-                    x += x >> 8;
-                    x += x >> 16;
-                    return numIntBits - (x & 0x0000003f); //subtract # of 1s from 32
-                }
-            }
         }
 
         /// <inheritdoc/>
