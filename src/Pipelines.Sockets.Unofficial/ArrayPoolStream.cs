@@ -168,8 +168,11 @@ namespace Pipelines.Sockets.Unofficial
         private int WriteSpace()
         {
             var available = _current.Length - _currentOffset;
-            if (available == 0) available = TryMoveToNextBlock();
-            if (available == 0) available = AppendBlock();
+            if (available == 0)
+            {
+                available = TryMoveToNextBlock();
+                if (available == 0) available = AppendBlock();
+            }
             return available;
         }
 
