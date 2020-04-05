@@ -1,6 +1,6 @@
 # Release Notes
 
-## 2.1.6
+## 2.1.8
 
 - fix deterministic builds (all green shields)
 - update dependency chain
