@@ -1,4 +1,5 @@
 ﻿using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Pipelines.Sockets.Unofficial.Threading;
 using System.Linq;
 using System.Threading;
@@ -6,7 +7,9 @@ using System.Threading.Tasks;
 
 namespace Benchmark
 {
-    [MemoryDiagnoser, CoreJob, ClrJob, MinColumn, MaxColumn]
+    [SimpleJob(RuntimeMoniker.Net472)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    [MemoryDiagnoser, MinColumn, MaxColumn]
     public class LockBenchmarks : BenchmarkBase
     {
         private const int TIMEOUTMS = 2000;

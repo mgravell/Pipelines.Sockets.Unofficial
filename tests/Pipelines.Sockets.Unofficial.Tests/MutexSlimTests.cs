@@ -698,7 +698,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 workers[i] = Task.Run(work);
             }
             var allDone = Task.WhenAll(workers);
-            Assert.True(allDone.Wait(10000), "failure to join");
+            Assert.True(allDone.Wait(20000), "failure to join");
             await allDone;
 
             int failCount = Volatile.Read(ref _failCount);

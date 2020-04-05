@@ -2,10 +2,13 @@
 using System;
 using Pipelines.Sockets.Unofficial;
 using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Jobs;
 
 namespace Benchmark
 {
-    [MemoryDiagnoser, CoreJob, ClrJob, MinColumn, MaxColumn]
+    [SimpleJob(RuntimeMoniker.Net472)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    [MemoryDiagnoser, MinColumn, MaxColumn]
     [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByCategory)]
     [CategoriesColumn]
     public class DelegateBenchmarks : BenchmarkBase

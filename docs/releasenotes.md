@@ -1,5 +1,15 @@
 # Release Notes
 
+## 2.1.6
+
+- fix deterministic builds (all green shields)
+- update dependency chain
+- runtime check for additional libraries (assembly binding, etc) 
+
+## 2.1.1
+
+- library updates
+
 ## 2.1.0
 
 - dependency updates
