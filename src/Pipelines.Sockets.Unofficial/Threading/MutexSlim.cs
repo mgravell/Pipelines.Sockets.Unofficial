@@ -27,8 +27,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
          *   (I'm looking at you, SemaphoreSlim... you know what you did)
          * - must be low allocation
          * - should allow control of the threading model for async callback
-         * - *reasonable* "fairness" is needed (we won't get fussy if there
-         *   are rare scenarios that don't guarantee absolute fairness)
+         * - fairness is desirable; see note "FAIRNESS" below
          * - timeout support is required
          *   value can be per mutex - doesn't need to be per-Wait[Async]
          * - a "using"-style API is a nice-to-have, to avoid try/finally
@@ -38,6 +37,31 @@ namespace Pipelines.Sockets.Unofficial.Threading
          * - sync path uses per-thread ([ThreadStatic])/Monitor pulse for comms
          * - async path uses custom awaitable with zero-alloc on immediate win
          */
+
+        /* Note on FAIRNESS
+
+        in particular, consider the following scenario with two
+        *incomplete* async calls from the same execution path:
+
+        // ** note not awaited yet
+        var a = obj.DoSomethingAsync("a"); // that uses MutexSlim
+        var b = obj.DoSomethingAsync("b"); // that uses MutexSlim
+
+        await a;
+        await b;
+
+        Now: which runs first? "a"? or "b"? Without fairness, it can
+        be either; consider that the lock is owned when "a" starts
+        so a continuation is queued and the execution flow of
+        DoSomethingAsync is suspended at the TryWaitAsync; now
+        imagine a rare race when the thing releasing the lock
+        happens at *exactly* the same time as our call into "b";
+        MutexSlim allows callers to interlocked-take the token,
+        so "b" can sneak in and win; so "b" runs, and activates
+        "a" *on the way out*. The fairness of MutexSlim has
+        been modified to prevent this problem.
+
+        */
 
         /* usage:
 
@@ -117,64 +141,62 @@ namespace Pipelines.Sockets.Unofficial.Threading
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void Release(int token, bool demandMatch = true)
         {
-            // release the token (we can check for wrongness without needing the lock, note)
-            Log($"attempting to release token {LockState.ToString(token)}");
-            if (Interlocked.CompareExchange(ref _token, LockState.ChangeState(token, LockState.Pending), token) != token)
+            // validate the token
+            if (Volatile.Read(ref _token) != token)
             {
                 Log($"token {LockState.ToString(token)} is invalid");
                 if (demandMatch) Throw.InvalidLockHolder();
                 return;
             }
 
-            ActivateNextQueueItem();
+            ActivateNextQueueItemWithValidatedToken(token);
         }
 
-        private void ActivateNextQueueItem()
+        private void ActivateNextQueueItemWithValidatedToken(int token)
         {
             // see if we can nudge the next waiter
             lock (_queue)
             {
-                if (_queue.Count == 0)
-                {
-                     Log($"no pending items to activate");
-                    _uncontested = true;
-                    return;
-                }
                 try
                 {
-                    // there's work to do; try and get a new token
-                    Log($"pending items: {_queue.Count}");
-                    int token = TryTakeLoopIfChanges();
-                    if (token == 0)
+                    if (_queue.Count == 0)
                     {
-                        // despite it being contested, somebody else
-                        // won the lock while we were busy thinking;
-                        // this is staggeringly rare, and means the
-                        // mutex isn't *absolteuly* fair, but it is
-                        // "fair enough" to be useful and practical
+                        Log($"no pending items to activate");
+                        _uncontested = true;
                         return;
                     }
 
+                    // there's work to do; get a new token
+                    Log($"pending items: {_queue.Count}");
+
+                    // we're expecting to activate; get a new token speculatively
+                    // (needs to be new so the old caller can't double-dispose and
+                    // release someone else's lock)
+                    Volatile.Write(ref _token, token = LockState.GetNextToken(token));
+
+                    // try to give the new token to someone
                     while (_queue.Count != 0)
                     {
                         var next = DequeueInsideLock();
                         if (next.TrySetResult(token))
                         {
                             Log($"handed lock to {next}");
-                            return; // so we don't release the token
+                            token = 0; // so we don't release the token
+                            return;
                         }
                         else
                         {
                             Log($"lock rejected by {next}");
                         }
                     }
-
-                    // nobody actually wanted it; return it
-                    Log("returning unwanted lock");
-                    Volatile.Write(ref _token, LockState.ChangeState(token, LockState.Pending));
                 }
                 finally
                 {
+                    if (token != 0) // nobody actually wanted it; return it
+                    { // (this could be the original token, or a new speculative token)
+                        Log("returning unwanted lock");
+                        Volatile.Write(ref _token, LockState.ChangeState(token, LockState.Pending));
+                    }
                     _uncontested = _queue.Count == 0;
                     SetNextAsyncTimeoutInsideLock();
                 }

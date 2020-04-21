@@ -679,7 +679,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
         [Theory]
         [InlineData(1, 30000000)] // uncontested
-        [InlineData(2, 15000000)] // duel
+        [InlineData(2, 1500000)] // duel
         [InlineData(10, 150000)] // battle royale
         public async Task DuelingThreadsShouldNotStallAsync(int workerCount, int perWorker)
         {
