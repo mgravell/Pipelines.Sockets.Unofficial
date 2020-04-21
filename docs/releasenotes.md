@@ -1,5 +1,9 @@
 # Release Notes
 
+## 2.1.11
+
+- `MutexSlim` - make it "fair" ([context](https://github.com/StackExchange/StackExchange.Redis/issues/1440))
+
 ## 2.1.8
 
 - fix deterministic builds (all green shields)
