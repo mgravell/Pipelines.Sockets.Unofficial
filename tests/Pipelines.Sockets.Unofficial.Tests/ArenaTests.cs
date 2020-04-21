@@ -38,7 +38,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         {   // this test is re proving out the layout of Sequence<T>
             if (IntPtr.Size == 8)
             {
-                Assert.Equal(32, Unsafe.SizeOf<ReadOnlySequence<int>>());
+                Assert.Equal(24, Unsafe.SizeOf<ReadOnlySequence<int>>());
                 Assert.Equal(24, Unsafe.SizeOf<Sequence<int>>());
 
                 Assert.Equal(32, Unsafe.SizeOf<TwoPositions<int>>());
