@@ -1,5 +1,9 @@
 # Release Notes
 
+## 2.1.14
+
+- fix possible race conditions in `MutexSlim` (remove "uncontested" concept)
+
 ## 2.1.11
 
 - `MutexSlim` - make it "fair" ([context](https://github.com/StackExchange/StackExchange.Redis/issues/1440))
