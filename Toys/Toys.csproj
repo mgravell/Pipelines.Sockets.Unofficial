@@ -1,9 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netstandard2.0;netcoreapp2.1</TargetFrameworks>
+    <TargetFrameworks>netcoreapp3.0;netcoreapp3.1;net462</TargetFrameworks>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <OutputType>exe</OutputType>
   </PropertyGroup>
   <PropertyGroup Condition="'$(TargetFramework)'=='netcoreapp2.1'">
     <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS</DefineConstants>
@@ -12,7 +13,7 @@
     <!--<DefineConstants>$(DefineConstants);VERBOSE</DefineConstants>-->
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="System.IO.Pipelines" Version="4.7.1" />
-    <PackageReference Include="System.Buffers" Version="4.5.1" />
+    <PackageReference Include="System.IO.Pipelines" Version="4.7.2" />
+    <ProjectReference Include="..\src\Pipelines.Sockets.Unofficial\Pipelines.Sockets.Unofficial.csproj" />
   </ItemGroup>
 </Project>
