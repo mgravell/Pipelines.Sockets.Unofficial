@@ -1,5 +1,9 @@
 # Release Notes
 
+## 2.1.16
+
+- improve detection of assembly binding errors
+
 ## 2.1.14
 
 - fix possible race conditions in `MutexSlim` (remove "uncontested" concept)
