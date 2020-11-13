@@ -2,8 +2,10 @@
 
 ## 2.2.0
 
-- add .NET 5 (and remove .NET Core except for 3.1)
+- add .NET 5
 - remove TCP loopback fast path (Windows feature, now deprecated) (#58, #59 via maksimkim)
+- remove .NET Core except for 3.1
+- dependency updates
 
 ## 2.1.16
 
