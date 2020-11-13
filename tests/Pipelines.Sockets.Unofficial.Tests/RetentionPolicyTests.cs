@@ -139,7 +139,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 Assert.Equal(0, arena.AllocatedBytes());
                 Assert.Equal(21504, arena.CapacityBytes()); // 100%
 
-                Span<int> expectedSizes = stackalloc int[] {
+                var expectedSizes = new int[] {
                     21504, 18432, 17408, 15360, 14336,
                     12288, 11264, 10240, 9216, 8192,
                     7168, 7168, 6144, 6144, 5120,
@@ -188,7 +188,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 Assert.Equal(0, arena.AllocatedBytes());
                 Assert.Equal(21504, arena.CapacityBytes()); // 100%
 
-                Span<int> expectedSizes = stackalloc int[] {
+                var expectedSizes = new int[] {
                     21504,
                     11264,
                     6144,
