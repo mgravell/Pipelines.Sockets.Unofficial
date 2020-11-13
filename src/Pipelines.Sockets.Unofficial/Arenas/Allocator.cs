@@ -158,13 +158,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             void* IPinnedMemoryOwner<T>.Origin => _ptr;
 
+#pragma warning disable CA2015 // possible GC while span in play; self-inflicted!
             ~PinnedArray() => Dispose(false);
+#pragma warning restore CA2015 // possible GC while span in play; self-inflicted!
 
-            public void Dispose()
-            {
-                Dispose(true);
-                
-            }
+            public void Dispose() => Dispose(true);
         }
     }
 
@@ -187,7 +185,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         private sealed class OwnedPointer : MemoryManager<T>, IPinnedMemoryOwner<T>
         {
+#pragma warning disable CA2015 // possible GC while span in play; self-inflicted!
             ~OwnedPointer() => Dispose(false);
+#pragma warning restore CA2015 // possible GC while span in play; self-inflicted!
 
             private T* _ptr;
 
