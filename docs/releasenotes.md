@@ -1,5 +1,10 @@
 # Release Notes
 
+## 2.2.0
+
+- add .NET 5 (and remove .NET Core 2)
+- remove TCP loopback fast path (Windows feature, now deprecated) (#58, #59 via maksimkim)
+
 ## 2.1.16
 
 - improve detection of assembly binding errors
