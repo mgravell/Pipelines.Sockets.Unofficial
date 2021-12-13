@@ -68,7 +68,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         internal ref struct SequenceBuilder<T>
         {
-            internal SequenceBuilder<T> Create() => default;
+            internal static SequenceBuilder<T> Create() => default;
             private int _offset;
             private void Resize(int minimumCount)
             {
@@ -275,7 +275,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 #pragma warning restore RCS1231
             Projection<TFrom, TTo> projection)
         {
-            void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
+            static void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
             if (projection == null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
@@ -311,7 +311,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 #pragma warning restore RCS1231
                 Projection<TFrom, TState, TTo> projection, in TState state)
         {
-            void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
+            static void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
             if (projection == null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
@@ -372,7 +372,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 #pragma warning restore RCS1231
             in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
-            void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
+            static void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
             if (projection == null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
@@ -408,7 +408,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 #pragma warning restore RCS1231
             in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
         {
-            void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
+            static void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
             if (projection == null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
@@ -444,7 +444,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 #pragma warning restore RCS1231
             in Sequence<TTo> destination, Projection<TFrom, TTo> projection)
         {
-            void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
+            static void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
             if (projection == null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
@@ -480,7 +480,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 #pragma warning restore RCS1231
             in Sequence<TTo> destination, Projection<TFrom, TState, TTo> projection, in TState state)
         {
-            void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
+            static void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
             if (projection == null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;

@@ -8,7 +8,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private static Allocator<T> _preferUnmanaged, _preferPinned;
         public static Allocator<T> PreferUnmanaged()
         {
-            return _preferUnmanaged ?? (_preferUnmanaged = Calculate());
+            return _preferUnmanaged ??= Calculate();
 
             static Allocator<T> Calculate()
             {
@@ -28,7 +28,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         public static Allocator<T> PreferPinned()
         {
-            return _preferPinned ?? (_preferPinned = Calculate());
+            return _preferPinned ??= Calculate();
 
             static Allocator<T> Calculate()
             {

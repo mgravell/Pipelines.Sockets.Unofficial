@@ -395,7 +395,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             Start, End, Other
         }
-        private SequencePosition NormalizePosition(object @object, int integer)
+        private static SequencePosition NormalizePosition(object @object, int integer)
         {
             if (@object is SequenceSegment<T> sequence && integer == sequence.Length)
             {
@@ -452,7 +452,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 Debug.Assert(!sequence.IsSingleSegment);
                 var segment = (SequenceSegment<T>)sequence._startObj;
                 var integer = SequenceSegment<T>.GetSegmentPosition(ref segment, sequence.StartOffset + index);
-                return sequence.NormalizePosition(segment, integer);
+                return NormalizePosition(segment, integer);
             }
         }
 

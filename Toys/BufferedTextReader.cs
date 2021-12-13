@@ -114,18 +114,6 @@ namespace Pipelines.Sockets.Unofficial
             index += taken;
             return taken;
         }
-        private int ReadLocal(Span<char> buffer)
-        {
-            if (_remaining == 0) return 0;
-            var taken = Math.Min(buffer.Length, _remaining);
-            new Span<char>(_buffer, _offset, taken).CopyTo(buffer);
-
-            _remaining -= taken;
-            _offset += taken;
-            buffer = buffer.Slice(taken);
-            return taken;
-        }
-
         public override int ReadBlock(char[] buffer, int index, int count)
         {
             int taken = ReadLocal(buffer, ref index, ref count);
