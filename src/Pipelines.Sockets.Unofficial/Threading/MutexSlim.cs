@@ -79,7 +79,9 @@ namespace Pipelines.Sockets.Unofficial.Threading
         */
 
         [Conditional("DEBUG")]
+#pragma warning disable CA1822 // Mark members as static
         private void Log(string message)
+#pragma warning restore CA1822 // Mark members as static
         {
 #if DEBUG
             Logged?.Invoke(message);
@@ -126,7 +128,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
             TimeoutMilliseconds = timeoutMilliseconds;
             _scheduler = scheduler ?? PipeScheduler.ThreadPool;
             _token = LockState.ChangeState(0, LockState.Pending); // initialize as unowned
-            void ThrowInvalidTimeout() => Throw.ArgumentOutOfRange(nameof(timeoutMilliseconds));
+            static void ThrowInvalidTimeout() => Throw.ArgumentOutOfRange(nameof(timeoutMilliseconds));
             IsThreadPool = (object)_scheduler == (object)PipeScheduler.ThreadPool;
         }
 
@@ -443,7 +445,9 @@ namespace Pipelines.Sockets.Unofficial.Threading
         }
 
 #pragma warning disable RCS1231 // Make parameter ref read-only.
+#pragma warning disable CA1068 // CancellationToken parameters must come last
         private ValueTask<LockToken> TakeWithTimeoutAsync(CancellationToken cancellationToken, WaitOptions options)
+#pragma warning restore CA1068 // CancellationToken parameters must come last
 #pragma warning restore RCS1231 // Make parameter ref read-only.
         {
             if (cancellationToken.IsCancellationRequested) return GetCanceled();
@@ -571,7 +575,9 @@ namespace Pipelines.Sockets.Unofficial.Threading
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
 #pragma warning disable RCS1231 // Make parameter ref read-only.
+#pragma warning disable CA1068 // CancellationToken parameters must come last
         public ValueTask<LockToken> TryWaitAsync(CancellationToken cancellationToken = default, WaitOptions options = WaitOptions.None)
+#pragma warning restore CA1068 // CancellationToken parameters must come last
 #pragma warning restore RCS1231 // Make parameter ref read-only.
         {
             return TakeWithTimeoutAsync(cancellationToken, options);
@@ -579,7 +585,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
         private static Task<LockToken> s_canceledTask;
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static ValueTask<LockToken> GetCanceled() => new ValueTask<LockToken>(s_canceledTask ?? (s_canceledTask = CreateCanceledLockTokenTask()));
+        internal static ValueTask<LockToken> GetCanceled() => new ValueTask<LockToken>(s_canceledTask ??= CreateCanceledLockTokenTask());
         private static Task<LockToken> CreateCanceledLockTokenTask()
         {
             var tcs = new TaskCompletionSource<LockToken>();

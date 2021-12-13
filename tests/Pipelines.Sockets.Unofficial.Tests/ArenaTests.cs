@@ -272,5 +272,15 @@ namespace Pipelines.Sockets.Unofficial.Tests
                 Assert.Equal(i + 42, offset);
             }
         }
+
+        [Fact]
+        public void DisposeReportedCorrectly()
+        {
+            Arena<int> arena = new Arena<int>(_blockSizeFive);
+            arena.Allocate(42);
+            arena.Dispose();
+            var ex = Assert.Throws<ObjectDisposedException>(() => arena.Allocate(42));
+            Assert.Equal(arena.GetType().FullName, ex.ObjectName);
+        }
     }
 }

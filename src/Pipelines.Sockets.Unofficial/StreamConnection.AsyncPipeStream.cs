@@ -26,12 +26,12 @@ namespace Pipelines.Sockets.Unofficial
             private AsyncReadResult _pendingRead;
             private AsyncWriteResult _pendingWrite;
             private FlushToken _flushInstance;
-            private AsyncReadResult PendingRead => _pendingRead ?? (_pendingRead = new AsyncReadResult());
-            private AsyncWriteResult PendingWrite => _pendingWrite ?? (_pendingWrite = new AsyncWriteResult());
-            private FlushToken FlushInstance => _flushInstance ?? (_flushInstance = new FlushToken());
+            private AsyncReadResult PendingRead => _pendingRead ??= new AsyncReadResult();
+            private AsyncWriteResult PendingWrite => _pendingWrite ??= new AsyncWriteResult();
+            private FlushToken FlushInstance => _flushInstance ??= new FlushToken();
 
             private Action _processDataFromAwaiter;
-            private Action ProcessDataFromAwaiter => _processDataFromAwaiter ?? (_processDataFromAwaiter = ProcessDataFromAwaiterImpl);
+            private Action ProcessDataFromAwaiter => _processDataFromAwaiter ??= ProcessDataFromAwaiterImpl;
 
             private readonly PipeReader _reader;
             private readonly PipeWriter _writer;
@@ -265,7 +265,11 @@ namespace Pipelines.Sockets.Unofficial
             private void FlushImpl()
             {
                 var flush = _writer.FlushAsync();
-                if (flush.IsCompleted) return;
+                if (flush.IsCompleted)
+                {
+                    _ = flush.Result; // (important for recycling IValueTaskSource etc)
+                    return;
+                }
 
                 var inst = FlushInstance;
                 inst.Reset();
@@ -583,7 +587,7 @@ namespace Pipelines.Sockets.Unofficial
                 public bool IsCompleted { get; internal set; }
 
                 private ManualResetEvent _waitHandle;
-                public WaitHandle AsyncWaitHandle => _waitHandle ?? (_waitHandle = new ManualResetEvent(IsCompleted));
+                public WaitHandle AsyncWaitHandle => _waitHandle ??= new ManualResetEvent(IsCompleted);
                 public object AsyncState { get; private set; }
                 public bool CompletedSynchronously { get; internal set; }
             }

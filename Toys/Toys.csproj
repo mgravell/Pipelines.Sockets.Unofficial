@@ -13,7 +13,7 @@
     <!--<DefineConstants>$(DefineConstants);VERBOSE</DefineConstants>-->
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="System.IO.Pipelines" Version="5.0.0" />
+    <PackageReference Include="System.IO.Pipelines" Version="5.0.1" />
     <ProjectReference Include="..\src\Pipelines.Sockets.Unofficial\Pipelines.Sockets.Unofficial.csproj" />
   </ItemGroup>
 </Project>

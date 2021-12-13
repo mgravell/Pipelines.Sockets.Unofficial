@@ -91,6 +91,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             return total * Unsafe.SizeOf<T>();
         }
 
+        private void ThrowDisposed() => Throw.ObjectDisposed(GetType().FullName);
+
         internal long CapacityBytes()
         {
             long total = 0;
@@ -112,7 +114,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private int _currentArrayFlag;
         internal Block<T> CurrentBlock
         {
-            get => __current;
+            get
+            {
+                var result = __current;
+                if (result is null) ThrowDisposed();
+                return result;
+            }
             private set
             {
                 __current = value;
@@ -121,7 +128,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 // we don't want to run TryGetArray every time we allocate memory, so we'll do it *once*
                 // whenever the current segment changes, and we'll accept it as long as it is 0-based
                 // and large enough
-                if (value != null)
+                if (value is not null)
                 {
                     _currentStartObj = __current.Allocation;
                     if (MemoryMarshal.TryGetArray<T>(__current.Memory, out var segment)

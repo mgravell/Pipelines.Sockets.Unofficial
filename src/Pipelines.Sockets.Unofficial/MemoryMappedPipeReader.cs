@@ -29,7 +29,9 @@ namespace Pipelines.Sockets.Unofficial
 
         private string Name { get; }
         [Conditional("VERBOSE")]
+#pragma warning disable CA1822 // Mark members as static
         private void DebugLog(string message, [CallerMemberName] string caller = null)
+#pragma warning restore CA1822 // Mark members as static
         {
 #if VERBOSE
             Helpers.DebugLog(Name, message, caller);
@@ -116,11 +118,6 @@ namespace Pipelines.Sockets.Unofficial
             try { _file?.Dispose(); } catch { }
             _file = null;
         }
-        /// <summary>
-        /// Not implemented
-        /// </summary>
-        [Obsolete]
-        public override void OnWriterCompleted(Action<Exception, object> callback, object state) { }
 
         /// <summary>
         /// Cancels an in-progress read

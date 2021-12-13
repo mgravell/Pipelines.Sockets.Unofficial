@@ -35,6 +35,18 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Used to compare two instances for equality
         /// </summary>
+        public static bool operator ==(in Reference<T> x, in Reference<T> y)
+            => x._obj == y._obj & x._offset == y._offset;
+
+        /// <summary>
+        /// Used to compare two instances for equality
+        /// </summary>
+        public static bool operator !=(in Reference<T> x, in Reference<T> y)
+            => x._obj != y._obj | x._offset != y._offset;
+
+        /// <summary>
+        /// Used to compare two instances for equality
+        /// </summary>
         public override int GetHashCode() => RuntimeHelpers.GetHashCode(_obj) ^ _offset;
 
         private readonly object _obj;
