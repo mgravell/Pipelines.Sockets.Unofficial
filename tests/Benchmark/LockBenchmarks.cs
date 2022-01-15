@@ -7,8 +7,6 @@ using System.Threading.Tasks;
 
 namespace Benchmark
 {
-    [SimpleJob(RuntimeMoniker.Net472)]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     [MemoryDiagnoser, MinColumn, MaxColumn]
     public class LockBenchmarks : BenchmarkBase
     {

@@ -8,8 +8,6 @@ using System.IO;
 namespace Benchmark
 {
     [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
-    [SimpleJob(RuntimeMoniker.Net472)]
     [WarmupCount(2)]
     public class ArrayPoolStreamBenchmark
     {
