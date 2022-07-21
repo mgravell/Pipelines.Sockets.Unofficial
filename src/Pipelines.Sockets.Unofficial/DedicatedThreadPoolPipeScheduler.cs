@@ -175,15 +175,10 @@ namespace Pipelines.Sockets.Unofficial
                     {
                         while (_queue.Count == 0)
                         {
-                            if (_disposed) break;
+                            if (_disposed) return;
                             _availableCount++;
                             Monitor.Wait(_queue);
                             _availableCount--;
-                        }
-                        if (_queue.Count == 0)
-                        {
-                            if (_disposed) break;
-                            else continue;
                         }
                         next = _queue.Dequeue();
                     }

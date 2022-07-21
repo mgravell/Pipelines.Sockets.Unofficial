@@ -1,5 +1,9 @@
 # Release Notes
 
+## 2.2.2
+
+- arena reports `ObjectDisposedException` correctly
+
 ## 2.2.0
 
 - add .NET 5
