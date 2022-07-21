@@ -57,6 +57,10 @@ namespace Pipelines.Sockets.Unofficial.Tests
             var data = Encoding.ASCII.GetBytes("Hello, world!");
             Log?.DebugLog("sending message...");
             await conn.Output.WriteAsync(data).ConfigureAwait(false);
+
+            Assert.True(conn.Output.CanGetUnflushedBytes, "conn.Output.CanGetUnflushedBytes");
+            Assert.True(conn.Output.UnflushedBytes == data.Length, "conn.Output.UnflushedBytes == data.Length");
+            
             Log?.DebugLog("completing output");
             conn.Output.Complete();
 
