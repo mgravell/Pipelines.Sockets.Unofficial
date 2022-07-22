@@ -1,6 +1,7 @@
 ﻿using Pipelines.Sockets.Unofficial.Arenas;
 using System;
 using System.Buffers;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Xunit;
@@ -34,17 +35,10 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
         [Fact]
         public void AssertPossibleLayoutSizes()
-        {
-            int readOnlySequenceSize = 24;
-#if NETFRAMEWORK
-            // https://github.com/dotnet/corefx/pull/35860
-            readOnlySequenceSize = 32;
-#endif
-
-            // this test is re proving out the layout of Sequence<T>
+        {   // this test is re proving out the layout of Sequence<T>
             if (IntPtr.Size == 8)
             {
-                Assert.Equal(readOnlySequenceSize, Unsafe.SizeOf<ReadOnlySequence<int>>());
+                Assert.Equal(24, Unsafe.SizeOf<ReadOnlySequence<int>>());
                 Assert.Equal(24, Unsafe.SizeOf<Sequence<int>>());
 
                 Assert.Equal(32, Unsafe.SizeOf<TwoPositions<int>>());
