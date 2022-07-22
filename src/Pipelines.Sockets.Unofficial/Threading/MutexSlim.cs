@@ -501,7 +501,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 Monitor.Exit(_queue);
                 queueLockTaken = false;
 
-                // if just one contender, we might be able to wait it out
+                // if just one contendor, we might be able to wait it out
                 if (useSpinWait)
                 {
                     if (queueItem.TrySpinWait())

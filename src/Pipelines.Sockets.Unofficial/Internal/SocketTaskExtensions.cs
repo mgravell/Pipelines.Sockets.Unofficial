@@ -1,4 +1,4 @@
-﻿#if NET462
+﻿#if NET461
 
 using System.Net.Sockets;
 using System.Threading.Tasks;

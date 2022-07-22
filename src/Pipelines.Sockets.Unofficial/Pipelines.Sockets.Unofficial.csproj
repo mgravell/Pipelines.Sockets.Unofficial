@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <!-- note: net46 causes binding redirect problems on System.Buffers; see conversation https://github.com/mgravell/Pipelines.Sockets.Unofficial/pull/4 -->
-    <TargetFrameworks>net462;net472;netstandard2.0;netstandard2.1;netcoreapp3.1;net6.0</TargetFrameworks>
+    <TargetFrameworks>net461;net472;netstandard2.0;netstandard2.1;netcoreapp3.1;net5.0;net6.0</TargetFrameworks>
     <SignAssembly>true</SignAssembly>
     <DelaySign>false</DelaySign>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -30,11 +30,11 @@
     <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS;RANGES</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
-    <!-- For any TFM that is either not .NETCoreApp or .NET < 6.0 use System.IO.Pipelines 5.0.4 -->
+    <!-- For any TFM that is either not .NETCoreApp or .NET < 6.0 use System.IO.Pipelines 5.0.1 -->
     <PackageReference 
             Condition="'$(TargetFrameworkIdentifier)' != '.NETCoreApp' OR ('$(TargetFrameworkIdentifier)' == '.NETCoreApp' AND $([MSBuild]::VersionLessThan($(TargetFrameworkVersion), '6.0')))"
             Include="System.IO.Pipelines"
-            Version="5.0.2" />
+            Version="5.0.1" />
     <!-- For .NET 6+ use System.IO.Pipelines 6.0 -->
     <PackageReference
             Condition="'$(TargetFrameworkIdentifier)' == '.NETCoreApp' AND $([MSBuild]::VersionGreaterThanOrEquals($(TargetFrameworkVersion), '6.0'))"
