@@ -454,7 +454,10 @@ namespace Pipelines.Sockets.Unofficial.Tests
                                 else Monitor.Wait(allReady);
                             }
                             var awaitable = _timeoutMux.TryWaitAsync();
-                            if (!awaitable.IsCompleted) asyncOps++;
+                            if (!awaitable.IsCompleted)
+                            {
+                                Interlocked.Increment(ref asyncOps);
+                            }
                             using var inner = await awaitable;
                             lock (allDone)
                             {
