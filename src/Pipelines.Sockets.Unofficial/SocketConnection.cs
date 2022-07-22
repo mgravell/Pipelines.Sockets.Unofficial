@@ -426,10 +426,10 @@ namespace Pipelines.Sockets.Unofficial
             }
 
 #if NET6_0_OR_GREATER
-            public override long UnflushedBytes => 
-                _writer.UnflushedBytes;
-            public override bool CanGetUnflushedBytes =>
-                _writer.CanGetUnflushedBytes;
+            public override long UnflushedBytes
+                => _writer.UnflushedBytes;
+            public override bool CanGetUnflushedBytes
+                => _writer.CanGetUnflushedBytes;
 #endif
 
             public override void Advance(int bytes)
