@@ -397,7 +397,10 @@ namespace Pipelines.Sockets.Unofficial.Tests
                                 }
                             }
                             var awaitable = _timeoutMux.TryWaitAsync(options: waitOptions);
-                            if (!awaitable.IsCompleted) asyncOps++;
+                            if (!awaitable.IsCompleted)
+                            {
+                                Interlocked.Increment(ref asyncOps);
+                            }
                             Log($"task {j} about to await...");
                             using var inner = await awaitable;
                             Log($"task {j} resumed; got lock: {inner.Success}");
@@ -424,8 +427,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
             lock (allDone)
             {
-                Assert.Equal(COMPETITORS, success);
-                Assert.Equal(COMPETITORS, asyncOps);
+                Assert.True(COMPETITORS == success, "COMPETITORS == success");
+                Assert.True(COMPETITORS == asyncOps, "COMPETITORS == asyncOps");
             }
         }
 
