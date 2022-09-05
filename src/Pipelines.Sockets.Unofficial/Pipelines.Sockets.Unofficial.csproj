@@ -33,14 +33,7 @@
     <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS;RANGES</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
-    <!-- For any TFM that is either not .NETCoreApp or .NET < 6.0 use System.IO.Pipelines 5.0.1 -->
-    <PackageReference 
-            Condition="'$(TargetFrameworkIdentifier)' != '.NETCoreApp' OR ('$(TargetFrameworkIdentifier)' == '.NETCoreApp' AND $([MSBuild]::VersionLessThan($(TargetFrameworkVersion), '6.0')))"
-            Include="System.IO.Pipelines"
-            Version="5.0.1" />
-    <!-- For .NET 6+ use System.IO.Pipelines 6.0 -->
-    <PackageReference
-            Condition="'$(TargetFrameworkIdentifier)' == '.NETCoreApp' AND $([MSBuild]::VersionGreaterThanOrEquals($(TargetFrameworkVersion), '6.0'))"
-            Include="System.IO.Pipelines" Version="6.0.3" />
+    <PackageReference Condition="'$(TargetFramework)'!='net6.0'" Include="System.IO.Pipelines" Version="5.0.1" />
+    <PackageReference Condition="'$(TargetFramework)'=='net6.0'" Include="System.IO.Pipelines" Version="6.0.3" />
   </ItemGroup>
 </Project>
