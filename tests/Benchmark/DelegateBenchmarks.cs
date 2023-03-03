@@ -6,8 +6,6 @@ using BenchmarkDotNet.Jobs;
 
 namespace Benchmark
 {
-    [SimpleJob(RuntimeMoniker.Net472)]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     [MemoryDiagnoser, MinColumn, MaxColumn]
     [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByCategory)]
     [CategoriesColumn]
