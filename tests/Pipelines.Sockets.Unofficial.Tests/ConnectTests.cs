@@ -36,6 +36,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             var code = ConnectImpl();
             var first = await Task.WhenAny(timeout, code).ConfigureAwait(false);
             if (first == timeout) Throw.Timeout();
+            await first;
         }
 
         private async Task ConnectImpl()
@@ -57,6 +58,11 @@ namespace Pipelines.Sockets.Unofficial.Tests
             var data = Encoding.ASCII.GetBytes("Hello, world!");
             Log?.DebugLog("sending message...");
             await conn.Output.WriteAsync(data).ConfigureAwait(false);
+
+#if NET6_0_OR_GREATER
+            Assert.True(conn.Output.CanGetUnflushedBytes, "conn.Output.CanGetUnflushedBytes");
+#endif
+
             Log?.DebugLog("completing output");
             conn.Output.Complete();
 
