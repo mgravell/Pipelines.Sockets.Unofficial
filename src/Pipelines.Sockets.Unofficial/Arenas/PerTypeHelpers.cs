@@ -12,7 +12,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             static Allocator<T> Calculate()
             {
-                if (IsBlittable)
+                if (IsBlittable
+#if NETCOREAPP3_0_OR_GREATER
+                    && RuntimeFeature.IsDynamicCodeSupported
+#endif
+                )
                 {
                     try
                     {
@@ -32,7 +36,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             static Allocator<T> Calculate()
             {
-                if (IsBlittable)
+                if (IsBlittable
+#if NETCOREAPP3_0_OR_GREATER
+                    && RuntimeFeature.IsDynamicCodeSupported
+#endif
+                )
                 {
                     try
                     {
