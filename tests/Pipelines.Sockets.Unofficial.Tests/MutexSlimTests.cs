@@ -254,16 +254,16 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
             for (int i = 0; i < 2; i++)
             {
-                var awaitable = _zeroTimeoutMux.TryWaitAsync();
-                Assert.True(awaitable.IsCompleted, nameof(awaitable.IsCompleted));
-                //Assert.True(awaitable.CompletedSynchronously, nameof(awaitable.CompletedSynchronously));
-                using var outer = await awaitable;
+                var awaitable1 = _zeroTimeoutMux.TryWaitAsync();
+                Assert.True(awaitable1.IsCompleted, nameof(awaitable1.IsCompleted));
+                //Assert.True(awaitable1.CompletedSynchronously, nameof(awaitable1.CompletedSynchronously));
+                using var outer = await awaitable1;
                 Assert.True(outer.Success, nameof(outer.Success));
 
-                awaitable = _zeroTimeoutMux.TryWaitAsync();
-                Assert.True(awaitable.IsCompleted, nameof(awaitable.IsCompleted) + " inner");
-                //Assert.True(awaitable.CompletedSynchronously, nameof(awaitable.CompletedSynchronously) + " inner");
-                using var inner = await awaitable;
+                var awaitable2 = _zeroTimeoutMux.TryWaitAsync();
+                Assert.True(awaitable2.IsCompleted, nameof(awaitable2.IsCompleted) + " inner");
+                //Assert.True(awaitable2.CompletedSynchronously, nameof(awaitable2.CompletedSynchronously) + " inner");
+                using var inner = await awaitable2;
                 Assert.False(inner.Success, nameof(inner.Success) + " inner");
             }
         }
@@ -548,10 +548,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Assert.False(ct.IsCanceled, nameof(ct.IsCanceled) + ":2");
             Assert.True(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully) + ":2");
 
-            var result = ct.Result;
-            Assert.True(result.Success);
-
-            result = await ct;
+            var result = await ct;
             Assert.True(result.Success);
         }
 
@@ -604,10 +601,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Assert.False(ct.IsCanceled, nameof(ct.IsCanceled));
             Assert.True(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
 
-            var result = ct.Result;
-            Assert.True(result.Success);
-
-            result = await ct;
+            var result = await ct;
             Assert.True(result.Success);
         }
 

@@ -21,6 +21,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public virtual void Clear(IMemoryOwner<T> allocation, int length)
             => allocation.Memory.Span.Slice(0, length).Clear();
+
+        internal virtual bool IsPinned => false;
+        internal virtual bool IsUnmanaged => false;
     }
 
     /// <summary>
@@ -90,6 +93,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
     internal sealed class PinnedArrayPoolAllocator<T> : Allocator<T> where T : unmanaged
     {
+        internal override bool IsPinned => true;
+
         private readonly ArrayPool<T> _pool;
 
         /// <summary>
@@ -122,7 +127,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 if (_ptr != null)
                 {
                     _ptr = null;
-                    try { _pin.Free(); } catch { } // best efforst
+                    try { _pin.Free(); } catch { } // best efforts
                     _pin = default;
                 }
                 if (disposing)
@@ -136,9 +141,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
 
             public int Length { get; }
-            public override Span<T> GetSpan() => new Span<T>(_ptr, Length);
+            public override Span<T> GetSpan() => new(_ptr, Length);
 
-            public override MemoryHandle Pin(int elementIndex = 0) => new MemoryHandle(_ptr + elementIndex);
+            public override MemoryHandle Pin(int elementIndex = 0) => new(_ptr + elementIndex);
 
             protected override bool TryGetArray(out ArraySegment<T> segment)
             {
@@ -158,9 +163,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             void* IPinnedMemoryOwner<T>.Origin => _ptr;
 
+#pragma warning disable IDE0079
 #pragma warning disable CA2015 // possible GC while span in play; self-inflicted!
             ~PinnedArray() => Dispose(false);
 #pragma warning restore CA2015 // possible GC while span in play; self-inflicted!
+#pragma warning restore IDE0079
 
             public void Dispose() => Dispose(true);
         }
@@ -171,6 +178,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     /// </summary>
     public unsafe sealed class UnmanagedAllocator<T> : Allocator<T> where T : unmanaged
     {
+        internal override bool IsUnmanaged => true;
+
         private UnmanagedAllocator() { }
 
         /// <summary>
@@ -185,9 +194,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         private sealed class OwnedPointer : MemoryManager<T>, IPinnedMemoryOwner<T>
         {
+#pragma warning disable IDE0079
 #pragma warning disable CA2015 // possible GC while span in play; self-inflicted!
             ~OwnedPointer() => Dispose(false);
 #pragma warning restore CA2015 // possible GC while span in play; self-inflicted!
+#pragma warning restore IDE0079
 
             private T* _ptr;
 
@@ -197,10 +208,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             public OwnedPointer(int length)
                 => _ptr = (T*)Marshal.AllocHGlobal((Length = length) * sizeof(T)).ToPointer();
 
-            public override Span<T> GetSpan() => new Span<T>(_ptr, Length);
+            public override Span<T> GetSpan() => new(_ptr, Length);
 
             public override MemoryHandle Pin(int elementIndex = 0)
-                => new MemoryHandle(_ptr + elementIndex);
+                => new(_ptr + elementIndex);
 
             public override void Unpin() { } // nothing to do
 

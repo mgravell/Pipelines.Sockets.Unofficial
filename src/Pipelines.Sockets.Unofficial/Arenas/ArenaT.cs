@@ -5,7 +5,9 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
+#pragma warning disable IDE0079
 #pragma warning disable RCS1233 // short-circuit operators: this is intentional
+#pragma warning restore IDE0079
 
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
@@ -154,7 +156,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             if (Unsafe.SizeOf<T>() == 0) Throw.InvalidOperation("Cannot create an arena of a type with no size");
 
-            if (options == null) options = ArenaOptions.Default;
+            options ??= ArenaOptions.Default;
             _flags = options.Flags;
             if (!PerTypeHelpers<T>.IsBlittable)
             {
@@ -247,7 +249,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public Sequence<T> Allocate(IEnumerable<T> source) => Arena.Allocate<T>(this, source);
 
         SequencePosition IArena.GetPosition() => GetPosition();
-        internal SequencePosition GetPosition() => new SequencePosition(_currentStartObj, _allocatedCurrentBlock);
+        internal SequencePosition GetPosition() => new(_currentStartObj, _allocatedCurrentBlock);
 
         Sequence<T> IArena<T>.AllocateRetainingSegmentData(int length)
             => AllocateRetainingSegmentData(length);
@@ -321,7 +323,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 var remainingThisBlock = CurrentBlock.Length - _allocatedCurrentBlock;
                 if (length == remainingThisBlock)
                 {
-                    MoveNextBlock(); // burn the page, to ensure we have everything covererd
+                    MoveNextBlock(); // burn the page, to ensure we have everything covered
                     break; // done
                 }
                 else if (length < remainingThisBlock)

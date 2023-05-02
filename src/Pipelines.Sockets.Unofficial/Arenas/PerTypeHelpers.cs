@@ -16,7 +16,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 {
                     try
                     {
-                        typeof(UnmanagedAllocator<>).MakeGenericType(typeof(T))
+                        return (Allocator<T>)typeof(UnmanagedAllocator<>).MakeGenericType(typeof(T))
                             .GetProperty(nameof(UnmanagedAllocator<int>.Shared))
                             .GetValue(null);
                     }
@@ -36,7 +36,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 {
                     try
                     {
-                        typeof(PinnedArrayPoolAllocator<>).MakeGenericType(typeof(T))
+                        return (Allocator<T>)typeof(PinnedArrayPoolAllocator<>).MakeGenericType(typeof(T))
                             .GetProperty(nameof(PinnedArrayPoolAllocator<int>.Shared))
                             .GetValue(null);
                     }
