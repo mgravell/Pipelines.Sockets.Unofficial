@@ -6,7 +6,6 @@
     <Nullable>enable</Nullable>
     <PublishAot>true</PublishAot>
     <SelfContained>true</SelfContained>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
 
     <!-- test via: dotnet publish -c Release -->
   </PropertyGroup>
