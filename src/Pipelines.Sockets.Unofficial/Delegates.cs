@@ -46,17 +46,23 @@ namespace Pipelines.Sockets.Unofficial
             {
                 var field = typeof(MulticastDelegate).GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Instance);
                 if (field == null || field.FieldType != typeof(T)) return null;
+
 #if !NETSTANDARD2_0
-                try // we can try use ref-emit
+#if NETCOREAPP3_0_OR_GREATER
+                if (RuntimeFeature.IsDynamicCodeSupported)
+#endif
                 {
-                    var dm = new DynamicMethod(fieldName, typeof(T), new[] { typeof(MulticastDelegate) }, typeof(MulticastDelegate), true);
-                    var il = dm.GetILGenerator();
-                    il.Emit(OpCodes.Ldarg_0);
-                    il.Emit(OpCodes.Ldfld, field);
-                    il.Emit(OpCodes.Ret);
-                    return (Func<MulticastDelegate, T>)dm.CreateDelegate(typeof(Func<MulticastDelegate, T>));
+                    try // we can try use ref-emit
+                    {
+                        var dm = new DynamicMethod(fieldName, typeof(T), new[] { typeof(MulticastDelegate) }, typeof(MulticastDelegate), true);
+                        var il = dm.GetILGenerator();
+                        il.Emit(OpCodes.Ldarg_0);
+                        il.Emit(OpCodes.Ldfld, field);
+                        il.Emit(OpCodes.Ret);
+                        return (Func<MulticastDelegate, T>)dm.CreateDelegate(typeof(Func<MulticastDelegate, T>));
+                    }
+                    catch { }
                 }
-                catch { }
 #endif
                 return GetViaReflection<T>(field);
             }
