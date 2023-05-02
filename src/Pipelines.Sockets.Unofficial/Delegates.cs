@@ -38,7 +38,11 @@ namespace Pipelines.Sockets.Unofficial
         private static readonly Func<MulticastDelegate, IntPtr> s_getCount = GetGetter<IntPtr>("_invocationCount");
         private static readonly bool s_isAvailable = s_getArr != null & s_getCount != null;
 
-        internal static bool IsAvailable => s_isAvailable;
+        /// <summary>
+        /// Indicates whether optimized usage is supported on this environment; without this, it may still
+        /// work, but with additional overheads at runtime.
+        /// </summary>
+        public static bool IsSupported => s_isAvailable;
 
         private static Func<MulticastDelegate, T> GetGetter<T>(string fieldName)
         {
@@ -47,16 +51,22 @@ namespace Pipelines.Sockets.Unofficial
                 var field = typeof(MulticastDelegate).GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Instance);
                 if (field == null || field.FieldType != typeof(T)) return null;
 #if !NETSTANDARD2_0
-                try // we can try use ref-emit
+
+#if NETCOREAPP3_1_OR_GREATER // test for AOT scenarios
+                if (RuntimeFeature.IsDynamicCodeSupported)
+#endif
                 {
-                    var dm = new DynamicMethod(fieldName, typeof(T), new[] { typeof(MulticastDelegate) }, typeof(MulticastDelegate), true);
-                    var il = dm.GetILGenerator();
-                    il.Emit(OpCodes.Ldarg_0);
-                    il.Emit(OpCodes.Ldfld, field);
-                    il.Emit(OpCodes.Ret);
-                    return (Func<MulticastDelegate, T>)dm.CreateDelegate(typeof(Func<MulticastDelegate, T>));
+                    try // we can try use ref-emit
+                    {
+                        var dm = new DynamicMethod(fieldName, typeof(T), new[] { typeof(MulticastDelegate) }, typeof(MulticastDelegate), true);
+                        var il = dm.GetILGenerator();
+                        il.Emit(OpCodes.Ldarg_0);
+                        il.Emit(OpCodes.Ldfld, field);
+                        il.Emit(OpCodes.Ret);
+                        return (Func<MulticastDelegate, T>)dm.CreateDelegate(typeof(Func<MulticastDelegate, T>));
+                    }
+                    catch { }
                 }
-                catch { }
 #endif
                 return GetViaReflection<T>(field);
             }
