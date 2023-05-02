@@ -5,7 +5,6 @@
     <TargetFramework>net7.0</TargetFramework>
     <Nullable>enable</Nullable>
     <PublishAot>true</PublishAot>
-    <SelfContained>true</SelfContained>
 
     <!-- test via: dotnet publish -c Release -->
   </PropertyGroup>
