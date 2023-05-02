@@ -52,7 +52,7 @@ namespace Pipelines.Sockets.Unofficial
                 if (field == null || field.FieldType != typeof(T)) return null;
 #if !NETSTANDARD2_0
 
-#if NETCOREAPP3_1_OR_GREATER // test for AOT scenarios
+#if NETCOREAPP3_0_OR_GREATER // test for AOT scenarios
                 if (RuntimeFeature.IsDynamicCodeSupported)
 #endif
                 {
