@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Pipelines.Sockets.Unofficial\Pipelines.Sockets.Unofficial.csproj" />
+    <TrimmerRootAssembly Include="Pipelines.Sockets.Unofficial" />
   </ItemGroup>
 
 </Project>

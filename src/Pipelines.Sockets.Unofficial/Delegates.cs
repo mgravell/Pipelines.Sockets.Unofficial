@@ -18,14 +18,14 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static DelegateEnumerator<T> GetEnumerator<T>(this T handler) where T : MulticastDelegate
-            => handler == null ? default : new DelegateEnumerator<T>(handler);
+            => handler == null ? default : new(handler);
 
         /// <summary>
         /// Iterate over the individual elements of a multicast delegate (without allocation)
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static DelegateEnumerable<T> AsEnumerable<T>(this T handler) where T : MulticastDelegate
-            => new DelegateEnumerable<T>(handler);
+            => new(handler);
 
         /// <summary>
         /// Indicates whether a particular delegate is known to be a single-target delegate
@@ -133,7 +133,7 @@ namespace Pipelines.Sockets.Unofficial
             }
 
             /// <summary>
-            /// Provides the current value of the seqyence
+            /// Provides the current value of the sequence
             /// </summary>
             public T Current
             {
