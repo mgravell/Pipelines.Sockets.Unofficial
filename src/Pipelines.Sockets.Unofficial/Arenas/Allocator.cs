@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using Pipelines.Sockets.Unofficial.Internal;
+using System.Diagnostics;
 
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
@@ -91,8 +92,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         }
     }
 
-    internal sealed class PinnedArrayPoolAllocator<T> : Allocator<T> where T : unmanaged
+    internal sealed class PinnedArrayPoolAllocator<T> : Allocator<T>
     {
+        // where T : unmanaged
+        // is intended - can't enforce due to a: convincing compiler, and
+        // b: runtime (AOT) limitations
+
         internal override bool IsPinned => true;
 
         private readonly ArrayPool<T> _pool;
@@ -102,7 +107,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public static PinnedArrayPoolAllocator<T> Shared { get; } = new PinnedArrayPoolAllocator<T>();
 
-        public PinnedArrayPoolAllocator(ArrayPool<T> pool = null) => _pool = pool ?? ArrayPool<T>.Shared;
+        public PinnedArrayPoolAllocator(ArrayPool<T> pool = null)
+        {
+            Debug.Assert(PerTypeHelpers<T>.IsBlittable);
+            _pool = pool ?? ArrayPool<T>.Shared;
+        }
 
         public override IMemoryOwner<T> Allocate(int length)
             => new PinnedArray(_pool, _pool.Rent(length));
@@ -112,14 +121,14 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             private T[] _array;
             private readonly ArrayPool<T> _pool;
             private GCHandle _pin;
-            private T* _ptr;
+            private void* _ptr;
             public PinnedArray(ArrayPool<T> pool, T[] array)
             {
                 _pool = pool;
                 _array = array;
                 Length = array.Length;
                 _pin = GCHandle.Alloc(array, GCHandleType.Pinned);
-                _ptr = (T*)_pin.AddrOfPinnedObject().ToPointer();
+                _ptr = _pin.AddrOfPinnedObject().ToPointer();
             }
 
             protected override void Dispose(bool disposing)
@@ -143,7 +152,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             public int Length { get; }
             public override Span<T> GetSpan() => new(_ptr, Length);
 
-            public override MemoryHandle Pin(int elementIndex = 0) => new(_ptr + elementIndex);
+            public override MemoryHandle Pin(int elementIndex = 0) => new(Unsafe.Add<T>(_ptr, elementIndex));
 
             protected override bool TryGetArray(out ArraySegment<T> segment)
             {
@@ -176,11 +185,17 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     /// <summary>
     /// An allocator that allocates unmanaged memory, releasing the memory back to the OS when done
     /// </summary>
-    public unsafe sealed class UnmanagedAllocator<T> : Allocator<T> where T : unmanaged
+    public unsafe sealed class UnmanagedAllocator<T> : Allocator<T>
     {
+        // where T : unmanaged
+        // is intended - can't enforce due to a: convincing compiler, and
+        // b: runtime (AOT) limitations
         internal override bool IsUnmanaged => true;
 
-        private UnmanagedAllocator() { }
+        private UnmanagedAllocator()
+        {
+            Debug.Assert(PerTypeHelpers<T>.IsBlittable);
+        }
 
         /// <summary>
         /// The global instance of the unmanaged allocator
@@ -200,18 +215,18 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 #pragma warning restore CA2015 // possible GC while span in play; self-inflicted!
 #pragma warning restore IDE0079
 
-            private T* _ptr;
+            private void* _ptr;
 
             public int Length { get; }
             void* IPinnedMemoryOwner<T>.Origin => _ptr;
 
             public OwnedPointer(int length)
-                => _ptr = (T*)Marshal.AllocHGlobal((Length = length) * sizeof(T)).ToPointer();
+                => _ptr = Marshal.AllocHGlobal((Length = length) * Unsafe.SizeOf<T>()).ToPointer();
 
             public override Span<T> GetSpan() => new(_ptr, Length);
 
             public override MemoryHandle Pin(int elementIndex = 0)
-                => new(_ptr + elementIndex);
+                => new(Unsafe.Add<T>(_ptr, elementIndex));
 
             public override void Unpin() { } // nothing to do
 
