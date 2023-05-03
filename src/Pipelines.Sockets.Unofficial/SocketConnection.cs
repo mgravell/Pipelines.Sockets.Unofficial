@@ -262,7 +262,7 @@ namespace Pipelines.Sockets.Unofficial
                     // then they deserve a clap - a slow clap
                     var method = typeof(Pipe).GetProperty("Length",
                         BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)?.GetGetMethod(true);
-                    if (method == null)
+                    if (method is null)
                     {
                         s_pipeLengthReader = _ => 0L;
                     }
@@ -283,7 +283,7 @@ namespace Pipelines.Sockets.Unofficial
             /// </summary>
             public static long GetPipeLength(Pipe pipe)
             {
-                if (pipe == null) return 0;
+                if (pipe is null) return 0;
                 try
                 {
                     return s_pipeLengthReader(pipe);
@@ -348,10 +348,10 @@ namespace Pipelines.Sockets.Unofficial
         {
             if (string.IsNullOrWhiteSpace(name)) name = GetType().Name;
             Name = name.Trim();
-            if (sendPipeOptions == null) sendPipeOptions = PipeOptions.Default;
-            if (receivePipeOptions == null) receivePipeOptions = PipeOptions.Default;
+            if (sendPipeOptions is null) sendPipeOptions = PipeOptions.Default;
+            if (receivePipeOptions is null) receivePipeOptions = PipeOptions.Default;
 
-            if (socket == null) Throw.ArgumentNull(nameof(socket));
+            if (socket is null) Throw.ArgumentNull(nameof(socket));
             Socket = socket;
             SocketConnectionOptions = socketConnectionOptions;
             _sendToSocket = new Pipe(sendPipeOptions);

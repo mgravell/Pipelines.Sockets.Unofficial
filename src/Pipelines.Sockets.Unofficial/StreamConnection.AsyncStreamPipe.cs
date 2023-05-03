@@ -25,9 +25,9 @@ namespace Pipelines.Sockets.Unofficial
 
             public AsyncStreamPipe(Stream stream, PipeOptions sendPipeOptions, PipeOptions receivePipeOptions, bool read, bool write, string name)
             {
-                if (sendPipeOptions == null) sendPipeOptions = PipeOptions.Default;
-                if (receivePipeOptions == null) receivePipeOptions = PipeOptions.Default;
-                if (stream == null) Throw.ArgumentNull(nameof(stream));
+                if (sendPipeOptions is null) sendPipeOptions = PipeOptions.Default;
+                if (receivePipeOptions is null) receivePipeOptions = PipeOptions.Default;
+                if (stream is null) Throw.ArgumentNull(nameof(stream));
                 _inner = stream;
                 if (!(read || write)) Throw.Argument("At least one of read/write must be set");
                 if (read && write)
@@ -67,7 +67,7 @@ namespace Pipelines.Sockets.Unofficial
                 get
                 {
                     var result = _writePipe?.Writer;
-                    if (result == null) Throw.InvalidOperation("Cannot write to this pipe");
+                    if (result is null) Throw.InvalidOperation("Cannot write to this pipe");
                     return result;
                 }
             }
@@ -76,7 +76,7 @@ namespace Pipelines.Sockets.Unofficial
                 get
                 {
                     var result = _readPipe?.Reader;
-                    if (result == null) Throw.InvalidOperation("Cannot read from this pipe");
+                    if (result is null) Throw.InvalidOperation("Cannot read from this pipe");
                     return result;
                 }
             }

@@ -80,7 +80,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             var current = _first;
             long total = 0;
-            while (current != null)
+            while (current is not null)
             {
                 if (ReferenceEquals(current, CurrentBlock))
                 {
@@ -102,7 +102,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             long total = 0;
             var current = _first;
-            while (current != null)
+            while (current is not null)
             {
                 total += current.Length;
                 current = current.Next;
@@ -168,9 +168,9 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 // (in particular, we don't want references keeping objects alive; we won't be held to blame!)
             }
 
-            if (allocator == null & (_flags & ArenaFlags.PreferUnmanaged) != 0)
+            if (allocator is null & (_flags & ArenaFlags.PreferUnmanaged) != 0)
                 allocator = PerTypeHelpers<T>.PreferUnmanaged();
-            if (allocator == null & (_flags & ArenaFlags.PreferPinned) != 0)
+            if (allocator is null & (_flags & ArenaFlags.PreferPinned) != 0)
                 allocator = PerTypeHelpers<T>.PreferPinned();
 
             _allocator = allocator ?? ArrayPoolAllocator<T>.Shared; // safest default for everything
@@ -188,7 +188,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private Block<T> AllocateAndAttachBlock(Block<T> previous)
         {
             var allocation = _allocator.Allocate(_blockSize);
-            if (allocation == null) Throw.InvalidOperation("The allocator provided an empty range");
+            if (allocation is null) Throw.InvalidOperation("The allocator provided an empty range");
             if (allocation.Memory.IsEmpty)
             {
                 try { allocation.Dispose(); } catch { } // best efforts
@@ -196,7 +196,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
             if (ClearAtReset) // this really means "before use", so...
                 _allocator.Clear(allocation, allocation.Memory.Length);
-            var block = new Block<T>(allocation, previous == null ? 0 : previous.SegmentIndex + 1, previous);
+            var block = new Block<T>(allocation, previous is null ? 0 : previous.SegmentIndex + 1, previous);
             return block;
         }
 
@@ -381,7 +381,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private void ClearAllocatedSpace()
         {
             var block = _first;
-            while (block != null)
+            while (block is not null)
             {
                 if (block == CurrentBlock)
                 {
@@ -400,7 +400,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             var block = _first; // note that trim never removes the first node; this is deliberate
             long found = 0;
-            while (block != null)
+            while (block is not null)
             {
                 found += block.Length;
                 if (found > retain)
@@ -410,7 +410,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                     // to do it a second time
                     bool wipeBlocks = ClearAtDispose & !ClearAtReset;
                     ReleaseChain(block.DetachNext(), wipeBlocks); // detach and release everything *after* this
-                    Debug.Assert(block.Next == null, "onward chain should be absent after detach");
+                    Debug.Assert(block.Next is null, "onward chain should be absent after detach");
                 }
                 block = block.Next;
             }
@@ -418,7 +418,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         private void ReleaseChain(Block<T> block, bool wipeBlocks)
         {
-            while (block != null)
+            while (block is not null)
             {
                 if (wipeBlocks)
                 {

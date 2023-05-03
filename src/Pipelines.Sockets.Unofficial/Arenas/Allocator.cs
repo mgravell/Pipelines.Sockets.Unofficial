@@ -66,7 +66,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 {
                     var arr = _array;
                     _array = null;
-                    if (arr != null) _pool.Return(arr);
+                    if (arr is not null) _pool.Return(arr);
                 }
             }
 
@@ -78,7 +78,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             protected override bool TryGetArray(out ArraySegment<T> segment)
             {
-                if (_array != null)
+                if (_array is not null)
                 {
                     segment = new ArraySegment<T>(_array);
                     return true;
@@ -133,7 +133,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             protected override void Dispose(bool disposing)
             {
-                if (_ptr != null)
+                if (_ptr is not null)
                 {
                     _ptr = null;
                     try { _pin.Free(); } catch { } // best efforts
@@ -143,7 +143,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 {
                     var arr = _array;
                     _array = null;
-                    if (arr != null) _pool.Return(arr);
+                    if (arr is not null) _pool.Return(arr);
                     GC.SuppressFinalize(this);
                 }
             }
@@ -156,7 +156,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             protected override bool TryGetArray(out ArraySegment<T> segment)
             {
-                if (_array != null)
+                if (_array is not null)
                 {
                     segment = new ArraySegment<T>(_array);
                     return true;
@@ -240,7 +240,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 var ptr = _ptr;
                 _ptr = null;
-                if (ptr != null) Marshal.FreeHGlobal(new IntPtr(ptr));
+                if (ptr is not null) Marshal.FreeHGlobal(new IntPtr(ptr));
                 if (disposing) GC.SuppressFinalize(this);
             }
         }

@@ -65,10 +65,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         protected SequenceSegment(Memory<T> memory, SequenceSegment<T> previous = null)
         {
-            if (previous != null)
+            if (previous is not null)
             {
                 var oldNext = previous.Next;
-                if (oldNext != null) Throw.InvalidOperation("The previous segment already has an onwards chain");
+                if (oldNext is not null) Throw.InvalidOperation("The previous segment already has an onwards chain");
                 previous.Next = this;
                 RunningIndex = previous.RunningIndex + previous.Length;
             }
@@ -89,7 +89,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static int GetSegmentPosition(ref SequenceSegment<T> segment, long index)
-            => (index >= 0 & segment != null) && (index < segment.Length)
+            => (index >= 0 & segment is not null) && (index < segment.Length)
                 ? (int)index
                 : SlowGetSegmentPosition(ref segment, index);
 
@@ -97,19 +97,19 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private static int SlowGetSegmentPosition(ref SequenceSegment<T> segment, long index)
         {
             if (index < 0) Throw.IndexOutOfRange();
-            if (segment == null) Throw.ArgumentNull(nameof(segment));
+            if (segment is null) Throw.ArgumentNull(nameof(segment));
 
             do
             {
                 if (index < segment.Length | // inside this segment
-                    (segment.Next == null & index == segment.Length)) // EOF in final segment
+                    (segment.Next is null & index == segment.Length)) // EOF in final segment
                 {
                     return (int)index;
                 }
 
                 index -= segment.Length;
                 segment = segment.Next;
-            } while (segment != null);
+            } while (segment is not null);
 
             Throw.IndexOutOfRange(); // not in the sequence at all
             return default;
@@ -136,7 +136,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 Memory = Memory.Slice(0, length);
                 // fixup the running index of any later segments
                 var node = Next;
-                while (node != null)
+                while (node is not null)
                 {
                     node.RunningIndex -= delta;
                     node = node.Next;

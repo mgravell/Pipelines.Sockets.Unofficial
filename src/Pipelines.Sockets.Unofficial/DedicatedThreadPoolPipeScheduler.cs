@@ -33,7 +33,7 @@ namespace Pipelines.Sockets.Unofficial
         /// (otherwise for any pool)
         /// </summary>
         public static bool IsWorker(DedicatedThreadPoolPipeScheduler pool = null)
-            => pool == null ? s_threadWorkerPoolId != 0 : s_threadWorkerPoolId == pool.Id;
+            => pool is null ? s_threadWorkerPoolId != 0 : s_threadWorkerPoolId == pool.Id;
 
         private int Id { get; }
 
@@ -118,7 +118,7 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public override void Schedule(Action<object> action, object state)
         {
-            if (action == null) return; // nothing to do
+            if (action is null) return; // nothing to do
             lock (_queue)
             {
 #pragma warning disable RCS1233

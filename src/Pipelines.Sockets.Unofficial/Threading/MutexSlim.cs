@@ -242,7 +242,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
         {
             void CancelExistingTimeout()
             {
-                if (_timeoutCancel != null)
+                if (_timeoutCancel is not null)
                 {
                     try { _timeoutCancel.Cancel(); } catch { }
                     try { _timeoutCancel.Dispose(); } catch { }
@@ -255,7 +255,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
                 CancelExistingTimeout();
                 return;
             }
-            if ((nextItemStart = _queue.Peek().Start) == _timeoutStart && _timeoutCancel != null)
+            if ((nextItemStart = _queue.Peek().Start) == _timeoutStart && _timeoutCancel is not null)
             {   // timeout hasn't changed (so: don't change anything)
                 return;
             }

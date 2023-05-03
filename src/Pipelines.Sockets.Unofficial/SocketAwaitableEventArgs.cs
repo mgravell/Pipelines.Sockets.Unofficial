@@ -97,7 +97,7 @@ namespace Pipelines.Sockets.Unofficial
             {
                 // this is the rare "kinda already complete" case; push to worker to prevent possible stack dive,
                 // but prefer the custom scheduler when possible
-                if (_ioScheduler == null)
+                if (_ioScheduler is null)
                 {
                     Task.Run(continuation);
                 }
@@ -131,9 +131,9 @@ namespace Pipelines.Sockets.Unofficial
         {
             var continuation = Interlocked.Exchange(ref _callback, _callbackCompleted);
 
-            if (continuation != null)
+            if (continuation is not null)
             {
-                if (_ioScheduler == null)
+                if (_ioScheduler is null)
                 {
                     continuation.Invoke();
                 }

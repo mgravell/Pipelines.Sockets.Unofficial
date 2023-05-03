@@ -56,7 +56,7 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Obtains a span that represents the region
         /// </summary>
-        public override Span<T> GetSpan() => new Span<T>(_pointer, _length);
+        public override Span<T> GetSpan() => new(_pointer, _length);
 
         /// <summary>
         /// Provides access to a pointer that represents the data (note: no actual pin occurs)

@@ -31,7 +31,7 @@ namespace Benchmark
             for (int i = 0; i < PER_TEST; i++)
             {
                 count = 0;
-                if (handler != null)
+                if (handler is not null)
                 {
                     foreach (Func<int> sub in handler.GetInvocationList())
                     {
@@ -58,7 +58,7 @@ namespace Benchmark
             for (int i = 0; i < PER_TEST; i++)
             {
                 count = 0;
-                if (handler != null)
+                if (handler is not null)
                 {
                     foreach (var sub in handler.AsEnumerable())
                     {
@@ -85,7 +85,7 @@ namespace Benchmark
             for (int i = 0; i < PER_TEST; i++)
             {
                 count = 0;
-                if (handler == null) {}
+                if (handler is null) {}
                 else if (handler.IsSingle())
                 {
                     count = handler();

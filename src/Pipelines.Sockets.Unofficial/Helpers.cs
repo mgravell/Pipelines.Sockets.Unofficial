@@ -146,7 +146,7 @@ namespace Pipelines.Sockets.Unofficial
                 List<string> failures = null;
                 void AddFailure(string assembly)
                 {
-                    if (failures == null) failures = new List<string>();
+                    if (failures is null) failures = new List<string>();
                     failures.Add(assembly);
                 }
                 try { CheckPipe(); } catch { AddFailure("System.IO.Pipelines"); }
@@ -164,7 +164,7 @@ namespace Pipelines.Sockets.Unofficial
                     return ex.Message;
                 }
 
-                if (failures == null || failures.Count == 0) return "";
+                if (failures is null || failures.Count == 0) return "";
 
                 return "The assembly for " + string.Join(" + ", failures) + " could not be loaded; this usually means a missing assembly binding redirect - try checking this, and adding any that are missing;"
                     + " note that it is not always possible to add this redirects - for example 'azure functions v1'; it looks like you may need to use 'azure functions v2' for that - sorry, but that's out of our control";
@@ -242,7 +242,7 @@ namespace Pipelines.Sockets.Unofficial
         {
 #if VERBOSE
             var log = Log;
-            if (log != null)
+            if (log is not null)
             {
                 var thread = System.Threading.Thread.CurrentThread;
                 var threadName = thread.Name;

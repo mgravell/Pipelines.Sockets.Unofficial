@@ -20,7 +20,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         private readonly ITestOutputHelper _log;
         private void Log(string message)
         {
-            if (_log != null)
+            if (_log is not null)
             {
                 lock (_log) _log.WriteLine(message);
             }

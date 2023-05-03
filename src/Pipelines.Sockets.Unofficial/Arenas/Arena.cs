@@ -10,7 +10,7 @@ using System.Runtime.InteropServices;
 namespace Pipelines.Sockets.Unofficial.Arenas
 {
     /// <summary>
-    /// Options that configure the behahaviour of an arena
+    /// Options that configure the behaviour of an arena
     /// </summary>
     public sealed class ArenaOptions
     {
@@ -207,7 +207,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         internal override Sequence<TTo> AllocateRetainingSegmentData(int length)
             => Allocate(length);
 
-        private readonly List<Arena.MappedSegment<TFrom, TTo>> _mappedSegments = new List<Arena.MappedSegment<TFrom, TTo>>();
+        private readonly List<Arena.MappedSegment<TFrom, TTo>> _mappedSegments = new();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         protected Arena.MappedSegment<TFrom, TTo> MapBlock(int index)
@@ -220,7 +220,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             Arena.MappedSegment<TFrom, TTo> current = _mappedSegments.Count == 0 ? null : _mappedSegments[_mappedSegments.Count - 1];
             while (_mappedSegments.Count < neededCount)
             {
-                var nextUnderlying = current == null ? _arena.FirstBlock : current.Underlying.Next;
+                var nextUnderlying = current is null ? _arena.FirstBlock : current.Underlying.Next;
                 var next = new Arena.MappedSegment<TFrom, TTo>(current, nextUnderlying);
                 _mappedSegments.Add(next);
                 current = next;
@@ -361,7 +361,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             var owned = _ownedArenas;
             _ownedArenas = null;
-            if (owned != null)
+            if (owned is not null)
             {
                 foreach (var pair in owned)
                 {
@@ -372,10 +372,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             var bySize = _blittableBySize;
             _blittableBySize = null;
-            if (bySize != null)
-            {
-                bySize.Clear();
-            }
+            bySize?.Clear();
         }
 
         /// <summary>
@@ -384,7 +381,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public void Reset()
         {
             var typed = _ownedArenas;
-            if (typed != null)
+            if (typed is not null)
             {
                 foreach (var pair in _ownedArenas)
                 {
@@ -428,8 +425,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         private IArena _lastArena;
 #pragma warning restore IDE0069
 
-        private Dictionary<int, IArena> _blittableBySize = new Dictionary<int, IArena>();
-        private Dictionary<Type, IArena> _ownedArenas = new Dictionary<Type, IArena>();
+        private Dictionary<int, IArena> _blittableBySize = new();
+        private Dictionary<Type, IArena> _ownedArenas = new();
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private OwnedArena<T> CreateAndAddArena<T>()
@@ -513,7 +510,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             {
                 MemoryManager<TTo> mapped;
                 origin = null;
-                if (underlying.Allocation is IPinnedMemoryOwner<TFrom> rooted && rooted.Origin != null)
+                if (underlying.Allocation is IPinnedMemoryOwner<TFrom> rooted && rooted.Origin is not null)
                 {   // in this case, we can just cheat like crazy
                     var x = new PinnedConvertingMemoryManager(rooted);
                     origin = x.Origin;
@@ -534,7 +531,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 Debug.Assert(PerTypeHelpers<TTo>.IsBlittable);
 #if DEBUG
                 _byteCount = underlying.Length * Unsafe.SizeOf<TFrom>();
-                if (previous != null)
+                if (previous is not null)
                 {   // we can't use "underlying" for this, because of padding etc
                     ByteOffset = previous.ByteOffset + previous._byteCount;
                 }
@@ -553,11 +550,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
                 public void* Origin => _origin;
 
-                public override Span<TTo> GetSpan() => new Span<TTo>(_origin, Length);
+                public override Span<TTo> GetSpan() => new(_origin, Length);
 
                 public int Length { get; }
 
-                public override MemoryHandle Pin(int elementIndex = 0) => new MemoryHandle(Unsafe.Add<TTo>(_origin, elementIndex));
+                public override MemoryHandle Pin(int elementIndex = 0) => new(Unsafe.Add<TTo>(_origin, elementIndex));
 
                 public override void Unpin() { }
 
@@ -580,7 +577,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         internal static Sequence<T> Allocate<T>(IArena<T> arena, IEnumerable<T> source)
         {
-            Debug.Assert(arena != null, "null arena");
+            Debug.Assert(arena is not null, "null arena");
             if (SequenceExtensions.SequenceBuilder<T>.IsTrivial(source, out var seq))
             {   // we need it allocated in *this* arena, which we
                 // can't know unless we copy it
@@ -625,7 +622,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             long total = 0;
             var owned = _ownedArenas;
-            if (owned != null)
+            if (owned is not null)
             {
                 foreach (var arena in owned) total += arena.Value.AllocatedBytes();
             }

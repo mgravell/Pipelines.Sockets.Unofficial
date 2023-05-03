@@ -65,7 +65,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 {
                     void* origin;
                     if (_startObj is IPinnedMemoryOwner<T> pinned
-                        && (origin = pinned.Origin) != null)
+                        && (origin = pinned.Origin) is not null)
                     {
                         return new PointerBasedEnumerator(origin, startOffset, len);
                     }

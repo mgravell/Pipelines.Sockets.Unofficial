@@ -57,7 +57,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public Reference(T[] array, int index) : this(index, array)
         {
-            if (array == null) Throw.ArgumentNull(nameof(array));
+            if (array is null) Throw.ArgumentNull(nameof(array));
 #pragma warning disable RCS1233 // Use short-circuiting operator.
             if (index < 0 | index >= array.Length) Throw.ArgumentOutOfRange(nameof(index));
 #pragma warning restore RCS1233 // Use short-circuiting operator.
@@ -113,7 +113,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 static unsafe ref T SlowValue(object obj, int offset)
                 {
                     void* origin;
-                    if (obj is IPinnedMemoryOwner<T> pinned && (origin = pinned.Origin) != null)
+                    if (obj is IPinnedMemoryOwner<T> pinned && (origin = pinned.Origin) is not null)
                     {
                         return ref Unsafe.AsRef<T>(Unsafe.Add<T>(origin, offset));
                     }

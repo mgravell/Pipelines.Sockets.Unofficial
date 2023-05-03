@@ -47,7 +47,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
 
             void IValueTaskSource<LockToken>.OnCompleted(Action<object> continuation, object state, short token, ValueTaskSourceOnCompletedFlags flags)
             {
-                if (continuation == null) return;
+                if (continuation is null) return;
 
                 // set the state first, as we'll always *read* the continuation first, so we can't get confused
                 ref State item = ref _items[token];
@@ -60,7 +60,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
                     // we'd already finished; invoke it inline
                     continuation.Invoke(state);
                 }
-                else if (oldContinuation != null) Throw.MultipleContinuations();
+                else if (oldContinuation is not null) Throw.MultipleContinuations();
             }
 
             bool IPendingLockToken.HasResult(short key) => LockState.GetState(Volatile.Read(ref _items[key].Token)) != LockState.Pending;
@@ -88,7 +88,7 @@ namespace Pipelines.Sockets.Unofficial.Threading
             {
                 ref State item = ref _items[key];
                 var continuation = Interlocked.Exchange(ref item.Continuation, s_Completed);
-                if (continuation != null && continuation != s_Completed)
+                if (continuation is not null && continuation != s_Completed)
                 {
                     var state = Volatile.Read(ref item.ContinuationState);
                     _mutex._scheduler.Schedule((Action<object>)continuation, state);

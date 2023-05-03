@@ -314,7 +314,7 @@ namespace Pipelines.Sockets.Unofficial
 
                 if (totalBytesUsed == 0) // first span 
                 {
-                    if (encoder == null) // no encoder? check to see if we can do this without needing to create one
+                    if (encoder is null) // no encoder? check to see if we can do this without needing to create one
                     {
                         if (bytes.Length >= encoding.GetMaxByteCount(chars.Length))
                         {
@@ -361,8 +361,8 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public static int Write(PipeWriter writer, ReadOnlySpan<char> value, Encoding encoding)
         {
-            if (writer == null) throw new ArgumentNullException(nameof(writer));
-            if (encoding == null) throw new ArgumentNullException(nameof(encoding));
+            if (writer is null) throw new ArgumentNullException(nameof(writer));
+            if (encoding is null) throw new ArgumentNullException(nameof(encoding));
             if (value.IsEmpty) return 0;
             return WriteImpl(writer, value, encoding, null);
         }

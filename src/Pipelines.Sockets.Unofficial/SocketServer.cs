@@ -25,7 +25,7 @@ namespace Pipelines.Sockets.Unofficial
             int listenBacklog = 20,
             PipeOptions sendOptions = null, PipeOptions receiveOptions = null)
         {
-            if (_listener != null) Throw.InvalidOperation("Server is already running");
+            if (_listener is not null) Throw.InvalidOperation("Server is already running");
             Socket listener = new Socket(addressFamily, socketType, protocolType);
             listener.Bind(endPoint);
             listener.Listen(listenBacklog);
@@ -55,7 +55,7 @@ namespace Pipelines.Sockets.Unofficial
         {
             var socket = _listener;
             _listener = null;
-            if (socket != null)
+            if (socket is not null)
             {
                 try { socket.Dispose(); } catch { }
             }
@@ -78,7 +78,7 @@ namespace Pipelines.Sockets.Unofficial
         private static void FireAndForget(Task task)
         {
             // make sure that any exception is observed
-            if (task == null) return;
+            if (task is null) return;
             if (task.IsCompleted)
             {
                 GC.KeepAlive(task.Exception);
