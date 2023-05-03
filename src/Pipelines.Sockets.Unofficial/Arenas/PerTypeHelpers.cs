@@ -14,7 +14,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Span<TTo> Cast<TFrom, TTo>(Span<TFrom> span)
         {
-#if NETCOREAPP3_0_OR_GREATER // we need access to MemoryMarshal.CreateSpan to work this voodoo
+#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER // we need access to MemoryMarshal.CreateSpan to work this voodoo
             Debug.Assert(PerTypeHelpers<TFrom>.IsBlittable);
             Debug.Assert(PerTypeHelpers<TTo>.IsBlittable);
 
@@ -58,7 +58,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 #endif
         }
 
-#if !NETCOREAPP3_0_OR_GREATER
+#if !(NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER)
         // without access to MemoryMarshal.CreateSpan, we'll use evilness to invoke MemoryMarshal.Cast instead
         internal static class CastCache<TFrom, TTo>
         {
