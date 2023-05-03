@@ -53,6 +53,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         Type ElementType { get; }
         SequencePosition GetPosition();
         long AllocatedBytes();
+        OwnedArena<T> CreateNonPadded<T>(Arena arena);
     }
 
     internal interface IArena<T> : IArena
@@ -67,6 +68,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     public sealed class Arena<T> : IDisposable, IArena<T>
     {
         Type IArena.ElementType => typeof(T);
+
+        OwnedArena<TTo> IArena.CreateNonPadded<TTo>(Arena parent) => new NonPaddedBlittableOwnedArena<T, TTo>(parent);
 
         long IArena.AllocatedBytes() => AllocatedBytes();
 

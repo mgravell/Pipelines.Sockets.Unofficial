@@ -40,7 +40,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// </summary>
         public Func<long, long, long> RetentionPolicy { get; }
 
-        private const ArenaFlags DefaultFlags = ArenaFlags.BlittableNonPaddedSharing; // good compromise betweeen perf and memory
+        private const ArenaFlags DefaultFlags = ArenaFlags.BlittableNonPaddedSharing; // good compromise between perf and memory
 
         /// <summary>
         /// Create a new ArenaOptions instance
@@ -71,8 +71,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Suggest an allocator for a blittable type
         /// </summary>
-        protected internal virtual Allocator<T> SuggestBlittableAllocator<T>(ArenaOptions options) where T : unmanaged
+        protected internal virtual Allocator<T> SuggestBlittableAllocator<T>(ArenaOptions options)
         {
+            // where T : unmanaged is intended
+            Debug.Assert(PerTypeHelpers<T>.IsBlittable);
+
             // if the user prefers unmanaged: we don't need to do anything - the arena will already select this
             if (options.HasFlag(ArenaFlags.PreferUnmanaged)) return null;
 
@@ -103,6 +106,8 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     public abstract class OwnedArena<T> : IArena<T>
     {
         Type IArena.ElementType => typeof(T);
+
+        OwnedArena<TTo> IArena.CreateNonPadded<TTo>(Arena parent) => new NonPaddedBlittableOwnedArena<T, TTo>(parent);
 
         internal OwnedArena() { }
 
@@ -225,11 +230,15 @@ namespace Pipelines.Sockets.Unofficial.Arenas
     }
 
     internal sealed class NonPaddedBlittableOwnedArena<TFrom, TTo> : MappedBlittableOwnedArena<TFrom, TTo>
-        where TFrom : unmanaged
-        where TTo : unmanaged
     {
+        // where TFrom : unmanaged and where TTo : unmanaged
+        // is intended - can't enforce due to a: convincing compiler, and
+        // b: runtime (AOT) limitations
+
         public NonPaddedBlittableOwnedArena(Arena parent) : base(parent)
         {
+            Debug.Assert(PerTypeHelpers<TFrom>.IsBlittable);
+            Debug.Assert(PerTypeHelpers<TTo>.IsBlittable);
             if (Unsafe.SizeOf<TFrom>() != Unsafe.SizeOf<TTo>()) Throw.InvalidOperation($"A non-padded arena requires the size of {typeof(TFrom).Name} ({Unsafe.SizeOf<TFrom>()}) and {typeof(TTo).Name} ({Unsafe.SizeOf<TTo>()}) to match");
         }
 
@@ -459,17 +468,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                             if(_blittableBySize.TryGetValue(Unsafe.SizeOf<T>(), out var existing))
                             {
                                 // one already exists for that size, yay!
-                                return (OwnedArena<T>)Activator.CreateInstance(
-                                    typeof(NonPaddedBlittableOwnedArena<int,uint>).GetGenericTypeDefinition()
-                                        .MakeGenericType(existing.ElementType, typeof(T)),
-                                    args: new object[] { this });
+                                return existing.CreateNonPadded<T>(this);
                             }
 
                             // and even if one doesn't already exist; we will want to create one, which
                             // means we need a blittable allocator
-                            allocator = (Allocator<T>)typeof(AllocatorFactory).GetMethod(nameof(AllocatorFactory.SuggestBlittableAllocator),
-                                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-                                .MakeGenericMethod(typeof(T)).Invoke(Factory, parameters: new object[] { Options });
+                            allocator = Factory.SuggestBlittableAllocator<T>(Options);
                             addBySize = true;
                         }
                     }
