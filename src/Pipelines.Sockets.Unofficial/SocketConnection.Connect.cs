@@ -32,12 +32,12 @@ namespace Pipelines.Sockets.Unofficial
             AssertDependencies();
             var addressFamily = endpoint.AddressFamily == AddressFamily.Unspecified ? AddressFamily.InterNetwork : endpoint.AddressFamily;
             var protocolType = addressFamily == AddressFamily.Unix ? ProtocolType.Unspecified : ProtocolType.Tcp;
-            if (socket == null)
+            if (socket is null)
             {
                 socket = new Socket(addressFamily, SocketType.Stream, protocolType);
             }
-            if (sendPipeOptions == null) sendPipeOptions = PipeOptions.Default;
-            if (receivePipeOptions == null) receivePipeOptions = PipeOptions.Default;
+            if (sendPipeOptions is null) sendPipeOptions = PipeOptions.Default;
+            if (receivePipeOptions is null) receivePipeOptions = PipeOptions.Default;
 
             SetRecommendedClientOptions(socket);
 
@@ -54,7 +54,7 @@ namespace Pipelines.Sockets.Unofficial
 
             var connection = Create(socket, sendPipeOptions, receivePipeOptions, connectionOptions, name);
 
-            if (onConnected != null) await onConnected(connection).ConfigureAwait(false);
+            if (onConnected is not null) await onConnected(connection).ConfigureAwait(false);
 
             return connection;
         }

@@ -30,7 +30,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             if (source.IsSingleSegment)
             {
                 if (source.TryGetArray(out var segment)
-                    && segment.Offset == 0 && segment.Array != null && segment.Count == segment.Array.Length)
+                    && segment.Offset == 0 && segment.Array is not null && segment.Count == segment.Array.Length)
                 {
                     return segment.Array; // the source was wrapping an array *exactly*
                 }
@@ -98,7 +98,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             }
             internal static bool IsTrivial(IEnumerable<T> source, out Sequence<T> sequence)
             {
-                if (source == null) Throw.ArgumentNull(nameof(source));
+                if (source is null) Throw.ArgumentNull(nameof(source));
                 if (source is SequenceList<T> list)
                 {
                     sequence = list.ToSequence();
@@ -277,7 +277,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             static void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
-            if (projection == null) ThrowNoProjection();
+            if (projection is null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
 
             if (source.IsSingleSegment)
@@ -313,7 +313,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             static void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
-            if (projection == null) ThrowNoProjection();
+            if (projection is null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
 
             if (source.IsSingleSegment)
@@ -374,7 +374,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             static void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
-            if (projection == null) ThrowNoProjection();
+            if (projection is null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
 
             if (destination.IsSingleSegment)
@@ -410,7 +410,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             static void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
-            if (projection == null) ThrowNoProjection();
+            if (projection is null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
 
             if (destination.IsSingleSegment)
@@ -446,7 +446,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             static void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
-            if (projection == null) ThrowNoProjection();
+            if (projection is null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
 
             if (destination.IsSingleSegment)
@@ -482,7 +482,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             static void ThrowNoProjection() => Throw.ArgumentNull(nameof(projection));
 
-            if (projection == null) ThrowNoProjection();
+            if (projection is null) ThrowNoProjection();
             if (source.Length > destination.Length) return false;
 
             if (destination.IsSingleSegment)
@@ -668,7 +668,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             var obj = position.GetObject();
             var offset = position.GetInteger();
-            if (obj == null) return offset;
+            if (obj is null) return offset;
             if (obj is ISegment segment) return segment.RunningIndex + offset;
             return null; // nope!
         }
@@ -680,7 +680,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             var obj = position.GetObject();
             var offset = position.GetInteger();
-            if (obj == null && offset != 0) return $"offset: {offset}";
+            if (obj is null && offset != 0) return $"offset: {offset}";
             if (obj is Array arr) return $"{arr.GetType().GetElementType().Name}[]; offset: {offset}";
             if (obj is ISegment segment)
             {
@@ -691,7 +691,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 #endif
             }
 
-            if (obj == null && offset == 0) return "(nil)";
+            if (obj is null && offset == 0) return "(nil)";
             return $"obj: {obj}; offset: {offset}";
         }
     }

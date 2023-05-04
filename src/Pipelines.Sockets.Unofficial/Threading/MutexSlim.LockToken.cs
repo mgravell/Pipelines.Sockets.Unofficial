@@ -51,8 +51,8 @@ namespace Pipelines.Sockets.Unofficial.Threading
             [CLSCompliant(false)]
             public bool Equals(in LockToken other)
             {
-                if (_parent != null) return ReferenceEquals(_parent, other._parent);
-                if (other._parent != null) return false;
+                if (_parent is not null) return ReferenceEquals(_parent, other._parent);
+                if (other._parent is not null) return false;
                 return _token == other._token;
             }
 

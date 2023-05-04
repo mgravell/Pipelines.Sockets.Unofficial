@@ -190,15 +190,15 @@ namespace Pipelines.Sockets.Unofficial
         }
         static string ConcatPreserveNull(string x, string y)
         {
-            if (x == null) return y;
-            if (y == null) return x;
+            if (x is null) return y;
+            if (y is null) return x;
             return x + y;
         }
         public override string ReadLine()
         {
             if (_remaining == 0 && !ReadMore()) return null;
             string s = ReadLineLocal(out var trailingLF);
-            if (s != null)
+            if (s is not null)
             {
                 if (trailingLF && Peek() == '\n') Read();
                 return s;
@@ -230,7 +230,7 @@ namespace Pipelines.Sockets.Unofficial
                 if(!more.Result) return TaskNull;
             }
             var s = ReadLineLocal(out var trailingLF);
-            if (s != null)
+            if (s is not null)
             {
                 if (trailingLF)
                 {
@@ -241,7 +241,7 @@ namespace Pipelines.Sockets.Unofficial
                 return Task.FromResult(s);
             }
             string local = LocalString();
-            Debug.Assert(local != null); // because we checked _remaining at the top
+            Debug.Assert(local is not null); // because we checked _remaining at the top
             var remote = _source.ReadLineAsync();
             if (!remote.IsCompleted) return AwaitedRemote(local, remote);
             return Task.FromResult(ConcatPreserveNull(local, remote.Result));            
@@ -270,7 +270,7 @@ namespace Pipelines.Sockets.Unofficial
             {
                 var tmp = _buffer;
                 _buffer = null;
-                if (tmp != null) ArrayPool<char>.Shared.Return(tmp);
+                if (tmp is not null) ArrayPool<char>.Shared.Return(tmp);
                 _source = null;
             }
             base.Dispose(disposing);

@@ -12,7 +12,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
     public abstract class BenchmarkTests<T> : IDisposable
         where T : BenchmarkBase, new()
     {
-        private T _instance = new T();
+        private T _instance = new();
         private readonly int _defaultTimes;
         public ITestOutputHelper Output { get; }
         protected BenchmarkTests(ITestOutputHelper output, int? defaultTimes = null)
@@ -77,7 +77,9 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Assert.NotNull(found);
             Assert.Equal(typeof(Task), found.ReturnType);
         }
+#pragma warning disable IDE0079
 #pragma warning disable RCS1158 // Static member in generic type should use a type parameter.
+#pragma warning restore IDE0079
         public static IEnumerable<object[]> GetMethods()
 #pragma warning restore RCS1158 // Static member in generic type should use a type parameter.
         {
@@ -147,7 +149,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         [Fact] public Task GetEnumerator_CheckSingle_Dual() => Run(_ => _.GetEnumerator_CheckSingle_Dual());
 
         [Fact]
-        public void IsAvailable() => Assert.True(Delegates.IsAvailable);
+        public void IsAvailable() => Assert.True(Delegates.IsSupported);
 
         static readonly Action _single = () => { }, _dual = _single + _single;
         [Fact]

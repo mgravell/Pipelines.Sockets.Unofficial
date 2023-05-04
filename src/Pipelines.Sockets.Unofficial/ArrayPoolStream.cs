@@ -32,7 +32,7 @@
 //                if (Length == 0) Throw.InvalidOperation("Expected non-empty buffer");
 //                Array = buffer;
 //                Memory = buffer;
-//                if (previous != null)
+//                if (previous is not null)
 //                {
 //                    previous.Next = this;
 //                    RunningIndex = previous.RunningIndex + previous.Length;
@@ -155,10 +155,10 @@
 
 //        static void Return(ArrayPool<byte> pool, Segment? segment)
 //        {
-//            while (segment != null)
+//            while (segment is not null)
 //            {
 //                var arr = segment.Array;
-//                if (arr != null) pool.Return(arr);
+//                if (arr is not null) pool.Return(arr);
 //                segment = segment.NextSegment;
 //            }
 //        }
@@ -194,7 +194,7 @@
 //        private int TryMoveToNextBlock()
 //        {
 //            var next = _current.NextSegment;
-//            if (next == null) return 0;
+//            if (next is null) return 0;
 //            _current = next;
 //            _currentOffset = 0;
 //            return next.Length;
@@ -259,7 +259,7 @@
 //        {
 //            const int MAX_BLOCK_SIZE = 8 * 1024 * 1024;
 //            var current = _current;
-//            if (current.NextSegment != null) Throw.InvalidOperation("shouldn't be appending; already has tail");
+//            if (current.NextSegment is not null) Throw.InvalidOperation("shouldn't be appending; already has tail");
 //            var size = Math.Min(current.Length << 1, MAX_BLOCK_SIZE);
 //            _end = new Segment(_pool.Rent(size), current);
 //            return TryMoveToNextBlock();
@@ -300,7 +300,7 @@
 //                int bytes = Read(buffer, offset, count);
 //                if (bytes == 0) return s_Zero;
 
-//                if (_lastSuccessfulReadTask != null && _lastSuccessfulReadTask.Result == bytes) return _lastSuccessfulReadTask;
+//                if (_lastSuccessfulReadTask is not null && _lastSuccessfulReadTask.Result == bytes) return _lastSuccessfulReadTask;
 //                return _lastSuccessfulReadTask = Task.FromResult(bytes);
 //            }
 //            catch (Exception ex)

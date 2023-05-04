@@ -12,12 +12,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Allows a sequence to be enumerated as spans
         /// </summary>
-        public SpanEnumerable Spans => new SpanEnumerable(this);
+        public SpanEnumerable Spans => new(this);
 
         /// <summary>
         /// Allows a sequence to be enumerated as memory instances
         /// </summary>
-        public MemoryEnumerable Segments => new MemoryEnumerable(this);
+        public MemoryEnumerable Segments => new(this);
 
         /// <summary>
         /// Allows a sequence to be enumerated as spans
@@ -25,12 +25,12 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public readonly ref struct SpanEnumerable
         {
             private readonly Sequence<T> _sequence;
-            internal SpanEnumerable(in Sequence<T> sequence) => _sequence = sequence; // flat copy
+            internal SpanEnumerable(scoped in Sequence<T> sequence) => _sequence = sequence; // flat copy
 
             /// <summary>
             /// Allows a sequence to be enumerated as spans
             /// </summary>
-            public SpanEnumerator GetEnumerator() => new SpanEnumerator(in _sequence);
+            public SpanEnumerator GetEnumerator() => new(in _sequence);
         }
 
         /// <summary>
@@ -39,19 +39,19 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public readonly ref struct MemoryEnumerable
         {
             private readonly Sequence<T> _sequence;
-            internal MemoryEnumerable(in Sequence<T> sequence) => _sequence = sequence; // flat copy
+            internal MemoryEnumerable(scoped in Sequence<T> sequence) => _sequence = sequence; // flat copy
 
             /// <summary>
             /// Allows a sequence to be enumerated as memory instances
             /// </summary>
-            public MemoryEnumerator GetEnumerator() => new MemoryEnumerator(in _sequence);
+            public MemoryEnumerator GetEnumerator() => new(in _sequence);
         }
 
         /// <summary>
         /// Allows a sequence to be enumerated as values
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Enumerator GetEnumerator() => new Enumerator(in this);
+        public Enumerator GetEnumerator() => new(in this);
 
         internal IEnumerator<T> GetObjectEnumerator()
         {
@@ -65,7 +65,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 {
                     void* origin;
                     if (_startObj is IPinnedMemoryOwner<T> pinned
-                        && (origin = pinned.Origin) != null)
+                        && (origin = pinned.Origin) is not null)
                     {
                         return new PointerBasedEnumerator(origin, startOffset, len);
                     }
@@ -151,7 +151,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             private SequenceSegment<T> _nextSegment;
             private Span<T> _span;
 
-            internal Enumerator(in Sequence<T> sequence)
+            internal Enumerator(scoped in Sequence<T> sequence)
             {
                 _span = sequence.FirstSpan;
                 _remainingThisSpan = _span.Length;
@@ -266,7 +266,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             private long _remaining;
             private object _next;
 
-            internal SpanEnumerator(in Sequence<T> sequence)
+            internal SpanEnumerator(scoped in Sequence<T> sequence)
             {
                 _next = sequence._startObj;
                 _offset = sequence.StartOffset;

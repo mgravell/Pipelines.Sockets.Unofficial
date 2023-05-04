@@ -182,10 +182,10 @@ namespace Pipelines.Sockets.Unofficial
 
                 var args = _readerArgs;
                 _readerArgs = null;
-                if (args != null) try { args.Dispose(); } catch { }
+                if (args is not null) try { args.Dispose(); } catch { }
             }
 
-            DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
+            DebugLog(error is null ? "exiting with success" : $"exiting with failure: {error.Message}");
             //return error;
         }
 
@@ -200,7 +200,7 @@ namespace Pipelines.Sockets.Unofficial
             if (buffer.IsEmpty)
             {
                 // zero-length; retain existing buffer if possible
-                if (args.Buffer == null)
+                if (args.Buffer is null)
                 {
                     args.SetBuffer(Array.Empty<byte>(), 0, 0);
                 }

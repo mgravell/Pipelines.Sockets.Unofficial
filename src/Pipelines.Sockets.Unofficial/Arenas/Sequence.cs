@@ -26,7 +26,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// <summary>
         /// Returns an empty sequence of the supplied type
         /// </summary>
-        public static Sequence Empty<T>() => new Sequence(default, typeof(T), default, default);
+        public static Sequence Empty<T>() => new(default, typeof(T), default, default);
 
         /// <summary>
         /// Tests two sequences for equality
@@ -87,7 +87,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public bool IsSingleSegment
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => _endObj is Type | _endObj == null;
+            get => _endObj is Type | _endObj is null;
         }
 
         /// <summary>
@@ -117,7 +117,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             // single-segment (end-obj is Type) is empty if the length is zero
             // a default value (end-obj is null) is empty
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => (_endObj is Type & _endOffsetOrLength == 0) | _endObj == null;
+            get => (_endObj is Type & _endOffsetOrLength == 0) | _endObj is null;
         }
 
         /// <summary>
@@ -143,7 +143,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Sequence<T> Cast<T>()
         {
-            if (_endObj == null) return default; // default can be cast to anything
+            if (_endObj is null) return default; // default can be cast to anything
             if (ElementType != typeof(T)) Throw.InvalidCast();
 
             // once checked, just use the trusted ctor, removing the Type
@@ -354,7 +354,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         /// Represents a typed sequence as an untyped sequence
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public Sequence Untyped() => new Sequence(
+        public Sequence Untyped() => new(
             _startObj, _endObj ?? typeof(T),
             __startOffsetAndArrayFlag, __endOffsetOrLength);
 
@@ -370,7 +370,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             static ReadOnlySequence<T> FromSegments(in Sequence<T> sequence)
             {
                 var startObj = sequence._startObj;
-                if (startObj == null) return default;
+                if (startObj is null) return default;
                 var startOffset = sequence.StartOffset;
                 if (startObj is SequenceSegment<T> startSegment)
                 {
@@ -583,7 +583,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                     sequence = new Sequence<T>(manager, null, startIndex, endIndex - startIndex);
                     return true;
                 }
-                if (startObj == null & endObj == null & startIndex == 0 & endIndex == 0)
+                if (startObj is null & endObj is null & startIndex == 0 & endIndex == 0)
                 {   // looks like a default sequence
                     sequence = default;
                     return true;
@@ -638,7 +638,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public bool IsSingleSegment
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => _endObj == null;
+            get => _endObj is null;
         }
 
         internal bool IsArray
@@ -647,7 +647,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             get => (__startOffsetAndArrayFlag & Sequence.IsArrayFlag) != 0;
         }
 
-        internal unsafe bool IsPinned => _startObj is IPinnedMemoryOwner<T> pinned && pinned.Origin != null; // for tests
+        internal unsafe bool IsPinned => _startObj is IPinnedMemoryOwner<T> pinned && pinned.Origin is not null; // for tests
 
         private int StartOffset
         {
@@ -662,7 +662,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             // needs to be single-segment and zero length
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => _endObj == null & __endOffsetOrLength == 0;
+            get => _endObj is null & __endOffsetOrLength == 0;
         }
 
         /// <summary>
@@ -677,7 +677,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
         private Memory<T> SlowFirstSegment()
         {
-            if (_startObj == null) return default;
+            if (_startObj is null) return default;
             var firstMem = ((IMemoryOwner<T>)_startObj).Memory;
             return IsSingleSegment
                 ? firstMem.Slice(StartOffset, SingleSegmentLength)
@@ -774,7 +774,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         public Sequence(T[] array, int offset, int length)
         {
             // basic parameter check
-            if (array == null) Throw.ArgumentNull(nameof(array));
+            if (array is null) Throw.ArgumentNull(nameof(array));
             if (offset < 0) Throw.ArgumentOutOfRange(nameof(offset));
             if (length < 0 | (length + offset > array.Length))
                 Throw.ArgumentOutOfRange(nameof(length));
@@ -789,18 +789,18 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int NormalizeForwards(ref SequenceSegment<T> segment, int offset)
         {
-            Debug.Assert(segment != null && offset >= 0 && offset <= segment.Length,
+            Debug.Assert(segment is not null && offset >= 0 && offset <= segment.Length,
                 "invalid segment");
 
             // the position *after* the end of one segment is identically start (index 0)
             // of the next segment, assuming there is one
             SequenceSegment<T> next;
-            if (offset == segment.Length & (next = segment.Next) != null)
+            if (offset == segment.Length & (next = segment.Next) is not null)
             {
                 segment = next;
                 offset = 0;
                 // also, roll over any empty segments (extremely unlikely, but...)
-                while (segment.Length == 0 & (next = segment.Next) != null)
+                while (segment.Length == 0 & (next = segment.Next) is not null)
                     segment = next;
             }
             return offset;
@@ -838,7 +838,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             int endOffsetOrLength;
             T[] array = null;
-            if (startSegment != null)
+            if (startSegment is not null)
             {
                 // roll both positions forwards (note that this includes debug assertion for validity)
                 startOffset = NormalizeForwards(ref startSegment, startOffset);
@@ -855,7 +855,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                     }
                 }
 
-                // detect single-segment sequences (including the scenario where the seond sequence
+                // detect single-segment sequences (including the scenario where the second sequence
                 // is index 0 of the next)
                 if (ReferenceEquals(startSegment, endSegment))
                 {
@@ -872,7 +872,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 endOffsetOrLength = 0;
             }
 
-            if (array == null)
+            if (array is null)
             {
                 _startObj = startSegment;
                 __startOffsetAndArrayFlag = startOffset;
@@ -905,10 +905,10 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         partial void AssertValid() // verify all of our expectations - debug only
         {
             Debug.Assert(__endOffsetOrLength >= 0, "endOffsetOrLength should not be negative");
-            if (_startObj == null)
+            if (_startObj is null)
             {
                 // default
-                Debug.Assert(_endObj == null, "default instance should be all-default");
+                Debug.Assert(_endObj is null, "default instance should be all-default");
                 Debug.Assert(__startOffsetAndArrayFlag == 0, "default instance should be all-default");
                 Debug.Assert(__endOffsetOrLength == 0, "default instance should be all-default");
             }
@@ -938,7 +938,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 // multi-segment
                 SequenceSegment<T> startSeg = _startObj as SequenceSegment<T>,
                     endSeg = _endObj as SequenceSegment<T>;
-                Debug.Assert(startSeg != null & endSeg != null, "start and end should be sequence segments");
+                Debug.Assert(startSeg is not null & endSeg is not null, "start and end should be sequence segments");
                 Debug.Assert(!ReferenceEquals(startSeg, endSeg), "start and end should be different segments");
                 Debug.Assert(startSeg.RunningIndex < endSeg.RunningIndex, "start segment should be earlier");
                 Debug.Assert(!IsArray, "array-flag set incorrectly");
@@ -949,7 +949,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 do
                 {
                     startSeg = startSeg.Next;
-                    Debug.Assert(startSeg != null, "end-segment does not follow start-segment in the chain");
+                    Debug.Assert(startSeg is not null, "end-segment does not follow start-segment in the chain");
                 } while (startSeg != endSeg);
             }
         }

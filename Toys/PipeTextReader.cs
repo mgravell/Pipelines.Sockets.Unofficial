@@ -193,7 +193,7 @@ namespace Pipelines.Sockets.Unofficial
             {
                 if (_reader.TryRead(out var result) && ReadLineAsync(in result, out var s))
                 {
-                    if (s == null) return TaskNullString;
+                    if (s is null) return TaskNullString;
                     if (s.Length == 0) return TaskEmptyString;
                     return Task.FromResult(s);
                 }
@@ -220,7 +220,7 @@ namespace Pipelines.Sockets.Unofficial
 
             var line = ReadToEndOfLine(ref buffer); // found a line
 
-            if (line != null)
+            if (line is not null)
             {
                 DebugLog($"{line.Length} characters found; prefix: {_skipPrefix}; remaining buffer: {buffer.Length}");
                 _reader.AdvanceTo(buffer.Start);
@@ -597,7 +597,7 @@ namespace Pipelines.Sockets.Unofficial
             }
 
             int charCount = 0;
-            if (decoder == null) decoder = encoding.GetDecoder();
+            if (decoder is null) decoder = encoding.GetDecoder();
             else decoder.Reset();
             foreach (var segment in buffer)
             {
@@ -644,7 +644,7 @@ namespace Pipelines.Sockets.Unofficial
             }
 
             // see if we can do this without touching a decoder
-            if (consumeEntireBuffer && buffer.IsSingleSegment && decoder == null)
+            if (consumeEntireBuffer && buffer.IsSingleSegment && decoder is null)
             {
                 var bytes = buffer.First.Span;
                 // we need to be sure we have enough space in the output buffer
@@ -655,7 +655,7 @@ namespace Pipelines.Sockets.Unofficial
                     return bytes.Length;
                 }
             }
-            if (decoder == null) decoder = encoding.GetDecoder();
+            if (decoder is null) decoder = encoding.GetDecoder();
             else decoder.Reset();
 
             int totalBytes = 0;
@@ -686,7 +686,7 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         public static string ReadString(in ReadOnlySequence<byte> buffer, Encoding encoding)
         {
-            if (encoding == null) throw new ArgumentNullException(nameof(encoding));
+            if (encoding is null) throw new ArgumentNullException(nameof(encoding));
             return GetString(in buffer, encoding, null, true);
         }
     }
