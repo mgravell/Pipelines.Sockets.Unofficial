@@ -100,7 +100,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             static Allocator<T> Calculate()
             {
-                if (IsBlittable)
+                if (IsBlittable
+#if NETCOREAPP3_0_OR_GREATER
+                    && RuntimeFeature.IsDynamicCodeSupported
+#endif
+                )
                 {
                     return UnmanagedAllocator<T>.Shared;
                 }
@@ -114,7 +118,11 @@ namespace Pipelines.Sockets.Unofficial.Arenas
 
             static Allocator<T> Calculate()
             {
-                if (IsBlittable)
+                if (IsBlittable
+#if NETCOREAPP3_0_OR_GREATER
+                    && RuntimeFeature.IsDynamicCodeSupported
+#endif
+                )
                 {
                     return PinnedArrayPoolAllocator<T>.Shared;
                 }

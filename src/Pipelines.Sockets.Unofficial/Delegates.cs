@@ -49,9 +49,9 @@ namespace Pipelines.Sockets.Unofficial
             try
             {
                 var field = typeof(MulticastDelegate).GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Instance);
+
                 if (field is null || field.FieldType != typeof(T)) return null;
 #if !NETSTANDARD2_0
-
 #if NETCOREAPP3_0_OR_GREATER // test for AOT scenarios
                 if (RuntimeFeature.IsDynamicCodeSupported)
 #endif
