@@ -383,9 +383,9 @@ namespace Pipelines.Sockets.Unofficial.Buffers
                 if (Volatile.Read(ref _count) > 0 && Interlocked.Decrement(ref _count) == 0)
                 {
                     DecrLiveCount();
-                    Memory = default;
                     DetachNext(); // break the chain, in case of dangling references
                     ReleaseImpl();
+                    Memory = default;
                 }
             }
 
