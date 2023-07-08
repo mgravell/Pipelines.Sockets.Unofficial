@@ -144,7 +144,7 @@ namespace Pipelines.Sockets.Unofficial
 
         private int _availableCount;
         /// <summary>
-        /// The number of workers currently actively engaged in work
+        /// The number of workers currently available and awaiting work
         /// </summary>
         public int AvailableCount => Thread.VolatileRead(ref _availableCount);
 
