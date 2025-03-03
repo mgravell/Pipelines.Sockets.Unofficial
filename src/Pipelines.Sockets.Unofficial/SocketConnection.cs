@@ -59,7 +59,7 @@ namespace Pipelines.Sockets.Unofficial
 
         // 2**: things to do with the write loop
         /// <summary>
-        /// The socket-writerreached a natural EOF from the pipe
+        /// The socket-writer reached a natural EOF from the pipe
         /// </summary>
         WriteEndOfStream = 200,
         /// <summary>
