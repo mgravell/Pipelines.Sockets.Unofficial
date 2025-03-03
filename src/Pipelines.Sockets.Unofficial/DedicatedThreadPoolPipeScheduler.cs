@@ -146,7 +146,7 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// The number of workers currently available and awaiting work
         /// </summary>
-        public int AvailableCount => Thread.VolatileRead(ref _availableCount);
+        public int AvailableCount => Volatile.Read(ref _availableCount);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void Execute(Action<object> action, object state)
