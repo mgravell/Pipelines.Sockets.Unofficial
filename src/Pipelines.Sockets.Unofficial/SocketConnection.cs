@@ -79,7 +79,7 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         WriteSocketError = 205,
 
-        // 2**: things to do with the reader/writer themselves
+        // 3**: things to do with the reader/writer themselves
         /// <summary>
         /// The input's reader was completed
         /// </summary>
