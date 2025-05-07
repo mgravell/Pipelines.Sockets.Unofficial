@@ -8,6 +8,7 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <AssemblyOriginatorKeyFile>Pipelines.Sockets.Unofficial.snk</AssemblyOriginatorKeyFile>
         <PackageProjectUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</PackageProjectUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
         <RepositoryUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</RepositoryUrl>
         <Copyright>Marc Gravell 2018</Copyright>
         <LangVersion>latest</LangVersion>
@@ -31,5 +32,8 @@
     </PropertyGroup>
     <ItemGroup Condition="'$(TargetFramework)'!='net9.0'">
         <PackageReference Include="System.IO.Pipelines" Version="8.0.0" />
+    </ItemGroup>
+    <ItemGroup>
+        <None Include="..\..\README.md" Pack="true" PackagePath="\" />
     </ItemGroup>
 </Project>
