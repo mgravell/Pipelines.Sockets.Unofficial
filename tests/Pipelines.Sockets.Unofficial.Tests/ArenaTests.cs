@@ -61,7 +61,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             }
             else
             {
-                Assert.True(false, "unknown CPU size: " + IntPtr.Size);
+                Assert.Fail("unknown CPU size: " + IntPtr.Size);
             }
         }
 

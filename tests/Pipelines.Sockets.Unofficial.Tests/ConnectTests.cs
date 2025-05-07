@@ -32,7 +32,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         {
             var timeout = Task.Delay(6000);
             var code = ConnectImpl();
-            var first = await Task.WhenAny(timeout, code).ConfigureAwait(false);
+            var first = await Task.WhenAny(timeout, code);
             if (first == timeout) Throw.Timeout("unknown timeout");
             await first; // check outcome
         }
