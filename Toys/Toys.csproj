@@ -15,5 +15,6 @@
   <ItemGroup>
     <PackageReference Include="System.IO.Pipelines" Version="8.0.0" />
     <ProjectReference Include="..\src\Pipelines.Sockets.Unofficial\Pipelines.Sockets.Unofficial.csproj" />
+    <PackageReference Include="System.Reflection.Metadata" Version="9.0.4" />
   </ItemGroup>
 </Project>

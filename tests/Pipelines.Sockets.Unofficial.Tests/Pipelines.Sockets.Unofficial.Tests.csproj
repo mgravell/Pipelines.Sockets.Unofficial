@@ -37,5 +37,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Pipelines.Sockets.Unofficial\Pipelines.Sockets.Unofficial.csproj" />
     <ProjectReference Include="..\..\Toys\Toys.csproj" />
+    <PackageReference Include="System.Collections.Immutable" Version="9.0.4" />
   </ItemGroup>
 </Project>

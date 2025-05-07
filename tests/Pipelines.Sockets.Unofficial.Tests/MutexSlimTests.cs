@@ -6,6 +6,8 @@ using Xunit;
 using Xunit.Abstractions;
 using static Pipelines.Sockets.Unofficial.Threading.MutexSlim;
 
+#pragma warning disable xUnit1030, xUnit1031 // ConfigureAwait and blocking, very intentional here
+
 namespace Pipelines.Sockets.Unofficial.Tests
 {
     public class MutexSlimTests

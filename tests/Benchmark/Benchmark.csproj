@@ -12,6 +12,8 @@
     <PackageReference Include="Nito.AsyncEx.Coordination" Version="5.1.2" />
     <ProjectReference Include="..\..\src\Pipelines.Sockets.Unofficial\Pipelines.Sockets.Unofficial.csproj" />
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
-    <!--<PackageReference Include="System.IO.Pipelines" Version="8.0.0" />-->
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.1.2" />
+    <PackageReference Include="System.Collections.Immutable" Version="9.0.4" />
+    <PackageReference Include="System.Reflection.Metadata" Version="9.0.4" />
   </ItemGroup>
 </Project>

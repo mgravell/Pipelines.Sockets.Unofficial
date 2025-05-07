@@ -4,6 +4,8 @@ using System.Threading.Tasks;
 using Xunit;
 using Xunit.Abstractions;
 
+#pragma warning disable xUnit1030 // ConfigureAwait, very intentional here
+
 namespace Pipelines.Sockets.Unofficial.Tests
 {
     public class SchedulerTests
