@@ -59,7 +59,7 @@ namespace Pipelines.Sockets.Unofficial
 
         // 2**: things to do with the write loop
         /// <summary>
-        /// The socket-writerreached a natural EOF from the pipe
+        /// The socket-writer reached a natural EOF from the pipe
         /// </summary>
         WriteEndOfStream = 200,
         /// <summary>
@@ -79,7 +79,7 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         WriteSocketError = 205,
 
-        // 2**: things to do with the reader/writer themselves
+        // 3**: things to do with the reader/writer themselves
         /// <summary>
         /// The input's reader was completed
         /// </summary>
@@ -124,7 +124,7 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// When possible, determines how the pipe first reached a close state
         /// </summary>
-        public PipeShutdownKind ShutdownKind => (PipeShutdownKind)Thread.VolatileRead(ref _socketShutdownKind);
+        public PipeShutdownKind ShutdownKind => (PipeShutdownKind)Volatile.Read(ref _socketShutdownKind);
         /// <summary>
         /// When the ShutdownKind relates to a socket error, may contain the socket error code
         /// </summary>
