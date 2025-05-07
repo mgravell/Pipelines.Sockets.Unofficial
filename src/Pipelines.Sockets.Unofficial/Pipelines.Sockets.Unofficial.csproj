@@ -1,35 +1,35 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <!-- note: net46 causes binding redirect problems on System.Buffers; see conversation https://github.com/mgravell/Pipelines.Sockets.Unofficial/pull/4 -->
-    <TargetFrameworks>net461;net472;netstandard2.0;netstandard2.1;netcoreapp3.1;net5.0</TargetFrameworks>
-    <SignAssembly>true</SignAssembly>
-    <DelaySign>false</DelaySign>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <AssemblyOriginatorKeyFile>Pipelines.Sockets.Unofficial.snk</AssemblyOriginatorKeyFile>
-    <PackageProjectUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</RepositoryUrl>
-    <Copyright>Marc Gravell 2018</Copyright>
-    <LangVersion>latest</LangVersion>
-    <NoWarn>IDE0068</NoWarn>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)'=='Release'">
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <Optimize>true</Optimize>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
-    <DefineConstants>$(DefineConstants);VERBOSE</DefineConstants>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(TargetFramework)'=='netstandard2.1'">
-    <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS;RANGES</DefineConstants>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(TargetFramework)'=='netcoreapp3.1'">
-    <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS;RANGES</DefineConstants>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(TargetFramework)'=='net5.0'">
-    <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS;RANGES</DefineConstants>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="System.IO.Pipelines" Version="5.0.1" />
-  </ItemGroup>
+    <PropertyGroup>
+        <!-- note: net46 causes binding redirect problems on System.Buffers; see conversation https://github.com/mgravell/Pipelines.Sockets.Unofficial/pull/4 -->
+        <TargetFrameworks>net462;net472;netstandard2.0;netstandard2.1;net8.0;net9.0</TargetFrameworks>
+        <SignAssembly>true</SignAssembly>
+        <DelaySign>false</DelaySign>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <AssemblyOriginatorKeyFile>Pipelines.Sockets.Unofficial.snk</AssemblyOriginatorKeyFile>
+        <PackageProjectUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/mgravell/Pipelines.Sockets.Unofficial</RepositoryUrl>
+        <Copyright>Marc Gravell 2018</Copyright>
+        <LangVersion>latest</LangVersion>
+        <NoWarn>IDE0068</NoWarn>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)'=='Release'">
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <Optimize>true</Optimize>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+        <DefineConstants>$(DefineConstants);VERBOSE</DefineConstants>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(TargetFramework)'=='netstandard2.1'">
+        <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS;RANGES</DefineConstants>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(TargetFramework)'=='net8.0'">
+        <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS;RANGES</DefineConstants>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(TargetFramework)'=='net9.0'">
+        <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS;RANGES</DefineConstants>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(TargetFramework)'!='net9.0'">
+        <PackageReference Include="System.IO.Pipelines" Version="8.0.0" />
+    </ItemGroup>
 </Project>

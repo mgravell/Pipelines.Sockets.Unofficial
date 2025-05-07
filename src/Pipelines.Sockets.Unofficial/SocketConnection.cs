@@ -124,7 +124,7 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// When possible, determines how the pipe first reached a close state
         /// </summary>
-        public PipeShutdownKind ShutdownKind => (PipeShutdownKind)Thread.VolatileRead(ref _socketShutdownKind);
+        public PipeShutdownKind ShutdownKind => (PipeShutdownKind)Volatile.Read(ref _socketShutdownKind);
         /// <summary>
         /// When the ShutdownKind relates to a socket error, may contain the socket error code
         /// </summary>
