@@ -15,7 +15,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
         private void Log(string line)
         {
-            if(_output != null)
+            if(_output is not null)
             {
                 lock (_output) _output.WriteLine(line);
             }

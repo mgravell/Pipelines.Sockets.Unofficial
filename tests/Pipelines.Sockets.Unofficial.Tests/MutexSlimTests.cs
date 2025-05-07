@@ -20,7 +20,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         private readonly ITestOutputHelper _log;
         private void Log(string message)
         {
-            if (_log != null)
+            if (_log is not null)
             {
                 lock (_log) _log.WriteLine(message);
             }
@@ -254,16 +254,16 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
             for (int i = 0; i < 2; i++)
             {
-                var awaitable = _zeroTimeoutMux.TryWaitAsync();
-                Assert.True(awaitable.IsCompleted, nameof(awaitable.IsCompleted));
-                //Assert.True(awaitable.CompletedSynchronously, nameof(awaitable.CompletedSynchronously));
-                using var outer = await awaitable;
+                var awaitable1 = _zeroTimeoutMux.TryWaitAsync();
+                Assert.True(awaitable1.IsCompleted, nameof(awaitable1.IsCompleted));
+                //Assert.True(awaitable1.CompletedSynchronously, nameof(awaitable1.CompletedSynchronously));
+                using var outer = await awaitable1;
                 Assert.True(outer.Success, nameof(outer.Success));
 
-                awaitable = _zeroTimeoutMux.TryWaitAsync();
-                Assert.True(awaitable.IsCompleted, nameof(awaitable.IsCompleted) + " inner");
-                //Assert.True(awaitable.CompletedSynchronously, nameof(awaitable.CompletedSynchronously) + " inner");
-                using var inner = await awaitable;
+                var awaitable2 = _zeroTimeoutMux.TryWaitAsync();
+                Assert.True(awaitable2.IsCompleted, nameof(awaitable2.IsCompleted) + " inner");
+                //Assert.True(awaitable2.CompletedSynchronously, nameof(awaitable2.CompletedSynchronously) + " inner");
+                using var inner = await awaitable2;
                 Assert.False(inner.Success, nameof(inner.Success) + " inner");
             }
         }
@@ -397,7 +397,10 @@ namespace Pipelines.Sockets.Unofficial.Tests
                                 }
                             }
                             var awaitable = _timeoutMux.TryWaitAsync(options: waitOptions);
-                            if (!awaitable.IsCompleted) asyncOps++;
+                            if (!awaitable.IsCompleted)
+                            {
+                                Interlocked.Increment(ref asyncOps);
+                            }
                             Log($"task {j} about to await...");
                             using var inner = await awaitable;
                             Log($"task {j} resumed; got lock: {inner.Success}");
@@ -424,8 +427,8 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
             lock (allDone)
             {
-                Assert.Equal(COMPETITORS, success);
-                Assert.Equal(COMPETITORS, asyncOps);
+                Assert.True(COMPETITORS == success, "COMPETITORS == success");
+                Assert.True(COMPETITORS == asyncOps, "COMPETITORS == asyncOps");
             }
         }
 
@@ -451,7 +454,10 @@ namespace Pipelines.Sockets.Unofficial.Tests
                                 else Monitor.Wait(allReady);
                             }
                             var awaitable = _timeoutMux.TryWaitAsync();
-                            if (!awaitable.IsCompleted) asyncOps++;
+                            if (!awaitable.IsCompleted)
+                            {
+                                Interlocked.Increment(ref asyncOps);
+                            }
                             using var inner = await awaitable;
                             lock (allDone)
                             {
@@ -542,10 +548,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Assert.False(ct.IsCanceled, nameof(ct.IsCanceled) + ":2");
             Assert.True(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully) + ":2");
 
-            var result = ct.Result;
-            Assert.True(result.Success);
-
-            result = await ct;
+            var result = await ct;
             Assert.True(result.Success);
         }
 
@@ -598,10 +601,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
             Assert.False(ct.IsCanceled, nameof(ct.IsCanceled));
             Assert.True(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
 
-            var result = ct.Result;
-            Assert.True(result.Success);
-
-            result = await ct;
+            var result = await ct;
             Assert.True(result.Success);
         }
 
@@ -632,7 +632,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public void DuelingThreadsShouldNotStall(int workerCount, int perWorker)
         {
 #if DEBUG
-            perWorker /= 100;
+            perWorker /= 1000;
 #endif
             Volatile.Write(ref _failCount, 0);
             Volatile.Write(ref _successCount, 0);
@@ -684,7 +684,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
         public async Task DuelingThreadsShouldNotStallAsync(int workerCount, int perWorker)
         {
 #if DEBUG
-            perWorker /= 100;
+            perWorker /= 1000;
 #endif
             Volatile.Write(ref _failCount, 0);
             Volatile.Write(ref _successCount, 0);

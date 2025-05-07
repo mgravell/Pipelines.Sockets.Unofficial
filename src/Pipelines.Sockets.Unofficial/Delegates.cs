@@ -18,45 +18,55 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static DelegateEnumerator<T> GetEnumerator<T>(this T handler) where T : MulticastDelegate
-            => handler == null ? default : new DelegateEnumerator<T>(handler);
+            => handler is null ? default : new(handler);
 
         /// <summary>
         /// Iterate over the individual elements of a multicast delegate (without allocation)
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static DelegateEnumerable<T> AsEnumerable<T>(this T handler) where T : MulticastDelegate
-            => new DelegateEnumerable<T>(handler);
+            => new(handler);
 
         /// <summary>
         /// Indicates whether a particular delegate is known to be a single-target delegate
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsSingle(this MulticastDelegate handler)
-            => s_getArr != null && s_getArr(handler) == null;
+            => s_getArr is not null && s_getArr(handler) is null;
 
         private static readonly Func<MulticastDelegate, object> s_getArr = GetGetter<object>("_invocationList");
         private static readonly Func<MulticastDelegate, IntPtr> s_getCount = GetGetter<IntPtr>("_invocationCount");
-        private static readonly bool s_isAvailable = s_getArr != null & s_getCount != null;
+        private static readonly bool s_isAvailable = s_getArr is not null & s_getCount is not null;
 
-        internal static bool IsAvailable => s_isAvailable;
+        /// <summary>
+        /// Indicates whether optimized usage is supported on this environment; without this, it may still
+        /// work, but with additional overheads at runtime.
+        /// </summary>
+        public static bool IsSupported => s_isAvailable;
 
         private static Func<MulticastDelegate, T> GetGetter<T>(string fieldName)
         {
             try
             {
                 var field = typeof(MulticastDelegate).GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Instance);
-                if (field == null || field.FieldType != typeof(T)) return null;
+
+                if (field is null || field.FieldType != typeof(T)) return null;
 #if !NETSTANDARD2_0
-                try // we can try use ref-emit
+#if NETCOREAPP3_0_OR_GREATER // test for AOT scenarios
+                if (RuntimeFeature.IsDynamicCodeSupported)
+#endif
                 {
-                    var dm = new DynamicMethod(fieldName, typeof(T), new[] { typeof(MulticastDelegate) }, typeof(MulticastDelegate), true);
-                    var il = dm.GetILGenerator();
-                    il.Emit(OpCodes.Ldarg_0);
-                    il.Emit(OpCodes.Ldfld, field);
-                    il.Emit(OpCodes.Ret);
-                    return (Func<MulticastDelegate, T>)dm.CreateDelegate(typeof(Func<MulticastDelegate, T>));
+                    try // we can try use ref-emit
+                    {
+                        var dm = new DynamicMethod(fieldName, typeof(T), new[] { typeof(MulticastDelegate) }, typeof(MulticastDelegate), true);
+                        var il = dm.GetILGenerator();
+                        il.Emit(OpCodes.Ldarg_0);
+                        il.Emit(OpCodes.Ldfld, field);
+                        il.Emit(OpCodes.Ret);
+                        return (Func<MulticastDelegate, T>)dm.CreateDelegate(typeof(Func<MulticastDelegate, T>));
+                    }
+                    catch { }
                 }
-                catch { }
 #endif
                 return GetViaReflection<T>(field);
             }
@@ -82,7 +92,7 @@ namespace Pipelines.Sockets.Unofficial
             /// </summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public DelegateEnumerator<T> GetEnumerator()
-                => _handler == null ? default : new DelegateEnumerator<T>(_handler);
+                => _handler is null ? default : new DelegateEnumerator<T>(_handler);
             IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetEnumerator();
             IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         }
@@ -99,12 +109,12 @@ namespace Pipelines.Sockets.Unofficial
             private T _current;
             internal DelegateEnumerator(T handler)
             {
-                Debug.Assert(handler != null);
+                Debug.Assert(handler is not null);
                 _handler = handler;
                 if (s_isAvailable)
                 {
                     _arr = (object[])s_getArr(handler);
-                    if (_arr == null)
+                    if (_arr is null)
                     {
                         _count = 1;
                     }
@@ -123,7 +133,7 @@ namespace Pipelines.Sockets.Unofficial
             }
 
             /// <summary>
-            /// Provides the current value of the seqyence
+            /// Provides the current value of the sequence
             /// </summary>
             public T Current
             {
@@ -147,7 +157,7 @@ namespace Pipelines.Sockets.Unofficial
                     _current = null;
                     return false;
                 }
-                _current = _arr == null ? _handler : (T)_arr[next];
+                _current = _arr is null ? _handler : (T)_arr[next];
                 _index = next;
                 return true;
             }

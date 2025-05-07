@@ -89,7 +89,7 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         /// <summary>
         /// Gets the amount of data buffered by the writer
         /// </summary>
-        public long Length => _head == null ? 0 :
+        public long Length => _head is null ? 0 :
             ((_tail.RunningIndex + _tailOffset) - (_head.RunningIndex + _headOffset));
 
 #pragma warning disable IDE0069
@@ -117,7 +117,7 @@ namespace Pipelines.Sockets.Unofficial.Buffers
             var node = _head;
             _head = _tail = _final = null;
             _tailRemaining = _tailOffset = _headOffset = 0;
-            while (node != null)
+            while (node is not null)
             {
                 var next = (RefCountedSegment)node.Next; // need to do this *first*, since Release nukes it
                 node.Release();
@@ -142,12 +142,12 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         /// <summary>
         /// Get the logical start of the committed data
         /// </summary>
-        public SequencePosition Start => _head == null ? default : new SequencePosition(_head, _headOffset);
+        public SequencePosition Start => _head is null ? default : new SequencePosition(_head, _headOffset);
 
         /// <summary>
         /// Get the logical end of the committed data
         /// </summary>
-        public SequencePosition End => _head == null ? default : new SequencePosition(_tail, _tailOffset);
+        public SequencePosition End => _head is null ? default : new SequencePosition(_tail, _tailOffset);
         */
 
         /// <summary>
@@ -217,11 +217,11 @@ namespace Pipelines.Sockets.Unofficial.Buffers
 
         internal string GetState() // used for testing only; doesn't need to be efficient
         {
-            if (_tail == null) return "(nil)";
+            if (_tail is null) return "(nil)";
             var sb = new StringBuilder();
             sb.Append($"[{_head.RunningIndex + _headOffset},{_tail.RunningIndex + _tailOffset}) - {_tailRemaining}/{(_final.RunningIndex + _final.Length) - (_tail.RunningIndex + _tailOffset)} available; counts: ");
             var node = _head;
-            while(node != null)
+            while(node is not null)
             {
                 sb.Append(node.RefCount).Append('/');
                 node = (RefCountedSegment)node.Next;
@@ -236,12 +236,12 @@ namespace Pipelines.Sockets.Unofficial.Buffers
             var node = _tail.Next;
 
             // consume nodes until the required data fits
-            while (node != null & count > node.Length)
+            while (node is not null & count > node.Length)
             {
                 count -= node.Length;
                 node = node.Next;
             }
-            if (node == null) Throw.ArgumentOutOfRange(nameof(count));
+            if (node is null) Throw.ArgumentOutOfRange(nameof(count));
 
             // consume part of the final node
             _tail = (RefCountedSegment)node;
@@ -277,7 +277,7 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         {
             sizeHint = Math.Max(sizeHint, 1);
             long availableLength;
-            if (_final == null)
+            if (_final is null)
             {
                 availableLength = 0;
             }
@@ -295,7 +295,7 @@ namespace Pipelines.Sockets.Unofficial.Buffers
             do
             {
                 _final = CreateNewSegment(_final, BlockSize);
-                if (_head == null)
+                if (_head is null)
                 {
                     _head = _tail = _final;
                     _tailOffset = 0;
@@ -316,7 +316,7 @@ namespace Pipelines.Sockets.Unofficial.Buffers
             bool wasHead = ReferenceEquals(_tail, _head);
 
             var next = (RefCountedSegment)_tail?.Next;
-            if (next != null)
+            if (next is not null)
             {   // we already have an onwards chain
                 _tail = next;
             }
@@ -325,7 +325,7 @@ namespace Pipelines.Sockets.Unofficial.Buffers
                 _final = _tail = CreateNewSegment(_final, Math.Max(sizeHint, BlockSize));
             }
 
-            if (_head == null) { _head = _tail; }
+            if (_head is null) { _head = _tail; }
             else if (wasHead && _head.Length == _headOffset)
             {
                 // the old head had capacity that we couldn't use and was trimmed; we can
@@ -360,7 +360,7 @@ namespace Pipelines.Sockets.Unofficial.Buffers
                 var len = value.Length + start.GetInteger(); // we'll be counting the full length of every segment, including the first
                 var node = value.Start.GetObject() as RefCountedSegment;
 
-                while (len > 0 & node != null)
+                while (len > 0 & node is not null)
                 {
                     len -= node.Length;
                     var next = (RefCountedSegment)node.Next; // need to do this *first*, since Release nukes it
@@ -383,9 +383,9 @@ namespace Pipelines.Sockets.Unofficial.Buffers
                 if (Volatile.Read(ref _count) > 0 && Interlocked.Decrement(ref _count) == 0)
                 {
                     DecrLiveCount();
-                    Memory = default;
                     DetachNext(); // break the chain, in case of dangling references
                     ReleaseImpl();
+                    Memory = default;
                 }
             }
 
@@ -479,7 +479,7 @@ namespace Pipelines.Sockets.Unofficial.Buffers
                 protected override void ReleaseImpl()
                 {
                     T[] arr;
-                    if (MemoryMarshal.TryGetArray<T>(Memory, out var segment) && (arr = segment.Array) != null)
+                    if (MemoryMarshal.TryGetArray<T>(Memory, out var segment) && (arr = segment.Array) is not null)
                         _arrayPool.Return(arr);
                 }
             }

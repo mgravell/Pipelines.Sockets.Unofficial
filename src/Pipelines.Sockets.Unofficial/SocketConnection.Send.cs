@@ -56,7 +56,7 @@ namespace Pipelines.Sockets.Unofficial
                     {
                         if (!buffer.IsEmpty)
                         {
-                            if (_writerArgs == null) _writerArgs = new SocketAwaitableEventArgs(InlineWrites ? null : _sendOptions.ReaderScheduler);
+                            if (_writerArgs is null) _writerArgs = new SocketAwaitableEventArgs(InlineWrites ? null : _sendOptions.ReaderScheduler);
                             DebugLog($"sending {buffer.Length} bytes over socket...");
                             Helpers.Incr(Counter.OpenSendWriteAsync);
                             DoSend(Socket, _writerArgs, buffer, Name);
@@ -130,9 +130,9 @@ namespace Pipelines.Sockets.Unofficial
 
                 var args = _writerArgs;
                 _writerArgs = null;
-                if (args != null) try { args.Dispose(); } catch { }
+                if (args is not null) try { args.Dispose(); } catch { }
             }
-            DebugLog(error == null ? "exiting with success" : $"exiting with failure: {error.Message}");
+            DebugLog(error is null ? "exiting with success" : $"exiting with failure: {error.Message}");
             //return error;
         }
 
@@ -147,7 +147,7 @@ namespace Pipelines.Sockets.Unofficial
 #if SOCKET_STREAM_BUFFERS
             if (!args.MemoryBuffer.IsEmpty)
 #else
-            if (args.Buffer != null)
+            if (args.Buffer is not null)
 #endif
             {
                 args.SetBuffer(null, 0, 0);
@@ -202,7 +202,7 @@ namespace Pipelines.Sockets.Unofficial
 
             var list = (args?.BufferList as List<ArraySegment<byte>>) ?? GetSpareBuffer();
 
-            if (list == null)
+            if (list is null)
             {
                 list = new List<ArraySegment<byte>>();
             }

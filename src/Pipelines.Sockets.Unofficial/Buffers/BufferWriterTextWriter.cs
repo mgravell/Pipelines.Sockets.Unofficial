@@ -19,7 +19,7 @@ namespace Pipelines.Sockets.Unofficial.Buffers
         public static TextWriter Create(IBufferWriter<byte> output, Encoding encoding = null)
         {
             encoding ??= Encoding.UTF8;
-            if (output == null) Throw.ArgumentNull(nameof(output));
+            if (output is null) Throw.ArgumentNull(nameof(output));
             return new BufferWriterTextWriter(output, encoding);
         }
 

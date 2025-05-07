@@ -106,6 +106,28 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
         }
 
+        [Fact]
+        public void BufferWriterReturnsMemoryToPool()
+        {
+#pragma warning disable IDE0063 // this would break the "all dead now" test
+            using (var bw = BufferWriter<byte>.Create(blockSize: 1 << 8))
+#pragma warning restore IDE0063
+            {
+                var span = bw.GetSpan(1);
+                span[0] = 123;
+                span[128] = 210;
+                bw.Advance((1 << 8));
+                bw.Flush().Dispose();
+
+                // Release the head off the buffer.
+                bw.GetSpan(1);
+
+                var rent = ArrayPool<byte>.Shared.Rent(1 << 8);
+                Assert.Equal(123, rent[0]);
+                Assert.Equal(210, rent[128]);
+            }
+        }
+
         static string GetState(ReadOnlySequence<byte> ros)
         {
             var start = ros.Start;
@@ -115,7 +137,7 @@ namespace Pipelines.Sockets.Unofficial.Tests
 
             var sb = new StringBuilder();
             sb.Append($"{start.TryGetOffset()}-{ros.End.TryGetOffset()}; counts: ");
-            while (node != null & len > 0)
+            while (node is not null & len > 0)
             {
                 sb.Append("[").Append(node.RunningIndex).Append(',').Append(node.RunningIndex + node.Length).Append("):").Append(node.RefCount).Append(' ');
                 len -= node.Length;

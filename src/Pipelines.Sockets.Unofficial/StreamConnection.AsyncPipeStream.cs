@@ -38,7 +38,7 @@ namespace Pipelines.Sockets.Unofficial
 
             internal AsyncPipeStream(PipeReader reader, PipeWriter writer, string name)
             {
-                if (reader == null && writer == null)
+                if (reader is null && writer is null)
                     Throw.ArgumentNull("At least one of reader/writer must be provided");
                 _reader = reader;
                 _writer = writer;
@@ -49,11 +49,11 @@ namespace Pipelines.Sockets.Unofficial
             /// <summary>
             /// Gets whether read operations are available
             /// </summary>
-            public override bool CanRead => _reader != null;
+            public override bool CanRead => _reader is not null;
             /// <summary>
             /// Gets whether write operations are available
             /// </summary>
-            public override bool CanWrite => _writer != null;
+            public override bool CanWrite => _writer is not null;
             /// <summary>
             /// Gets whether the stream can timeout
             /// </summary>
@@ -83,8 +83,8 @@ namespace Pipelines.Sockets.Unofficial
             /// </summary>
             public override void SetLength(long value) => Throw.NotSupported();
 
-            private void AssertCanRead() { if (_reader == null) Throw.InvalidOperation("Cannot read"); }
-            private void AssertCanWrite() { if (_writer == null) Throw.InvalidOperation("Cannot write"); }
+            private void AssertCanRead() { if (_reader is null) Throw.InvalidOperation("Cannot read"); }
+            private void AssertCanWrite() { if (_writer is null) Throw.InvalidOperation("Cannot write"); }
 
             [Conditional("VERBOSE")]
             private void DebugLog(string message = null, [CallerMemberName] string caller = null) => Helpers.DebugLog(Name, message, caller);
@@ -505,7 +505,7 @@ namespace Pipelines.Sockets.Unofficial
 
                         // need to reset state *before* setting result, because: direct continuations
                         bytes = pendingRead.ConsumeBytesReadAndReset();
-                        if (task == null)
+                        if (task is null)
                         {
                             DebugLog("no task!");
                         }

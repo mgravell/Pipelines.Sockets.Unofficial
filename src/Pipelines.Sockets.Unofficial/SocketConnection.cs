@@ -59,7 +59,7 @@ namespace Pipelines.Sockets.Unofficial
 
         // 2**: things to do with the write loop
         /// <summary>
-        /// The socket-writerreached a natural EOF from the pipe
+        /// The socket-writer reached a natural EOF from the pipe
         /// </summary>
         WriteEndOfStream = 200,
         /// <summary>
@@ -79,7 +79,7 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         WriteSocketError = 205,
 
-        // 2**: things to do with the reader/writer themselves
+        // 3**: things to do with the reader/writer themselves
         /// <summary>
         /// The input's reader was completed
         /// </summary>
@@ -124,7 +124,7 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// When possible, determines how the pipe first reached a close state
         /// </summary>
-        public PipeShutdownKind ShutdownKind => (PipeShutdownKind)Thread.VolatileRead(ref _socketShutdownKind);
+        public PipeShutdownKind ShutdownKind => (PipeShutdownKind)Volatile.Read(ref _socketShutdownKind);
         /// <summary>
         /// When the ShutdownKind relates to a socket error, may contain the socket error code
         /// </summary>
@@ -262,7 +262,7 @@ namespace Pipelines.Sockets.Unofficial
                     // then they deserve a clap - a slow clap
                     var method = typeof(Pipe).GetProperty("Length",
                         BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)?.GetGetMethod(true);
-                    if (method == null)
+                    if (method is null)
                     {
                         s_pipeLengthReader = _ => 0L;
                     }
@@ -283,7 +283,7 @@ namespace Pipelines.Sockets.Unofficial
             /// </summary>
             public static long GetPipeLength(Pipe pipe)
             {
-                if (pipe == null) return 0;
+                if (pipe is null) return 0;
                 try
                 {
                     return s_pipeLengthReader(pipe);
@@ -348,10 +348,10 @@ namespace Pipelines.Sockets.Unofficial
         {
             if (string.IsNullOrWhiteSpace(name)) name = GetType().Name;
             Name = name.Trim();
-            if (sendPipeOptions == null) sendPipeOptions = PipeOptions.Default;
-            if (receivePipeOptions == null) receivePipeOptions = PipeOptions.Default;
+            if (sendPipeOptions is null) sendPipeOptions = PipeOptions.Default;
+            if (receivePipeOptions is null) receivePipeOptions = PipeOptions.Default;
 
-            if (socket == null) Throw.ArgumentNull(nameof(socket));
+            if (socket is null) Throw.ArgumentNull(nameof(socket));
             Socket = socket;
             SocketConnectionOptions = socketConnectionOptions;
             _sendToSocket = new Pipe(sendPipeOptions);

@@ -45,7 +45,7 @@ namespace Pipelines.Sockets.Unofficial
         /// <summary>
         /// Indicates whether this API is likely to work
         /// </summary>
-        public static bool IsAvailable => s_safeBufferField != null;
+        public static bool IsAvailable => s_safeBufferField is not null;
 
         private static readonly FieldInfo s_safeBufferField;
         static MemoryMappedPipeReader()
@@ -62,7 +62,7 @@ namespace Pipelines.Sockets.Unofficial
         }
         private MemoryMappedPipeReader(MemoryMappedFile file, long length, int pageSize = DEFAULT_PAGE_SIZE, string name = null)
         {
-            if (file == null) Throw.ArgumentNull(nameof(file));
+            if (file is null) Throw.ArgumentNull(nameof(file));
             _file = file;
             if (pageSize <= 0) Throw.ArgumentOutOfRange(nameof(pageSize));
             if (length < 0) Throw.ArgumentOutOfRange(nameof(length));
@@ -109,7 +109,7 @@ namespace Pipelines.Sockets.Unofficial
         public void Dispose()
         {
             var page = _first;
-            while (page != null)
+            while (page is not null)
             {
                 try { page.Dispose(); } catch { }
                 page = page.Next;
@@ -137,14 +137,14 @@ namespace Pipelines.Sockets.Unofficial
             var cPage = (MappedPage)consumed.GetObject();
             var ePage = (MappedPage)examined.GetObject();
 
-            if (cPage == null || ePage == null)
+            if (cPage is null || ePage is null)
             {
-                if (_first == null) return; // that's fine - means they called Advance on an empty EOF
+                if (_first is null) return; // that's fine - means they called Advance on an empty EOF
                 Throw.Argument("Invalid position; consumed/examined must remain inside the buffer");
             }
 
-            Debug.Assert(ePage != null, "No examined page");
-            Debug.Assert(cPage != null, "No consumed page");
+            Debug.Assert(ePage is not null, "No examined page");
+            Debug.Assert(cPage is not null, "No consumed page");
 
             MappedPage newKeep;
             var cOffset = consumed.GetInteger();
@@ -157,7 +157,7 @@ namespace Pipelines.Sockets.Unofficial
                 newKeep = cPage;
                 newKeep.Consumed = cOffset;
             }
-            if (newKeep == null)
+            if (newKeep is null)
             {
                 DebugLog($"Retaining nothing");
                 _last = null;
@@ -171,7 +171,7 @@ namespace Pipelines.Sockets.Unofficial
             if (newKeep != _first)
             {
                 var page = _first;
-                while (page != null && page != newKeep)
+                while (page is not null && page != newKeep)
                 {
                     DebugLog($"Dropping page {page}");
                     page.Dispose();
@@ -181,7 +181,7 @@ namespace Pipelines.Sockets.Unofficial
             }
 
             // check whether they looked at everything
-            if (_last == null)
+            if (_last is null)
             {
                 _loadMore = true; // definitely
             }
@@ -196,7 +196,7 @@ namespace Pipelines.Sockets.Unofficial
         private static long CountAvailable(MappedPage page)
         {
             long total = 0;
-            while(page != null)
+            while(page is not null)
             {
                 total += page.Capacity - page.Consumed;
                 page = page.Next;
@@ -207,9 +207,9 @@ namespace Pipelines.Sockets.Unofficial
         /// Perform an asynchronous read operation
         /// </summary>
         public override ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = default)
-            => new ValueTask<ReadResult>(Read());
+            => new(Read());
         /// <summary>
-        /// Attempt to perfom a synchronous read operation
+        /// Attempt to perform a synchronous read operation
         /// </summary>
         public override bool TryRead(out ReadResult result)
         {
@@ -223,7 +223,7 @@ namespace Pipelines.Sockets.Unofficial
                 if (_remaining != 0)
                 {
                     var take = (int)Math.Min(_remaining, _pageSize);
-                    DebugLog($"Loading {take} bytes from offet {_offset}...");
+                    DebugLog($"Loading {take} bytes from offset {_offset}...");
                     var accessor = _file.CreateViewAccessor(_offset, take, MemoryMappedFileAccess.Read);
 
                     var next = new MappedPage(accessor, _offset, take);
@@ -231,7 +231,7 @@ namespace Pipelines.Sockets.Unofficial
                     _remaining -= take;
                     _offset += take;
 
-                    if (_first == null)
+                    if (_first is null)
                     {
                         _first = _last = next;
                     }
@@ -245,7 +245,7 @@ namespace Pipelines.Sockets.Unofficial
                 _loadMore = false;
             }
 
-            if (_first == null)
+            if (_first is null)
             {
                 Debug.Assert(_remaining == 0, "unexpected EOF");
                 DebugLog($"Read has encountered EOF");
@@ -270,10 +270,10 @@ namespace Pipelines.Sockets.Unofficial
             public int Consumed { get; set; }
             public unsafe MappedPage(MemoryMappedViewAccessor accessor, long offset, int capacity)
             {
-                if (accessor == null) Throw.ArgumentNull(nameof(accessor));
+                if (accessor is null) Throw.ArgumentNull(nameof(accessor));
                 _accessor = accessor;
                 _buffer = s_safeBufferField.GetValue(_accessor) as SafeBuffer;
-                if (_buffer == null) Throw.InvalidOperation();
+                if (_buffer is null) Throw.InvalidOperation();
                 // note that the *actual* capacity isn't necessarily the same - system page size (rounding up), etc
                 if (capacity < 0 || capacity > accessor.Capacity) Throw.ArgumentOutOfRange(nameof(capacity));
                 RunningIndex = offset;

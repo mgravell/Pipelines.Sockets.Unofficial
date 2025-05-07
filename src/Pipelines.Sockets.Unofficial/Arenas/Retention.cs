@@ -36,7 +36,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
         {
             if (factor <= 0) return Recent;
             if (factor >= 1) return Everything;
-            if (factor == DefaultFactor & Default != null) return Default;
+            if (factor == DefaultFactor & Default is not null) return Default;
             return (old, current) => Math.Max((long)(old * factor), current);
         }
     }

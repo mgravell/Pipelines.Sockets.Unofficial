@@ -1,7 +1,6 @@
 ﻿using Pipelines.Sockets.Unofficial.Arenas;
 using System;
 using System.Buffers;
-using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Xunit;
@@ -11,34 +10,38 @@ namespace Pipelines.Sockets.Unofficial.Tests
     public class ArenaTests
     {
 #pragma warning disable CS0169, IDE0051, RCS1213 // unused fields
-        private struct TwoPositions<T>
+        private readonly struct TwoPositions<T>
         {
             private readonly SequencePosition start, end;
         }
-        private struct TwoPair<T>
+        private readonly struct TwoPair<T>
         {
             private readonly object a, b;
             private readonly int c, d;
         }
-        private struct Len32<T>
+        private readonly struct Len32<T>
         {
             private readonly object x;
             private readonly int offset, len;
         }
-        private struct Len64<T>
+        private readonly struct Len64<T>
         {
             private readonly long len;
             private readonly object x;
-            private readonly int offse;
+            private readonly int offset;
         }
 #pragma warning restore CS0169, IDE0051, RCS1213
 
         [Fact]
         public void AssertPossibleLayoutSizes()
-        {   // this test is re proving out the layout of Sequence<T>
+        {
             if (IntPtr.Size == 8)
             {
+#if NETFRAMEWORK // uses two-positions
+                Assert.Equal(32, Unsafe.SizeOf<ReadOnlySequence<int>>());
+#else           // uses two-pair
                 Assert.Equal(24, Unsafe.SizeOf<ReadOnlySequence<int>>());
+#endif
                 Assert.Equal(24, Unsafe.SizeOf<Sequence<int>>());
 
                 Assert.Equal(32, Unsafe.SizeOf<TwoPositions<int>>());
