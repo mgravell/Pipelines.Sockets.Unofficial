@@ -59,7 +59,7 @@ namespace Pipelines.Sockets.Unofficial
 
         // 2**: things to do with the write loop
         /// <summary>
-        /// The socket-writerreached a natural EOF from the pipe
+        /// The socket-writer reached a natural EOF from the pipe
         /// </summary>
         WriteEndOfStream = 200,
         /// <summary>
@@ -79,7 +79,7 @@ namespace Pipelines.Sockets.Unofficial
         /// </summary>
         WriteSocketError = 205,
 
-        // 2**: things to do with the reader/writer themselves
+        // 3**: things to do with the reader/writer themselves
         /// <summary>
         /// The input's reader was completed
         /// </summary>
@@ -424,6 +424,14 @@ namespace Pipelines.Sockets.Unofficial
                 _connection.OutputWriterCompleted(exception);
                 _writer.Complete(exception);
             }
+
+#if NET6_0_OR_GREATER
+            public override long UnflushedBytes
+                => _writer.UnflushedBytes;
+            public override bool CanGetUnflushedBytes
+                => _writer.CanGetUnflushedBytes;
+#endif
+
             public override void Advance(int bytes)
                 => _writer.Advance(bytes);
             public override void CancelPendingFlush()
