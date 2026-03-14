@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net462;net9.0</TargetFrameworks>
+    <TargetFrameworks>net8.0;net462;net10.0</TargetFrameworks>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <OutputType>exe</OutputType>
@@ -13,8 +13,8 @@
     <!--<DefineConstants>$(DefineConstants);VERBOSE</DefineConstants>-->
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="System.IO.Pipelines" Version="8.0.0" />
+    <PackageReference Include="System.IO.Pipelines" Version="10.0.5" />
     <ProjectReference Include="..\src\Pipelines.Sockets.Unofficial\Pipelines.Sockets.Unofficial.csproj" />
-    <PackageReference Include="System.Reflection.Metadata" Version="9.0.4" />
+    <PackageReference Include="System.Reflection.Metadata" Version="10.0.5" />
   </ItemGroup>
 </Project>

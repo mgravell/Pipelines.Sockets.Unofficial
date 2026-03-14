@@ -8,12 +8,12 @@
   </PropertyGroup>
   
   <ItemGroup>
-    <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
+    <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageReference Include="Nito.AsyncEx.Coordination" Version="5.1.2" />
     <ProjectReference Include="..\..\src\Pipelines.Sockets.Unofficial\Pipelines.Sockets.Unofficial.csproj" />
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
     <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.1.2" />
-    <PackageReference Include="System.Collections.Immutable" Version="9.0.4" />
-    <PackageReference Include="System.Reflection.Metadata" Version="9.0.4" />
+    <PackageReference Include="System.Collections.Immutable" Version="10.0.5" />
+    <PackageReference Include="System.Reflection.Metadata" Version="10.0.5" />
   </ItemGroup>
 </Project>
