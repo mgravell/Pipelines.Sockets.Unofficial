@@ -196,15 +196,15 @@ namespace Pipelines.Sockets.Unofficial.Arenas
             // get the byte arena from the parent
             _arena = ((SimpleOwnedArena<TFrom>)parent.GetArena<TFrom>()).Arena;
         }
-        internal override long AllocatedBytes() => 0; // not our data
+        internal sealed override long AllocatedBytes() => 0; // not our data
 
-        internal override void Reset() { } // the T allocator doesn't own the data
-        internal override void Dispose() { } // the T allocator doesn't own the data
-        internal override object GetAllocator() => _arena.GetAllocator();
+        internal sealed override void Reset() { } // the T allocator doesn't own the data
+        internal sealed override void Dispose() { } // the T allocator doesn't own the data
+        internal sealed override object GetAllocator() => _arena.GetAllocator();
 
-        internal override SequencePosition GetPosition() => _arena.GetPosition();
+        internal sealed override SequencePosition GetPosition() => _arena.GetPosition();
 
-        internal override Sequence<TTo> AllocateRetainingSegmentData(int length)
+        internal sealed override Sequence<TTo> AllocateRetainingSegmentData(int length)
             => Allocate(length);
 
         private readonly List<Arena.MappedSegment<TFrom, TTo>> _mappedSegments = new();

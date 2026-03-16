@@ -295,7 +295,7 @@ namespace Pipelines.Sockets.Unofficial
                 return flush.IsCompletedSuccessfully ? Task.CompletedTask : flush.AsTask();
             }
 
-            private class AsyncWriteResult : IAsyncResult
+            private sealed class AsyncWriteResult : IAsyncResult
             {
                 private static readonly ManualResetEvent _alwaysSet = new ManualResetEvent(true);
                 public bool IsCompleted => true;
@@ -531,7 +531,7 @@ namespace Pipelines.Sockets.Unofficial
                 }
             }
 
-            private class AsyncReadResult : IAsyncResult
+            private sealed class AsyncReadResult : IAsyncResult
             {
                 internal ValueTaskAwaiter<ReadResult> ReadAwaiter;
                 private int BytesRead { get; set; }
