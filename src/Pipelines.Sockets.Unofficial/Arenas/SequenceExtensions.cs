@@ -111,7 +111,7 @@ namespace Pipelines.Sockets.Unofficial.Arenas
                 }
                 if (source is ArraySegment<T> segment)
                 {
-                    sequence = new Sequence<T>(segment.Array, segment.Count, segment.Count);
+                    sequence = new Sequence<T>(segment.Array, segment.Offset, segment.Count);
                     return true;
                 }
                 if (source is Sequence<T> seq)
